@@ -9,8 +9,9 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const modeMakerManifest: ModeManifest = {
   name: "mode-maker",
-  version: "1.1.2",
+  version: "1.1.3",
   changelog: {
+    "1.1.3": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "1.1.2": ["Manifest reference teaches mdScene instead of the deprecated claudeMdSection; description trimmed"],
     "1.1.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
   },

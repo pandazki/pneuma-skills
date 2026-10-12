@@ -20,6 +20,10 @@ bun modes/illustrate/showcase/generate.mjs
 bun modes/illustrate/showcase/preview.mjs
 ```
 
+New images default to Flare through OpenRouter. Append `--model sunburst` to the
+generation command to upgrade the four new images; the scarf edit always uses
+Sunburst.
+
 Open `http://127.0.0.1:18142/?view=hero` in a browser at 1376 × 768 CSS pixels.
 Capture `hero`, `text-to-image`, `row-canvas`, and `region-edit` after the local
 fonts and all images finish loading. Save each PNG under its matching name.

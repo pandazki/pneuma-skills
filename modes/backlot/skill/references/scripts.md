@@ -177,7 +177,7 @@ environment or the mode's `.env`, and never prints it.
 
 | script | what it does | called by |
 |---|---|---|
-| `generate_image.mjs "<prompt>" [--image-urls <ref>]… [--aspect-ratio --quality --output-dir --filename-prefix]` | GPT-Image through OpenRouter. `--image-urls` takes local paths, data URIs or URLs, up to 16, and is how the bible holds continuity — and how a key frame is made image-to-image from a greybox frame | you, for sheets and concepts; `previz.mjs anchor` for key frames |
+| `generate_image.mjs "<prompt>" [--image-urls <ref>]… [--model sunburst] [--aspect-ratio --quality --output-dir --filename-prefix]` | GPT Image 2.5 Flare through OpenRouter; `--model sunburst` upgrades generation and is required for edits of an existing frame. `--image-urls` takes local paths, data URIs or URLs, up to 16, and is how the bible holds continuity — and how a key frame is made image-to-image from a greybox frame | you, for sheets and concepts; `previz.mjs anchor` for key frames |
 | `generate-tts.mjs --text … --output … [--model --voice --style --language --speed] --json` | two fal TTS vendors with different voice lists — **read its header**, do not guess a voice id. `--json` reports the measured `seconds` | `backlot.mjs character voice`, `previz.mjs vo` |
 | `generate-bgm.mjs --prompt … --output … [--duration N]` | Lyria through OpenRouter, streamed to an MP3 | `backlot.mjs music` |
 | `transcribe.mjs --input <media> [--language] --json` | Whisper on fal; the transcript that `take-lines` is checked against | `previz.mjs generate`, automatically, for a take with a spoken line |

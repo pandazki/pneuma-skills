@@ -44,12 +44,16 @@ assets".
 **The recipe, per asset** (every command from the workspace, paths
 project-relative):
 
-1. **Cut it out of the target.** Give the image tool `target.png` as the
+1. **Cut it out of the target.** Use OpenRouter Sunburst via
+   `generate_image.mjs --image-urls <project>/target.png --model sunburst`, with
+   `target.png` as the
    reference and ask for exactly that object, alone, on a flat solid
    background, same style and materials as in the target, front three-quarter
    view with all features visible; for a hero, ask for four views in one pass
    — front, left, back, right — as separate images (the multiview recipe).
-   Save each under `<project>/assets/<id>.png` (or `<id>-front.png` …).
+   Save each under `<project>/assets/<id>.png` (or `<id>-front.png` …), and keep
+   the JSON cost receipt under `<project>/assets/image-receipts/` with a unique
+   filename (`references/target-image.md`).
 2. **Plan the job.** `node {SKILL_PATH}/scripts/image-to-3d.mjs recipe hero`
    (or `hero-multiview`, or `prop` for small dressing) prints the job JSON;
    paste it into `<project>/assets/fal-jobs.json` with the id, image and
@@ -162,8 +166,10 @@ water, particles, UI. Do not do it to save time.
 
 ## Textures, always — and the maps the image tool cannot make
 
-Whichever rung produced the geometry, albedo textures come from the image
-tool, not from noise functions; skyboxes too. Ask for tileable, flat-lit,
+Whichever rung produced the geometry, generate albedo textures and skyboxes
+through the shared OpenRouter `generate_image.mjs` script (Flare by default;
+`--model sunburst` upgrades generation). Edits to existing textures use Sunburst.
+Keep each JSON cost receipt as described in `references/target-image.md`. Ask for tileable, flat-lit,
 top-down material images at the size you will actually sample (1024² is
 enough for most surfaces), one material per image. A material without a
 texture where the target has one is a `materials` gap the judge will name

@@ -526,11 +526,13 @@ when a page is borderline, not before.
 
 ## Image generation (only when the user has configured a key)
 
-A script lives at `{SKILL_PATH}/scripts/generate_image.mjs`. Default model
-is `gpt-image-2.5-sunburst` (OpenRouter) — the right choice for kami because it renders
-**legible typography inside images**: figure captions, diagram labels,
-mock book spines, imagined postage stamps, rendered monograms. Reference-image edits automatically use `gpt-image-2.5-flare`. Both models require
-`OPENROUTER_API_KEY`.
+A script lives at `{SKILL_PATH}/scripts/generate_image.mjs`. Use OpenRouter
+with `OPENROUTER_API_KEY`: new images default to `gpt-image-2.5-flare`, including
+reference-guided generations. Add `--model sunburst` to upgrade a generation
+or to edit an existing image supplied through `--image-urls`. Reference images
+alone do not change the model. For figure captions, diagram labels, mock book
+spines, imagined postage stamps, and rendered monograms, specify the exact copy
+and verify the lettering in the result.
 
 Images here live on a **printed paper page**. That constraint is absolute
 and distinguishes kami from every other Pneuma mode. The images can't
@@ -628,7 +630,8 @@ Flag guidance in paper terms:
 | `--output-format` | `png` for illustrations / diagrams / monochrome portraits (preserves clean edges and text); `jpeg` only for full-color photography. |
 | `--output-dir` | Always the active content set's `assets/` directory. Don't dump into `_shared/assets/` — that's the upstream-sourced font & diagram folder. |
 | `--filename-prefix` | Role + index: `portrait-founder`, `figure-02-buffer`, `stamp-motif`. |
-| `--image-urls <source>` | Reference-image edits automatically use `gpt-image-2.5-flare`; text-only generation uses Sunburst. |
+| `--image-urls <source>` | Attach a reference; new images still use Flare. Pass `--model sunburst` for edits. |
+| `--model sunburst` | Upgrade a new generation or precisely edit a reference image. |
 
 ### After generating
 

@@ -2416,7 +2416,10 @@ come from `Date.now()` unless `--at <ms>` is passed.
 ### `set-sheet` is called twice per sheet
 
 The image call takes a minute or two, and the stage should not be empty for it.
-So the first call goes **before** `generate_image.mjs`:
+So the first call goes **before** `generate_image.mjs`. These examples use the
+Flare generation default; if you upgrade with `--model sunburst`, record
+`openai/gpt-image-2.5-sunburst` in both calls instead. The closing call must
+match the model reported by the generator:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs set-sheet --dir <character> --motion <id> \

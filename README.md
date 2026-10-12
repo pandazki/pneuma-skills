@@ -91,7 +91,7 @@ When humans and code agents co-create content, they need more than a chat window
 
 > A few of these ship inside the package; the rest arrive on first use. Their card in the launcher shows the download size, and opening one fetches it and then starts as usual. Which modes are which is a property of the release (`modes/distribution.json`), not of the mode — so a mode can move between the two without anything changing for the person using it.
 
-Image tools across modes use GPT Image 2.5 through OpenRouter: Sunburst for new images, Flare for edits and reference-based generation. Configure an OpenRouter API key to enable them; modes with video or speech tools may also need a fal.ai key.
+Image tools across modes use GPT Image 2.5 through OpenRouter: Flare for new images (including reference-guided generation), Sunburst for edits. Pass `--model sunburst` to `generate_image.mjs` to upgrade generation; `edit_image.mjs` defaults to Sunburst. Configure an OpenRouter API key to enable them; modes with video, speech, background removal, or image-to-3D tools may also need a fal.ai key.
 
 ## First Run — Pneuma Walks You Through It
 

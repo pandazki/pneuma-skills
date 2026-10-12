@@ -1401,7 +1401,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   "output-dir": { type: "string" }, "filename-prefix": { type: "string" }, "output-format": { type: "string" },
-  "aspect-ratio": { type: "string" }, quality: { type: "string" }, "image-urls": { type: "string", multiple: true },
+  "aspect-ratio": { type: "string" }, quality: { type: "string" }, model: { type: "string" }, "image-urls": { type: "string", multiple: true },
 } });
 writeFileSync(process.env.FAKE_IMAGE_ARGV, JSON.stringify({ prompt: positionals[0], ...values }) + "\\n", { flag: "a" });
 mkdirSync(values["output-dir"], { recursive: true });
@@ -2449,6 +2449,7 @@ describe("key frames and the lineup", () => {
       "store/concept.png",
     ]);
     expect(call["aspect-ratio"]).toBe("16:9");
+    expect(call.model).toBe("sunburst");
     expect(call["output-format"]).toBe("png");
     // The prompt splits the job by authority, and says which is which.
     expect(call.prompt).toContain("IMAGE 1 IS THE GREYBOX FRAME OF THIS EXACT MOMENT, and it is the composition.");

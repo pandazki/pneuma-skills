@@ -19,11 +19,42 @@ concretely. Avoid the words *concept art*, *illustration*, *painting*,
 *cinematic*, *render of* — the model reads them as permission to invent what
 an engine cannot do.
 
+## OpenRouter image scripts
+
+Generate targets with GPT Image 2.5 Flare through OpenRouter. The shared script
+reads `OPENROUTER_API_KEY` from the environment or `.env`; an agent-native image
+tool is not required. Add `--model sunburst` for a generation that needs tighter
+control. Edits of an existing scene or target use Sunburst explicitly.
+
+After `init`, save each successful call's JSON receipt under the project so the
+cost panel can read the actual `usage.cost`, model and completion timestamp.
+Use a new receipt filename for every paid call; replacing one loses its cost
+history. An absent `usage.cost` is unpriced, never a fixed per-image charge.
+
+```bash
+mkdir -p <project>/assets/image-receipts
+node {SKILL_PATH}/scripts/generate_image.mjs "<target prompt>" \
+  --aspect-ratio <stage-aspect> --quality high \
+  --output-dir <project>/assets --filename-prefix target-001 \
+  > <project>/assets/image-receipts/target-001.json
+# Upgrade new generation: add --model sunburst to the command above.
+# Refine the current scene while preserving the requested composition:
+node {SKILL_PATH}/scripts/generate_image.mjs "<precise edit prompt>" \
+  --image-urls <capture.png> --model sunburst --aspect-ratio <stage-aspect> \
+  --output-dir <project>/assets --filename-prefix target-002 \
+  > <project>/assets/image-receipts/target-002.json
+```
+
+Read `files[0]` from the receipt, inspect it, and lock that file. The reported
+`generatedAt` is local response completion, not a provider billing timestamp.
+If a call fails, inspect the error before another attempt; do not present an
+empty or malformed receipt as a successful or free generation.
+
 ## Fresh vs existing product
 
-- **Fresh** — generate the target directly from the user's brief.
+- **Fresh** — generate with Flare directly from the user's brief.
 - **Existing product** — capture the current scene first and feed that capture
-  to the image tool as the baseline, asking for a refined version that keeps
+  to Sunburst as the baseline, asking for a refined version that keeps
   the composition and improves what the user pointed at. The target must be an
   *improvement of what exists*, not a divergence; a divergent target makes
   every asset and camera decision already taken look wrong to the judge.

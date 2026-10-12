@@ -132,8 +132,8 @@ the source:
 
 ```bash
 # Configure OPENROUTER_API_KEY for images and FAL_KEY for videos in .env.
-# Existing seed provenance records its original model; regenerations use Flare.
-# Anchor edits accept the local logo directly as a reference.
+# Existing seed provenance records its original model; reference-guided regenerations use Flare; edits use --model sunburst.
+# Reference-guided anchor generation accepts the local logo directly.
 bun modes/_shared/scripts/generate_image.mjs "<prompt>" \
   --quality high --image-size 1920x1080 \
   --image-urls public/logo.png \

@@ -2202,6 +2202,7 @@ function cmdAnchor(dir, opts, now) {
     prompt,
     "--output-dir", outDir,
     "--filename-prefix", id,
+    "--model", "sunburst",
     "--output-format", "png",
     "--aspect-ratio", opts["aspect-ratio"] ?? nearestAspect(shot.spec.width, shot.spec.height),
     ...(opts.quality ? ["--quality", opts.quality] : []),

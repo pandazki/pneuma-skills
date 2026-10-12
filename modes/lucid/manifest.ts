@@ -2,7 +2,7 @@
  * Lucid Mode Manifest — pure data, no React deps.
  *
  * A closed loop between a picture and a program: the agent dreams a target
- * screenshot with its own image tool, builds a static Three.js scene toward
+ * screenshot through OpenRouter, builds a static Three.js scene toward
  * it, captures the live frame through the scene's bridge, and hands that
  * capture to a fresh-context judge. `lucid.mjs` owns the score history and
  * the exit rule; the viewer is the instrument panel the user watches it on.
@@ -15,8 +15,9 @@ import { loadLoops, saveLoops } from "./domain.js";
 
 const lucidManifest: ModeManifest = {
   name: "lucid",
-  version: "0.1.0",
+  version: "0.1.1",
   changelog: {
+    "0.1.1": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.1.0": [
       "Describe what you want to see and the agent dreams it first: one generated target screenshot, locked, so every later round is measured against the same picture",
       "The scene is a plain static Three.js site — it runs in the viewer with no build step, and the Live / Target / Split wipe puts the render and the dream on the same pixels",
@@ -55,8 +56,8 @@ const lucidManifest: ModeManifest = {
   // A circular arrow around a small square viewfinder — the loop around a frame.
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1.06 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>`,
 
-  // The dream and every cut-out come from the model's own image generation,
-  // and the judge is a fresh subagent — codex supplies both today.
+  // The fresh-context judge uses Codex subagents; image generation itself
+  // runs through the shared OpenRouter scripts on every supported model.
   supportedBackends: ["codex"],
 
   inspiredBy: {
@@ -67,15 +68,16 @@ const lucidManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-lucid",
-    mdScene: `You are building toward a picture that does not exist yet. The user says what they want to see in the browser; you dream it first — one target screenshot from your own image tool, locked at \`target.png\` — and then build a static Three.js scene under \`scene/\` until the live frame matches it. In front of the user is the loop's instrument panel: your scene running live, the target over it under a draggable wipe, the score every round earned from a judge that had never seen the previous ones, and the ledger of every asset the scene needs.`,
+    mdScene: `You are building toward a picture that does not exist yet. The user says what they want to see in the browser; you dream it first — one target screenshot generated through OpenRouter with GPT Image 2.5 Flare (Sunburst for edits), locked at \`target.png\` — and then build a static Three.js scene under \`scene/\` until the live frame matches it. In front of the user is the loop's instrument panel: your scene running live, the target over it under a draggable wipe, the score every round earned from a judge that had never seen the previous ones, and the ledger of every asset the scene needs.`,
     envMapping: {
       BLENDER_PATH: "blenderPath",
       FAL_KEY: "falApiKey",
+      OPENROUTER_API_KEY: "openrouterApiKey",
     },
     // sharedScripts is a WHITELIST and it is transitive: image-to-3d.mjs
     // drives fal through fal-queue.mjs, so the transport primitive has to be
     // listed even though the agent never invokes it directly.
-    sharedScripts: ["fal-queue.mjs"],
+    sharedScripts: ["fal-queue.mjs", "generate_image.mjs", "edit_image.mjs"],
   },
 
   viewer: {
@@ -136,9 +138,12 @@ const lucidManifest: ModeManifest = {
         ignore: ["**/scene/vendor/**"],
       },
     },
-    // The fal job file, for the cost panel: every image-to-3D job with its
-    // endpoint, options and submission time, priced by the same table
-    // `lucid.mjs status` uses. Small JSON; shipping its bytes is fine.
+    // Reported image charges stay beside the assets they paid for.
+    imageReceipts: {
+      kind: "file-glob",
+      config: { patterns: ["**/assets/image-receipts/*.json"] },
+    },
+    // Image-to-3D jobs are estimated from the same table as CLI status.
     falJobs: {
       kind: "file-glob",
       config: {
@@ -223,7 +228,7 @@ const lucidManifest: ModeManifest = {
     // first trials.
     reasoningEffort: "high",
     greeting: `<system-info pneuma-mode="Pneuma Lucid Mode" skill="pneuma-lucid" session="new"></system-info>
-The user just opened the lucid workspace. Greet them briefly (1-2 sentences): say that you start by dreaming a target screenshot with your image tool from whatever they describe, then build a Three.js scene toward it while a fresh judge scores each round. If this session's model has no image-generation tool, say so in the same breath and ask them to switch to a model that has one (GPT-6 Astra in Codex) — the loop cannot start without a target.`,
+The user just opened the lucid workspace. Greet them briefly (1-2 sentences): say that you start by dreaming a target screenshot through OpenRouter with GPT Image 2.5 Flare from whatever they describe, then build a Three.js scene toward it while a fresh judge scores each round. If no OpenRouter key is configured, explain that generating a target needs OPENROUTER_API_KEY; a user-supplied target can start the loop without generation.`,
   },
 
   init: {
@@ -262,6 +267,15 @@ The user just opened the lucid workspace. Greet them briefly (1-2 sentences): sa
           "Leave blank to auto-detect: PATH, /Applications/Blender.app, Program Files. Only the mode's blender script runs it.",
         type: "string",
         defaultValue: "",
+      },
+      {
+        name: "openrouterApiKey",
+        label: "OpenRouter API Key",
+        description:
+          "Enables GPT Image 2.5 Flare target images and textures, Sunburst edits and cut-outs, and optional Sunburst generation upgrades.",
+        type: "string",
+        defaultValue: "",
+        sensitive: true,
       },
       {
         name: "falApiKey",

@@ -23,6 +23,8 @@ import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js"
 import { loadLoops } from "../domain.js";
 import manifest from "../manifest.js";
 import LucidPreview from "../viewer/LucidPreview.js";
+import { CostPanel } from "../viewer/CostPanel.js";
+import { summarizeCosts } from "../skill/scripts/costs.mjs";
 
 const SHRINE = readFileSync(join(import.meta.dir, "fixtures", "lantern-shrine.json"), "utf-8");
 
@@ -68,5 +70,37 @@ describe("lucid's request controls", () => {
   test("nor does a replay", () => {
     const html = stage({ editing: true, readonly: true });
     for (const label of LABELS) expect({ label, shown: html.includes(`>${label}<`) }).toEqual({ label, shown: false });
+  });
+});
+
+describe("Lucid image cost receipts", () => {
+  test("the viewer attributes saved OpenRouter costs only to the active project", () => {
+    const receipt = (cost: number) => JSON.stringify({ model: "openai/gpt-image-2.5-flare", files: ["image.png"], usage: { cost } });
+    const html = stage({
+      editing: false,
+      sources: {
+        loops: still(loadLoops([{ path: "lantern-shrine/lucid.json", content: SHRINE }])),
+        sceneFiles: still([]), falJobs: still([]),
+        imageReceipts: still([
+          { path: "lantern-shrine/assets/image-receipts/target.json", content: receipt(0.07) },
+          { path: "other-project/assets/image-receipts/target.json", content: receipt(9) },
+          { path: "lantern-shrine/assets/image-receipts/broken.json", content: "{" },
+        ]),
+      } as unknown as ViewerPreviewProps["sources"],
+    });
+    expect(html).toContain("Cost so far: $0.07 (reported + estimated)");
+  });
+
+  test("the panel distinguishes missing prices from reported image costs", () => {
+    const summary = summarizeCosts({ imageReceipts: [
+      { model: "openai/gpt-image-2.5-flare", files: ["one.png", "two.png"], usage: { cost: 0.08 } },
+      { model: "openai/gpt-image-2.5-sunburst", files: ["edited.png"] },
+    ] });
+    const html = renderToStaticMarkup(<CostPanel summary={summary} open={true} onClose={() => {}} />);
+    expect(html).toContain("Known cost so far");
+    expect(html).toContain("$0.08");
+    expect(html).toContain("1 unpriced");
+    expect(html).toContain("without usage costs are excluded");
+    expect(html).not.toContain("flat $");
   });
 });

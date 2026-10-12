@@ -480,26 +480,26 @@ You have access to an AI image generation script at `{SKILL_PATH}/scripts/genera
 - The design outline specifies a visual that CSS/SVG can't achieve (photos, illustrations, mood imagery)
 - A slide would benefit from a hero image or background visual
 - The content calls for real-world imagery (people, places, products, scenes)
-- The slide needs a mockup with **legible typography, labels, or signage** — this is the strength of the default `gpt-image-2.5-sunburst` model
+- The slide needs a mockup with **legible typography, labels, or signage** — preserve the exact copy in the prompt and inspect the rendered text
 
 **When NOT to generate**:
 - The slide is diagram/chart/data-focused — use CSS/SVG instead
 - The slide is typography-only by design intent
 
-**Model picking** (default is `gpt-image-2.5-sunburst`):
+**Model picking** (default is `gpt-image-2.5-flare`):
 
 | Model | Pick when | Backend |
 |---|---|---|
-| `gpt-image-2.5-sunburst` | Default for text-to-image generation | OpenRouter |
-| `gpt-image-2.5-flare` | Default for edits and calls with reference images | OpenRouter |
+| `gpt-image-2.5-flare` | Default for new images, with or without references | OpenRouter |
+| `gpt-image-2.5-sunburst` | Default for editing; optional generation upgrade | OpenRouter |
 
-Both models require `OPENROUTER_API_KEY`. The script selects Sunburst for text-only generation and Flare whenever `--image-urls` is present. `edit_image.mjs` defaults to Flare. `--model` overrides this selection; the `openai/` prefix is optional.
+Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.5-flare`, including generations guided by reference images. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
 
 **Workflow**:
 
 1. **Plan in outline**: The design outline's Visual field should already specify which slides need generated images and what kind
 2. **Craft a detailed prompt**: Include subject, style, composition, mood, and technical details
-3. **Generate** (defaults to `gpt-image-2.5-sunburst`):
+3. **Generate** (defaults to `gpt-image-2.5-flare`):
 
 ```bash
 cd {SKILL_PATH} && node scripts/generate_image.mjs \
@@ -522,7 +522,8 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 | `--output-format` | `png` for illustrations (crisp text / clean edges); `jpeg` for photos |
 | `--filename-prefix` | Slide number + purpose, e.g. `slide-05-hero` |
 | `--output-dir` | Always the workspace's `assets/` directory |
-| `--image-urls <source>` | Reference-image edits automatically use Flare |
+| `--image-urls <source>` | Attach a reference; for edits also pass `--model sunburst` |
+| `--model sunburst` | Upgrade a new generation or precisely edit a reference image |
 
 **API reference**: The script uses the OpenRouter Images API and requires `OPENROUTER_API_KEY`. Outputs JSON to stdout with `backend`, `model`, `files` (local paths), and `description`.
 

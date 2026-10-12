@@ -3,13 +3,36 @@
 #
 # Requires OPENROUTER_API_KEY in env. Run from repo root:
 #
-#     bash modes/kami/showcase/generate.sh
+#     bash modes/kami/showcase/generate.sh [--model sunburst]
 #
 # Output goes next to this script: hero.png, paper-locked.png,
 # typography.png, export.png. Safe to re-run — each generation
 # overwrites the prior file.
 
 set -euo pipefail
+
+GENERATION_MODEL="flare"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model)
+      if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+        echo "ERROR: --model requires flare, sunburst, or a full GPT Image 2.5 model ID." >&2
+        exit 1
+      fi
+      GENERATION_MODEL="$2"
+      shift 2
+      ;;
+    --help|-h)
+      echo "Usage: bash modes/kami/showcase/generate.sh [--model flare|sunburst]"
+      echo "New images default to Flare through OpenRouter; use --model sunburst to upgrade."
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
 
 if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "ERROR: set OPENROUTER_API_KEY in your environment first." >&2
@@ -31,6 +54,7 @@ gen() {
   local prefix="$1" prompt="$2"
   echo ">>> Generating $prefix.png..."
   bun "$SCRIPT" "$prompt" \
+    --model "$GENERATION_MODEL" \
     --aspect-ratio 16:9 \
     --quality high \
     --output-format png \

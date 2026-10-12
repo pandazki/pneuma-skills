@@ -20,7 +20,7 @@
  *     --action "three chalk line segments slide together into a right triangle, and a chalk square grows off each side until the two smaller squares visibly tile the largest" \
  *     [--name "<display name>"] [--recipe "<custom recipe>"] \
  *     [--rationale "<why this style, user's language>"] \
- *     [--ref-image style/refs/a.png]... [--duration 15] [--language zh] --json
+ *     [--image-model sunburst] [--ref-image style/refs/a.png]... [--duration 15] [--language zh] --json
  *
  * --hook is the spoken line; --action is the VISUAL DEVICE — what these
  * seconds show, in matter the camera can see, no formulas or labels or
@@ -59,7 +59,10 @@ import { bindingLines, buildClipPrompt, defaultCamera, insertReferenceBlock } fr
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = dirname(__dirname);
 const STYLES_MD = join(SKILL_ROOT, "references", "styles.md");
-const GENERATE_IMAGE = join(__dirname, "generate_image.mjs");
+const installedImage = new URL("./generate_image.mjs", import.meta.url);
+const imageAdapter = existsSync(installedImage) ? installedImage : new URL("../../../_shared/scripts/generate_image.mjs", import.meta.url);
+const { resolveImageModel } = await import(imageAdapter.href);
+const GENERATE_IMAGE = fileURLToPath(imageAdapter);
 const GENERATE_VIDEO = join(__dirname, "generate-video.mjs");
 
 const { values: args } = parseArgs({
@@ -73,6 +76,7 @@ const { values: args } = parseArgs({
     action: { type: "string" },
     language: { type: "string" },
     model: { type: "string" },
+    "image-model": { type: "string" },
     duration: { type: "string", default: "15" },
     resolution: { type: "string", default: "480P" },
     "ref-image": { type: "string", multiple: true, default: [] },
@@ -94,6 +98,7 @@ for (const required of ["set", "style-id", "hook", "action"]) {
     );
   }
 }
+const imageModel = resolveImageModel(args["image-model"]);
 const action = args.action.trim().replace(/[.。]+$/, "");
 
 const setDir = resolve(args.set);
@@ -183,6 +188,7 @@ let anchorReused = false;
   // what is on file: a re-run with a different device needs a new anchor.
   if (
     onFile &&
+    onFile.model === imageModel &&
     onFile.style_id === styleId &&
     onFile.recipe === recipe &&
     (onFile.topic ?? "") === topic &&
@@ -191,11 +197,11 @@ let anchorReused = false;
   ) {
     anchorReused = true;
   } else {
-    const r = run(GENERATE_IMAGE, [anchorPrompt, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", styleDir, "--filename-prefix", "anchor"]);
+    const r = run(GENERATE_IMAGE, [anchorPrompt, "--model", imageModel, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", styleDir, "--filename-prefix", "anchor"]);
     if (r.status !== 0 || !existsSync(join(setDir, ANCHOR_REL))) {
       abort(`style anchor generation failed: ${(r.stderr || "").trim().split("\n").slice(-2).join(" ").slice(0, 300)}`);
     }
-    writeFileSync(ANCHOR_META, `${JSON.stringify({ produced_at: new Date().toISOString(), style_id: styleId, recipe, topic, action, prompt: anchorPrompt }, null, 2)}\n`);
+    writeFileSync(ANCHOR_META, `${JSON.stringify({ produced_at: new Date().toISOString(), style_id: styleId, recipe, topic, action, model: imageModel, prompt: anchorPrompt }, null, 2)}\n`);
   }
 }
 mark("anchor");

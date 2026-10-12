@@ -153,7 +153,7 @@ const TRANSCRIBE_RETRY_MS = 3000;
 
 // ── Default production dependencies (the paid ones) ─────────────────────────
 
-export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL } = {}) {
+export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL, imageModel } = {}) {
   const openrouterKey = loadEnvKey("OPENROUTER_API_KEY", { skillRoot: SKILL_ROOT, cwd: setDir });
   return {
     model,
@@ -208,7 +208,7 @@ export function defaultDeps({ setDir, resolution = "480P", model = DEFAULT_MODEL
         const prompt = `Character sheet. The same person as in the attached frame — identical face, hair, skin, outfit and accessories — shown as ${angles[i] ?? angles[0]}, in the same setting and lighting, in this exact visual style: ${styleRecipe}. No text, no labels, no watermark, 16:9.`;
         const dir = dirname(outputs[i]);
         const prefix = basename(outputs[i]).replace(/\.png$/, "");
-        const r = await runChild(process.execPath, [GENERATE_IMAGE, prompt, "--image-urls", uri, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", dir, "--filename-prefix", prefix], { signal });
+        const r = await runChild(process.execPath, [GENERATE_IMAGE, prompt, ...(imageModel ? ["--model", imageModel] : []), "--image-urls", uri, "--aspect-ratio", "16:9", "--quality", "medium", "--output-dir", dir, "--filename-prefix", prefix], { signal });
         if (r.code !== 0 || !existsSync(outputs[i])) throw new Error(`character sheet ${i + 1} failed: ${(r.stderr || "").trim().slice(-200)}`);
       }
     },
@@ -937,6 +937,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
       // unknown flag would leave the learner on "等待开拍".
       continuity: { type: "string" },
       model: { type: "string" },
+      "image-model": { type: "string" },
       once: { type: "boolean", default: false },
       detach: { type: "boolean", default: false },
     },
@@ -1001,7 +1002,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   };
   const manager = createManager({
     setDir,
-    deps: defaultDeps({ setDir, resolution: args.resolution.toUpperCase(), model: args.model ?? DEFAULT_MODEL }),
+    deps: defaultDeps({ setDir, resolution: args.resolution.toUpperCase(), model: args.model ?? DEFAULT_MODEL, imageModel: args["image-model"] }),
     slots: Math.max(1, Number(args.slots) || 3),
     videoAhead: Math.max(1, Number(args["video-ahead"]) || 2),
     planAhead: Math.max(1, Number(args["plan-ahead"]) || 2),

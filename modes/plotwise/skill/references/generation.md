@@ -86,13 +86,13 @@ shape.
 node scripts/make-style-sample.mjs --set <dir> --style-id <id> \
   --hook "<the spoken line>" --action "<the visual device these seconds SHOW>" \
   [--recipe "<custom recipe>"] [--name …] [--rationale …] \
-  [--ref-image style/refs/a.png]... [--duration 15] [--resolution 480P] --json
+  [--image-model sunburst] [--ref-image style/refs/a.png]... [--duration 15] [--resolution 480P] --json
 ```
 
 Two products, and everything downstream inherits them:
 
 - **`style/anchor.png`** — a style KEY FRAME, not an empty set:
-  GPT Image 2.5 composes the recipe around the topic's own device, caught
+  GPT Image 2.5 Flare via OpenRouter composes the recipe (`--image-model sunburst` upgrades it) around the topic's own device, caught
   at its most legible moment, filling the frame, no text, 16:9. This
   still becomes Image 1 of every clip in the course, so an anchor of "the
   set, ready but not yet in use" hands its emptiness to every montage.

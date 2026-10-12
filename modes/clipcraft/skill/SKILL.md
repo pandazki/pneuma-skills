@@ -193,9 +193,8 @@ only. A music video exercises all six.
 
 The single biggest failure mode in multi-shot AIGC video work is
 **drift across shots**: the character's face changes, the location
-mutates, the palette wanders. Layer 1 is the antidote, and it's
-cheap (~$0.50–$2 in upstream image generations) compared to the
-cost of regenerating a Path A run because the protagonist looks
+mutates, the palette wanders. Layer 1 reduces the risk of
+regenerating a Path A run because the protagonist looks
 different in panel 5. If a brief has *any* recurring character,
 location, or signature prop, build the bible before the storyboard.
 
@@ -245,13 +244,13 @@ Seven CLI scripts wrap the provider APIs. Call them via the Bash tool.
 
 | Script | Purpose | Default model | Env var |
 |---|---|---|---|
-| `scripts/generate_image.mjs` | Text→image; edits via `--image-urls`; 1–10 images per call | GPT Image 2.5 Sunburst for generation; Flare with references | `OPENROUTER_API_KEY` |
-| `scripts/edit_image.mjs` | Modify a local image with optional highlighter annotation (multimodal reasoning) | GPT Image 2.5 Flare via OpenRouter | `OPENROUTER_API_KEY` |
+| `scripts/generate_image.mjs` | Text→image; edits via `--image-urls`; 1–10 images per call | GPT Image 2.5 Flare via OpenRouter; `--model sunburst` upgrades generation | `OPENROUTER_API_KEY` |
+| `scripts/edit_image.mjs` | Modify a local image with optional highlighter annotation (multimodal reasoning) | GPT Image 2.5 Sunburst via OpenRouter | `OPENROUTER_API_KEY` |
 | `scripts/generate-video.mjs` | Text→video + image→video + reference-to-video | bytedance `seedance-2.0` (fallback: `veo3.1` via `--model veo3.1`) | `FAL_KEY` |
 | `scripts/generate-tts.mjs` | Text→speech (expressive: inline `[laughing]` / `[sigh]` tags, 30 voices) | fal.ai `gemini-3.1-flash-tts` | `FAL_KEY` |
 | `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
-| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | GPT Image 2.5 Flare via OpenRouter | `OPENROUTER_API_KEY` |
-| `scripts/storyboard.mjs` | Compose-and-slice: one GPT Image 2.5 call generates an N-cell composite at the target video aspect ratio; ffmpeg slices into N individual panel images with provenance metadata. Engine layer for Path C (see `references/storyboard-workflow.md`). | Sunburst, or Flare with `--ref`, via OpenRouter | `OPENROUTER_API_KEY` |
+| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | GPT Image 2.5 Sunburst via OpenRouter | `OPENROUTER_API_KEY` |
+| `scripts/storyboard.mjs` | Compose-and-slice: one GPT Image 2.5 call generates an N-cell composite at the target video aspect ratio; ffmpeg slices into N individual panel images with provenance metadata. Engine layer for Path C (see `references/storyboard-workflow.md`). | Flare via OpenRouter, including `--ref`; upgrade with `--model sunburst` | `OPENROUTER_API_KEY` |
 
 `generate_image.mjs` and `edit_image.mjs` share their output shape —
 a JSON object on stdout with `files`, `urls`, and `description`. They
@@ -265,8 +264,13 @@ file in the skill directory.
 
 ### Why GPT Image 2.5 matters for video work
 
-The shared image model is `gpt-image-2.5-sunburst` via OpenRouter;
-`gpt-image-2.5-flare` is selected automatically for editing and calls with reference images. Use it for:
+Image generation uses `openai/gpt-image-2.5-flare` via OpenRouter by default,
+including new compositions guided by reference images. Add `--model sunburst`
+when generation needs tighter control. Edits of an existing image use
+`openai/gpt-image-2.5-sunburst`: `edit_image.mjs` selects it automatically;
+with `generate_image.mjs --image-urls`, select `--model sunburst` explicitly
+when the task is an edit. Reference images alone do not select the model. Use
+the image scripts for:
 
 - **First / last frames**. Seedance's `from-image` and first-last-frame
   video modes inherit the quality of their anchor images. GPT Image 2.5
@@ -287,7 +291,7 @@ The shared image model is `gpt-image-2.5-sunburst` via OpenRouter;
   portrait plus an environment plate plus a style plate and
   GPT Image 2.5 composes them coherently — a stronger control surface
   for prompting first frames and character sheets than free-text alone.
-- **Reference-guided edits**. Pass the source via `--image-urls` and describe
+- **Reference-guided edits**. Pass the source via `--image-urls --model sunburst` and describe
   what to change and preserve. `edit_image.mjs --annotation` accepts a visual
   location guide. OpenRouter does not expose a pixel-mask parameter.
 
@@ -332,7 +336,7 @@ node "<SKILL_DIR>/scripts/generate_image.mjs" \
   --aspect-ratio 9:16 --quality high \
   --output-dir assets/image --filename-prefix kitchen-3am
 
-# Edit / reference — pass one or more URLs, data URIs, or local files.
+# Reference-guided generation — pass URLs, data URIs, or local files.
 # Uses the same GPT Image 2.5 OpenRouter Images endpoint.
 node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Same character, now at a neon-lit ramen counter, back to camera" \
@@ -347,16 +351,22 @@ node "<SKILL_DIR>/scripts/generate_image.mjs" \
   --image-size 720x1280 --quality high \
   --output-dir assets/image --filename-prefix opening-desk
 
+# Upgrade a new generation when tighter control is needed.
+node "<SKILL_DIR>/scripts/generate_image.mjs" \
+  "A carefully arranged character design sheet with four consistent views" \
+  --model sunburst --aspect-ratio 16:9 \
+  --output-dir assets/image --filename-prefix character-sheet
+
 # Multiple takes in one call — 1–10 per request.
 node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Four phone mockups of the app home screen, each with a different colorway" \
   --num-images 4 --aspect-ratio 9:16 \
   --output-dir assets/image --filename-prefix colorway-grid
 
-# Flare edit with a source image. Requires OPENROUTER_API_KEY.
+# Sunburst edit with a source image. Requires OPENROUTER_API_KEY.
 node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Watercolor of a city at dusk, soft bleeds, visible cold-press texture" \
-  --image-urls assets/image/kitchen-3am.png --aspect-ratio 16:9 \
+  --image-urls assets/image/kitchen-3am.png --model sunburst --aspect-ratio 16:9 \
   --output-dir assets/image --filename-prefix dusk-watercolor
 ```
 

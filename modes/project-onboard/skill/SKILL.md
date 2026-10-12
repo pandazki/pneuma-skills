@@ -94,7 +94,8 @@ When the project has real content (README, code, dependencies, docs) but **no us
 ### Invocation
 
 Use the bundled `{SKILL_PATH}/scripts/generate_image.mjs`. It defaults to
-`gpt-image-2.5-sunburst`; reference-image edits automatically select `gpt-image-2.5-flare`.
+`gpt-image-2.5-flare`, with or without reference images. Add `--model sunburst`
+for a generation upgrade or to edit an existing image with `--image-urls`.
 Both use OpenRouter and require `OPENROUTER_API_KEY` in the session environment
 or skill `.env` (auto-filled from the saved OpenRouter key at launch).
 
@@ -135,7 +136,7 @@ This is the core craft of the onboarding. Pick **two** concrete, immediately-doa
 Both tasks must be doable end-to-end without API keys the user hasn't configured — a failed first run is the worst possible onboarding outcome. If the project would benefit from API-keyed work but the user hasn't configured keys, surface that as an `apiKeyHints` (the viewer will render a soft "you could unlock more by adding X key" prompt), but the two recommended tasks themselves stay key-free.
 
 **Read `~/.pneuma/api-keys.json`** to see what's configured. Common keys:
-- `OPENROUTER_API_KEY` — unlocks `gpt-image-2.5-sunburst` (default) and `gpt-image-2.5-flare` (edits) for image generation and editing
+- `OPENROUTER_API_KEY` — unlocks `gpt-image-2.5-flare` (new images) and `gpt-image-2.5-sunburst` (edits or generation upgrade) for image generation and editing
 - `FAL_KEY` (sometimes stored as `FAL_API_KEY` — accept either) — unlocks video generation and TTS models for `clipcraft`
 
 If the file doesn't exist or is empty, treat the user as having no keys.

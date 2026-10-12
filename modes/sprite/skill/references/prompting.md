@@ -233,8 +233,9 @@ the rule once for all the scripts).
   reaches for it. The two that take a positional prompt are the same two that
   have no `--json`; learn them as a pair.
 - **`--image-urls` repeats, once per reference** (up to 16), and it is what
-  makes the sheet the *same* character. Passing any reference switches the
-  model to Flare automatically; do not override with `--model`.
+  makes the sheet the *same* character. New sheets default to Flare through
+  OpenRouter even with references. Add `--model sunburst` for a generation
+  upgrade; use Sunburst when editing an existing image.
 - **`--background` takes `auto`, `opaque` or `transparent`; use `opaque`.**
   The alpha comes from the keying step, not from this flag. The flag reference
   in full: `--background transparent` needs `--output-format png` or `webp`
@@ -573,8 +574,9 @@ clause tells it that matching is the job.
 Attach **every** reference the character has
 (`--image-urls <character>/refs/turnaround.png --image-urls <character>/refs/portrait.png`). The turnaround carries proportions and
 silhouette; the portrait carries the face, which is what a viewer notices
-first when it drifts. Passing references switches `generate_image.mjs` to the
-Flare model automatically — do not override it with `--model`.
+first when it drifts. `generate_image.mjs` keeps the Flare default for these
+new images. Add `--model sunburst` for a generation upgrade; use Sunburst
+for edits to an existing image. Record the model actually used in provenance.
 
 Do not attach a previous motion's sheet as a reference. It looks like a helpful
 consistency anchor and it is not: the model copies the *grid* as well as the
@@ -622,7 +624,8 @@ The facing clause per direction: *front* — faces the viewer; *back* — faces
 straight away, back of the head to the camera, no face; *right* / *left* — a
 pure side profile facing the right / left of the picture. Register it as the
 direction's anchor (one per direction; registering the same id again
-replaces it):
+replaces it). The example records the Flare default; record
+`openai/gpt-image-2.5-sunburst` if that generation was upgraded:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id anchor-back \

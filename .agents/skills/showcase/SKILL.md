@@ -49,7 +49,7 @@ Create `modes/<name>/showcase/showcase.json`:
 
 ## Step 3: Generate Showcase Images
 
-Generate **4 images** (1 hero + 3 highlights) using the active harness's image-generation capability. Follow its image-generation skill when available; inspect reference images first. If image generation is unavailable, complete the metadata and report which assets still need generation.
+Generate **4 images** (1 hero + 3 highlights) using `modes/_shared/scripts/generate_image.mjs` through OpenRouter (`OPENROUTER_API_KEY`). New images default to GPT Image 2.5 Flare; pass `--model sunburst` when generation needs greater precision. Use `edit_image.mjs` for edits (Sunburst by default), or `generate_image.mjs --model sunburst --image-urls ...` for edits with multiple references. Inspect reference images first. If OpenRouter image generation is unavailable, complete the metadata and report which assets still need generation.
 
 **Image specs:**
 - Dimensions: 1376×768 pixels (16:9)

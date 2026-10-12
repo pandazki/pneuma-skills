@@ -13,9 +13,9 @@
         "ja": "アイデアを広げる"
       },
       "description": {
-        "en": "Describe a scene and explore several visual directions with GPT Image 2.5 Sunburst. Compare the results, then develop the one you like.",
-        "zh-CN": "描述一个场景，让 GPT Image 2.5 Sunburst 试出不同视觉方向。并排比较，再沿着喜欢的那一张继续创作。",
-        "ja": "シーンを言葉で伝え、GPT Image 2.5 Sunburst でさまざまな表現を探索。並べて比べ、気に入った方向を育てられます。"
+        "en": "Describe a scene and explore visual directions with GPT Image 2.5 Flare. Upgrade to Sunburst when a direction needs greater precision.",
+        "zh-CN": "描述一个场景，先用 GPT Image 2.5 Flare 探索视觉方向，需要更精细的生成时再升级到 Sunburst。",
+        "ja": "シーンを言葉で伝え、GPT Image 2.5 Flare で表現を探索。より精密な生成が必要なら Sunburst に切り替えられます。"
       },
       "media": "text-to-image.png",
       "mediaType": "image"
@@ -41,9 +41,9 @@
         "ja": "元の画像をもとに調整"
       },
       "description": {
-        "en": "Select an image or highlight a detail and describe the change. GPT Image 2.5 Flare uses the original as a reference; the preview shows a real scarf-color edit.",
-        "zh-CN": "选中图片或涂抹标出细节，再描述想怎么改。GPT Image 2.5 Flare 参考原图完成修改；展示图就是一次真实的围巾换色。",
-        "ja": "画像を選ぶか細部をハイライトして、変更したい内容を伝えます。GPT Image 2.5 Flare が元画像を参照して編集。プレビューは実際のマフラーの色変更です。"
+        "en": "Select an image or highlight a detail and describe the change. Edits now default to GPT Image 2.5 Sunburst; the preview records an earlier scarf-color edit.",
+        "zh-CN": "选中图片或涂抹标出细节，再描述想怎么改。现在默认使用 GPT Image 2.5 Sunburst 修改；展示图记录的是此前一次真实的围巾换色。",
+        "ja": "画像を選ぶか細部をハイライトして、変更を伝えます。現在の編集モデルは GPT Image 2.5 Sunburst。プレビューは以前行ったマフラーの色変更の記録です。"
       },
       "media": "region-edit.png",
       "mediaType": "image"

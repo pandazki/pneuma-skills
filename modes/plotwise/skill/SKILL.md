@@ -460,6 +460,17 @@ Punctuation and homophone drift is fine; a changed fact, number, term, or a
 dropped clause is a FAIL — re-shoot once with a new seed, then shorten the
 script. A clip that says the wrong thing is worse than no clip.
 
+## Image generation policy
+
+Use OpenRouter for image assets. New style anchors and character views use
+GPT Image 2.5 Flare, including views guided by reference images. Upgrade them
+with `--image-model sunburst` on `make-style-sample.mjs` or `play-manager.mjs`,
+or `--model sunburst` on `generate_image.mjs`. A different image model makes
+a different style anchor, so the sampler does not reuse the previous model's
+frame. For edits that preserve an existing canvas or composition, pass the
+source with `generate_image.mjs --image-urls <path> --model sunburst`.
+Knowledge figures still come from code and cited evidence.
+
 ## Course lifecycle
 
 **Kickoff.** This session's init params: course depth

@@ -110,7 +110,7 @@ export interface PlayManager {
 }
 
 export function createManager(options: ManagerOptions): PlayManager;
-export function defaultDeps(options?: { setDir?: string; resolution?: string; model?: string }): ManagerDeps;
+export function defaultDeps(options?: { setDir?: string; resolution?: string; model?: string; imageModel?: string }): ManagerDeps;
 export function descendantWindow(
   nodes: Record<string, { children?: Array<{ nodeId: string }> }>,
   rootId: string,

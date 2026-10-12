@@ -92,6 +92,12 @@ and click a motion to hand you back exactly which one they mean.
   `--background transparent` with a `400` before generating anything. A
   *clip* is asked for on flat chroma green and keyed afterwards (`--keyer
   unmix`, the default, un-mixes the plate out of every edge).
+- **Use OpenRouter for image generation and editing.** New references, sheets,
+  and keyframes default to GPT Image 2.5 Flare, including reference-guided
+  generations. Add `--model sunburst` for a generation upgrade. Existing-image
+  edits use `edit_image.mjs` (Sunburst by default), or
+  `generate_image.mjs --image-urls ... --model sunburst`. Record the actual
+  returned model in the project provenance; references alone do not change it.
 - **Never pass `--style` to `generate_image.mjs`.** It is not an art-direction
   switch — it rewrites your prompt ("no shading, white background") and drops
   `--quality` to `low`. The style lives in your prompt, verbatim.

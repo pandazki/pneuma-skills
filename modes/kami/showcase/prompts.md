@@ -16,8 +16,11 @@ bun modes/_shared/scripts/generate_image.mjs "<PROMPT>" \
   --output-dir modes/kami/showcase --filename-prefix <PREFIX>
 ```
 
-You'll need `FAL_KEY` or `OPENROUTER_API_KEY` in env (or the script's
-`.env`). See the script docs for backend detection.
+Use `OPENROUTER_API_KEY` in the environment (or the shared script's `.env`).
+New images default to GPT Image 2.5 Flare through OpenRouter. Add
+`--model sunburst` to upgrade a generation; edits to an existing image also use
+Sunburst. The batch wrapper supports the same upgrade:
+`bash modes/kami/showcase/generate.sh --model sunburst`.
 
 ---
 

@@ -7,8 +7,8 @@ import { parseArgs } from "node:util";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-export const DEFAULT_IMAGE_MODEL = "openai/gpt-image-2.5-sunburst";
-export const DEFAULT_EDIT_IMAGE_MODEL = "openai/gpt-image-2.5-flare";
+export const DEFAULT_IMAGE_MODEL = "openai/gpt-image-2.5-flare";
+export const DEFAULT_EDIT_IMAGE_MODEL = "openai/gpt-image-2.5-sunburst";
 export const IMAGE_MODELS = [DEFAULT_IMAGE_MODEL, DEFAULT_EDIT_IMAGE_MODEL];
 export const IMAGE_QUALITIES = ["auto", "low", "medium", "high", "xhigh", "max"];
 export const IMAGE_ASPECTS = ["auto", "21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"];
@@ -73,6 +73,8 @@ export function loadEnvKeys() {
 }
 
 export function resolveImageModel(model = DEFAULT_IMAGE_MODEL) {
+  if (model === "flare") return DEFAULT_IMAGE_MODEL;
+  if (model === "sunburst") return DEFAULT_EDIT_IMAGE_MODEL;
   const id = model.startsWith("openai/") ? model : `openai/${model}`;
   if (!IMAGE_MODELS.includes(id)) throw new Error(`Invalid --model. Choices: ${IMAGE_MODELS.join(", ")}`);
   return id;
@@ -101,9 +103,11 @@ export function buildImageRequest({
       throw new Error(`--background transparent needs --output-format ${ALPHA_FORMATS.join(" or ")} (${outputFormat} has no alpha channel)`);
     }
   }
-  if (maskUrl) throw new Error("GPT Image 2.5 on OpenRouter does not expose mask edits. Use --image-urls with edit instructions, or --annotation for a visual guide.");
+  if (maskUrl) throw new Error("GPT Image 2.5 on OpenRouter does not expose mask edits. Use --model sunburst --image-urls with edit instructions, or --annotation for a visual guide.");
   if (imageUrls.length > 16) throw new Error("At most 16 reference images are supported");
-  const body = { model: resolveImageModel(model ?? (imageUrls.length ? DEFAULT_EDIT_IMAGE_MODEL : DEFAULT_IMAGE_MODEL)), prompt, n: numImages, quality, output_format: outputFormat };
+  // References can guide a new image, so their presence does not imply an edit.
+  // Edit entry points choose DEFAULT_EDIT_IMAGE_MODEL explicitly.
+  const body = { model: resolveImageModel(model), prompt, n: numImages, quality, output_format: outputFormat };
   // Omitted unless asked for: every caller that predates the flag keeps
   // sending byte-identical requests.
   if (background != null) body.background = background;
@@ -205,7 +209,7 @@ export async function generateImage(options, { fetchImpl = fetch } = {}) {
     console.error(`[openrouter] Saved: ${filepath}`);
     return filepath;
   });
-  const output = { backend: "openrouter", model: body.model, endpoint: IMAGE_ENDPOINT, files, urls: [], description: "", usage: result.usage };
+  const output = { backend: "openrouter", model: body.model, endpoint: IMAGE_ENDPOINT, generatedAt: new Date().toISOString(), files, urls: [], description: "", usage: result.usage };
   if (body.background === "transparent") {
     // The provider may ignore the request and hand back a flat background.
     // Whoever cuts these frames up needs to know which one they got.
@@ -237,9 +241,11 @@ export async function main(args = process.argv.slice(2)) {
     console.error(`Usage: generate_image.mjs <prompt> [options]
 
   --model <name>             ${IMAGE_MODELS.join(", ")}
-                             Default: Sunburst for generation, Flare with references; openai/ prefix optional
+                             Default: Flare, including reference-guided generation
+                             Aliases: flare, sunburst; openai/ prefix optional
+                             Use --model sunburst to upgrade generation or edit references
   --num-images <1-10>        Number of images (default: 1)
-  --aspect-ratio <ratio>     ${IMAGE_ASPECTS.join(", ")} (default: 1:1; auto for edits)
+  --aspect-ratio <ratio>     ${IMAGE_ASPECTS.join(", ")} (default: 1:1; auto with references)
   --image-size <preset|WxH>  Explicit size; overrides --aspect-ratio
   --quality <level>         ${IMAGE_QUALITIES.join(", ")} (default: high)
   --output-format <fmt>     png, jpeg, webp (default: png)
@@ -253,6 +259,7 @@ export async function main(args = process.argv.slice(2)) {
   --backend openrouter     Optional explicit backend (OpenRouter only)
 
 Requires OPENROUTER_API_KEY. Generate and edit both use /api/v1/images.
+For edits, prefer edit_image.mjs (Sunburst); for multiple references, pass --model sunburst here.
 Mask edits, Gemini resolution tiers, seed and safety-tolerance are not supported.
 JSON stdout reports the actual model and saved file paths; progress goes to stderr.`);
     return;

@@ -23,8 +23,9 @@ by every later prompt**. It has three components:
 3. **Setting Cards** — one per recurring location, key prop, or
    signature object; same shape, lighter
 
-You spend ~$0.50–$2 once on these, then every subsequent generation
-references them via `--image-urls` (cheap, deterministic continuity).
+Generate these references once, then attach them to subsequent generations
+via `--image-urls` to guide continuity. Record each call's `usage.cost`; inspect
+every result because reference images do not guarantee identity preservation.
 Skipping this step is the most common, most expensive mistake in
 multi-shot AIGC.
 
@@ -201,8 +202,8 @@ decks.
 Three things make this template work where shorter prompts fail:
 
 1. **Production triggers** — `CORE DIRECTIVE (NON-NEGOTIABLE)`,
-   `STRICT`, `MUST` — push gpt-image-2.5-sunburst onto its high-effort
-   "production board" track. See `references/direction-notation.md`
+   `STRICT`, `MUST` — state the constraints GPT Image 2.5 should preserve
+   in the production board. See `references/direction-notation.md`
    for the full vocabulary.
 2. **Performance over pose** — "real actor caught mid-moment, NOT
    posing" + micro-expressions specified. This is the difference
@@ -225,8 +226,8 @@ node "<SKILL_DIR>/scripts/generate_image.mjs" \
 ```
 
 Cost varies with quality and image dimensions; read `usage.cost` from the response. Inspect, regenerate
-once or twice if needed. The cost of the wrong character bible is N
-shots × $0.16-1.50 each, so pay for the high-quality bible.
+once or twice if needed. A wrong character bible can force multiple shots to be regenerated,
+so validate the references before using them across the production.
 
 ### Distinction from `character-consistency.md`
 

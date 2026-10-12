@@ -25,10 +25,10 @@ const manifest: ModeManifest = {
     mdScene: "...",                          // 1–3 sentence scene paragraph for the pneuma:start block (see below)
 
     envMapping: {                            // init params → .env entries
-      API_KEY: "apiKey",                     //   env var → init param name
+      OPENROUTER_API_KEY: "openrouterApiKey", //   env var → init param name
     },
 
-    sharedScripts: ["generate_image.mjs"],   // copies scripts from modes/_shared/scripts/
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs"], // copies from modes/_shared/scripts/
                                              // into this mode's skill/scripts/ at install time.
                                              // Use when multiple modes share the same tool
                                              // but want their own SKILL.md guidance around it.
@@ -149,7 +149,7 @@ const manifest: ModeManifest = {
     },
     params: [
       // three types: "string", "number", "select"
-      { name: "apiKey",     label: "API Key",           type: "string", defaultValue: "",     sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", type: "string", defaultValue: "", sensitive: true },
       { name: "slideWidth", label: "Slide Width (px)",  type: "number", defaultValue: 1280 },
       {
         name: "paperSize",
@@ -165,7 +165,7 @@ const manifest: ModeManifest = {
     // `{{#imageGenEnabled}}…{{/imageGenEnabled}}`.
     deriveParams: (params) => ({
       ...params,
-      imageGenEnabled: (params.falApiKey || params.openrouterApiKey) ? "true" : "",
+      imageGenEnabled: params.openrouterApiKey ? "true" : "",
     }),
   },
 
@@ -219,7 +219,13 @@ for sections that should appear only when a param is set:
 ```
 {{#imageGenEnabled}}
 ### Image Generation
-`scripts/generate_image.mjs` — generate images from text prompts.
+`scripts/generate_image.mjs` — generate images through OpenRouter with
+GPT Image 2.5 Flare by default, with or without reference images. Add
+`--model sunburst` for a generation upgrade or an edit through `--image-urls`.
+`scripts/edit_image.mjs` — edit an existing image with GPT Image 2.5 Sunburst.
+Opt in to each script through `skill.sharedScripts` and map
+`OPENROUTER_API_KEY` to the mode's OpenRouter init parameter. Prefer these
+OpenRouter paths when adding image generation or editing to a mode.
 {{/imageGenEnabled}}
 ```
 

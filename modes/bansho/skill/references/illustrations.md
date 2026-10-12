@@ -91,6 +91,11 @@ So labels go on the board, written by the board: place the picture with
 
 ## Ordering one
 
+Use the bundled generator through OpenRouter. New figures default to GPT Image
+2.5 Flare, including new figures guided by references. Add `--model sunburst`
+to upgrade a generation or to edit an existing figure with `--image-urls`.
+Attaching references alone keeps the generation default.
+
 ```bash
 node {SKILL_PATH}/scripts/generate_image.mjs \
   "A chalk drawing on a blackboard. Pure white chalk lines on a solid pure black background. Line art only: no fill, no shading, no gradients, no color. Loose confident hand-drawn strokes, the way a professor sketches while lecturing — slightly uneven, alive, not mechanical. Clear readable silhouette, generous spacing, no frame, no border, no background scenery, no text labels. Subject: a single neuron — dendrites branching in on the left, one long axon wrapped in myelin segments, ending at a synapse" \

@@ -3,11 +3,12 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const manifest: ModeManifest = {
   name: "brand",
-  version: "0.2.0",
+  version: "0.2.1",
   displayName: "Brand Studio",
   description: "Define a brand through visual rules, core assets and examples others can build on.",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="15" rx="2"/><path d="M9 18v3h12V7h-6M6 7h5M6 11h3"/></svg>`,
   changelog: {
+    "0.2.1": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.2.0": ["Export paginated brand books as PDF or PNG with the shared WebCraft export workbench"],
     "0.1.0": ["Living brand books with identity rules, core assets, application examples and reference comparison"],
   },
@@ -26,7 +27,7 @@ const manifest: ModeManifest = {
   init: {
     contentCheckPattern: "**/brand.json",
     seedFiles: { "modes/brand/seed/morrow/": "morrow/" },
-    params: [{ name: "openrouterApiKey", label: "OpenRouter API Key", description: "Optional image generation fallback. A native image tool can be used without it.", type: "string", defaultValue: "", sensitive: true }],
+    params: [{ name: "openrouterApiKey", label: "OpenRouter API Key", description: "Preferred image generation and editing through OpenRouter (Flare / Sunburst).", type: "string", defaultValue: "", sensitive: true }],
   },
   viewerApi: {
     workspace: { type: "manifest", multiFile: true, ordered: true, hasActiveFile: true, manifestFile: "brand.json", supportsContentSets: true },

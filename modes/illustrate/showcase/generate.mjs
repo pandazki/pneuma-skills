@@ -4,19 +4,32 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { generateImage, loadEnvKeys } from "../../_shared/scripts/generate_image.mjs";
+import { parseArgs } from "node:util";
+import { generateImage, loadEnvKeys, resolveImageModel, DEFAULT_IMAGE_MODEL, DEFAULT_EDIT_IMAGE_MODEL } from "../../_shared/scripts/generate_image.mjs";
 
+const { values, positionals } = parseArgs({
+  args: process.argv.slice(2),
+  options: { model: { type: "string" }, help: { type: "boolean", short: "h" } },
+  allowPositionals: true, strict: true,
+});
+if (values.help) {
+  console.log("Usage: bun modes/illustrate/showcase/generate.mjs [output-dir] [--model flare|sunburst]");
+  console.log("New images default to Flare through OpenRouter; --model sunburst upgrades them. The scarf edit always uses Sunburst.");
+  process.exit(0);
+}
+if (positionals.length > 1) throw new Error("Expected at most one output directory");
+const generationModel = resolveImageModel(values.model ?? DEFAULT_IMAGE_MODEL);
 const here = dirname(fileURLToPath(import.meta.url));
-const outputDir = resolve(process.argv[2] ?? ".tmp-illustrate-showcase");
+const outputDir = resolve(positionals[0] ?? ".tmp-illustrate-showcase");
 const prompts = JSON.parse(readFileSync(join(here, "prompts.json"), "utf8"));
 const apiKey = loadEnvKeys().OPENROUTER_API_KEY;
 if (!apiKey) throw new Error("Set OPENROUTER_API_KEY before generating showcase artwork");
 mkdirSync(outputDir, { recursive: true });
 const records = {};
 
-async function generate(name, imageUrls = []) {
+async function generate(name, imageUrls = [], model = generationModel) {
   const result = await generateImage({
-    apiKey, prompt: prompts[name], imageUrls, imageSize: "1024x1024",
+    apiKey, model, prompt: prompts[name], imageUrls, imageSize: "1024x1024",
     quality: "high", outputFormat: "png", outputDir, filenamePrefix: name,
   });
   records[name] = {
@@ -35,6 +48,6 @@ if (failures.length) {
   for (const failure of failures) console.error(failure.reason);
   process.exitCode = 1;
 } else {
-  await generate("scarf-edit", [settled[0].value]);
+  await generate("scarf-edit", [settled[0].value], DEFAULT_EDIT_IMAGE_MODEL);
   console.log(`Showcase artwork and generation.json saved in ${outputDir}`);
 }

@@ -8,6 +8,7 @@ export const IMAGE_BACKGROUNDS: string[];
 
 export interface ImageOptions {
   prompt: string;
+  /** Flare by default, even with references. Use sunburst for edits or generation upgrades. */
   model?: string;
   numImages?: number;
   aspectRatio?: string;
@@ -34,6 +35,8 @@ export interface ImageResult {
   backend: "openrouter";
   model: string;
   endpoint: string;
+  /** Local completion time for cost receipts; not the provider's billing timestamp. */
+  generatedAt: string;
   files: string[];
   urls: string[];
   description: string;

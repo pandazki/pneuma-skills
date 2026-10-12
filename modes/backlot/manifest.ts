@@ -21,8 +21,9 @@ import { loadFilm, saveFilm } from "./domain.js";
 
 const backlotManifest: ModeManifest = {
   name: "backlot",
-  version: "0.2.0",
+  version: "0.2.1",
   changelog: {
+    "0.2.1": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.2.0": [
       "A finished film has a supported way into the Cut stage. The cut itself makes straight cuts with voice-over and one music bed. When the last pass adds more (titles, captions, UI over the picture, a dissolve, a slowed shot, a re-timed mix), the agent now registers the result with cut --finish. The Cut stage then plays the film you are handed, says what the pass added and keeps the plain assembly it was made over. Before, a composited film was copied into the cut folder by hand and the stage read 'nothing yet'",
       "The status report lists any film in the cut folder that the Cut stage does not show, so an unregistered finish is caught before delivery",

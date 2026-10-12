@@ -42,7 +42,7 @@
  *                 reads the outfit from the source image.
  *   --traits      optional, comma-separated. If omitted, defaults to
  *                 the character appearance from the source image.
- *   --model       optional. gpt-image-2.5-flare (default) or gpt-image-2.5-sunburst.
+ *   --model       optional. sunburst (default) or a GPT Image 2.5 model ID; source edits preserve identity.
  *   --output      required. Workspace-relative path for the sheet.
  *
  * Environment:

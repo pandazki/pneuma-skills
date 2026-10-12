@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.8.0",
+  version: "1.8.1",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,7 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.8.1": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "1.8.0": [
       "Synced upstream tw93/kami V1.13.0 to V1.16.0 (Quieter Pages / Good Paper)",
       "Subtractive pages: no eyebrow ticks, cover rules or brand side bars on headings, callouts and quotes; the three seeds and their gallery cards follow",

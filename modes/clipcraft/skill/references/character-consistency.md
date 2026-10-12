@@ -45,7 +45,7 @@ non-photographically**. That is the workflow below.
 
 **Two paths**, both valid:
 
-1. **`generate_image.mjs --image-urls <photo>`** (preferred when you
+1. **`generate_image.mjs --image-urls <photo> --model sunburst`** (preferred when you
    want creative control). Write the prompt yourself, pass the source
    photo as a reference, and let GPT Image 2.5 compose the 4-panel
    layout including the typewriter `OUTFIT` / `CHARACTER` text block.
@@ -118,7 +118,7 @@ Professional game / animation character design reference document
 aesthetic.
 ```
 
-Call (from-scratch sheet, no source photo — gpt-image-2.5-sunburst t2i):
+Call (from-scratch sheet, no source photo — gpt-image-2.5-flare t2i):
 
 ```bash
 node "<SKILL_DIR>/scripts/generate_image.mjs" \
@@ -134,7 +134,7 @@ it.
 ### Converting an existing photo reference
 
 If the user already has a photo of the character, produce the sheet
-by passing the photo to `generate_image.mjs --image-urls <photo-url>`
+by passing the photo to `generate_image.mjs --image-urls <photo-url> --model sunburst`
 with the same layout instruction, adding: `"Replace the head
 (shoulders up) in each
 photographic panel with a clean white-line pencil sketch on the black

@@ -13,18 +13,29 @@ For a brand handbook, a coherent sequence often demonstrates the mark, type/colo
 graphic language, character (if used), and selected applications. Do not blindly
 copy a fixed checklist; choose the examples that answer this brand's actual needs.
 
-Use the host's native image tool when present. Optional portable fallback:
+Prefer the bundled scripts through OpenRouter, even when the host also provides
+a native image tool. New images default to GPT Image 2.5 Flare, with or without
+references; `edit_image.mjs` defaults to GPT Image 2.5 Sunburst. Add
+`--model sunburst` to upgrade a new generation or to edit through
+`generate_image.mjs --image-urls`. Reference attachment alone does not select
+the editing model. Read the current help before calling either script:
 
 ```sh
 bun "<SKILL_DIR>/scripts/generate_image.mjs" --help
 bun "<SKILL_DIR>/scripts/edit_image.mjs" --help
 ```
 
-Read those tools' current help before invoking them. `OPENROUTER_API_KEY` comes
-from the session's configured environment. Never include keys in artifacts or
-prompts. If no generation capability is available, keep planned work visibly
-planned and explain what is missing; do not replace requested imagery with fake
-finished work. Use reference-based edits for identity continuity.
+`OPENROUTER_API_KEY` comes from the session's configured environment. Never
+include keys in artifacts or prompts. If it is missing, keep planned work
+visibly planned and explain that the image scripts need an OpenRouter key;
+do not replace requested imagery with fake finished work. Use Sunburst edits
+with reference images for identity continuity. For example:
+
+```sh
+bun "<SKILL_DIR>/scripts/generate_image.mjs" "<new image brief>" --output-dir "<workspace>/assets"
+bun "<SKILL_DIR>/scripts/generate_image.mjs" "<generation upgrade brief>" --model sunburst --output-dir "<workspace>/assets"
+bun "<SKILL_DIR>/scripts/edit_image.mjs" "<edit brief>" --input "<workspace>/assets/source.png" --output-dir "<workspace>/assets"
+```
 
 Inspect every result for recognizable identity, readable intentional copy,
 cropping, background alpha, image dimensions and context fit. For a claimed

@@ -190,7 +190,7 @@ describe("the manifest carries no React", () => {
 
 describe("identity", () => {
   test("the version and its changelog land together", () => {
-    expect(backlotManifest.version).toBe("0.2.0");
+    expect(backlotManifest.version).toBe("0.2.1");
     const entry = backlotManifest.changelog?.["0.2.0"];
     expect(entry?.length ?? 0).toBeGreaterThan(0);
     // Changelog bullets are user-facing one-liners, not markdown.

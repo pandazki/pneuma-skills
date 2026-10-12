@@ -17,7 +17,7 @@ import { load, save } from "./domain.js";
 
 const plotwiseManifest: ModeManifest = {
   name: "plotwise",
-  version: "0.7.1",
+  version: "0.7.2",
   displayName: {
     en: "Plotwise",
     "zh-CN": "Plotwise",
@@ -237,6 +237,7 @@ scene length toward these preferences, while always respecting explicit instruct
   },
 
   changelog: {
+    "0.7.2": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.7.1": ["Skill states the montage rule directly, replaces one-line clamps with a stated chat-reply intent, and drops trial narratives and 0.5/0.6 version references"],
     "0.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.6.0": [

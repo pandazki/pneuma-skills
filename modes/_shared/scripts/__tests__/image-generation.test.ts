@@ -41,7 +41,7 @@ function runCli(script: string, args: string[], withKey = true) {
 }
 
 describe("GPT Image 2.5 Images API", () => {
-  test("text generation sends Sunburst and decodes separate base64 outputs", async () => {
+  test("text generation sends Flare and decodes separate base64 outputs", async () => {
     let captured: { url: string; options: RequestInit } | undefined;
     const result = await generateImage({ apiKey: "fixture-key", prompt: "Two distinct pictures", numImages: 2, outputDir: workspace, filenamePrefix: "variants" }, {
       fetchImpl: async (url: string, options: RequestInit) => {
@@ -51,21 +51,29 @@ describe("GPT Image 2.5 Images API", () => {
     });
     expect(captured!.url).toBe("https://openrouter.ai/api/v1/images");
     expect(captured!.options.headers).toMatchObject({ Authorization: "Bearer fixture-key" });
-    expect(JSON.parse(captured!.options.body as string)).toEqual({ model: SUNBURST, prompt: "Two distinct pictures", n: 2, quality: "high", output_format: "png", aspect_ratio: "1:1" });
-    expect(result.model).toBe(SUNBURST);
+    expect(JSON.parse(captured!.options.body as string)).toEqual({ model: FLARE, prompt: "Two distinct pictures", n: 2, quality: "high", output_format: "png", aspect_ratio: "1:1" });
+    expect(result.model).toBe(FLARE);
     expect(result.usage?.cost).toBe(0.02);
     expect(result.files).toEqual([join(workspace, "variants_1.png"), join(workspace, "variants_2.png")]);
     for (const path of result.files) expect(readFileSync(path)).toEqual(PNG);
   });
 
-  test("reference edits select Flare, preserve image order and default to auto aspect", () => {
-    const body = buildImageRequest({ prompt: "Change the sign", imageUrls: [reference, "https://example.com/style.png"] });
+  test("reference-guided generation keeps Flare, image order and auto aspect", () => {
+    const body = buildImageRequest({ prompt: "A new scene using these style references", imageUrls: [reference, "https://example.com/style.png"] });
     expect(body.model).toBe(FLARE);
     expect(body.aspect_ratio).toBe("auto");
     expect(body.input_references).toEqual([
       { type: "image_url", image_url: { url: `data:image/png;base64,${PNG.toString("base64")}` } },
       { type: "image_url", image_url: { url: "https://example.com/style.png" } },
     ]);
+  });
+
+  test.each(["sunburst", "gpt-image-2.5-sunburst", SUNBURST])("generation can upgrade to %s, with or without references", (model) => {
+    for (const imageUrls of [[], [reference]]) {
+      const body = buildImageRequest({ prompt: "A detailed illustration", model, imageUrls, quality: "max" });
+      expect(body.model).toBe(SUNBURST);
+      expect(body.quality).toBe("max");
+    }
   });
 
   test("model overrides accept a short slug and explicit size excludes competing aspect", () => {
@@ -123,34 +131,54 @@ describe("GPT Image 2.5 Images API", () => {
 });
 
 describe("installed image CLIs", () => {
-  test("sketch generation defaults to Sunburst/low and respects explicit quality", () => {
+  test("sketch generation defaults to Flare/low and respects explicit quality", () => {
     const args = ["A pencil tree", "--style", "sketch", "--output-dir", workspace];
     const low = runCli("generate_image.mjs", args);
     expect(low.code).toBe(0);
-    expect(low.request.model).toBe(SUNBURST);
+    expect(low.request.model).toBe(FLARE);
     expect(low.request.quality).toBe("low");
     expect(low.request.prompt).toContain("no shading, white background");
     expect(runCli("generate_image.mjs", [...args, "--quality", "max"]).request.quality).toBe("max");
   });
 
-  test("annotation editing uses Flare and sends original then location guide", () => {
+  test("annotation editing uses Sunburst and sends original then location guide", () => {
     const result = runCli("edit_image.mjs", ["Make the hat blue", "--input", reference, "--annotation", reference, "--output-dir", workspace]);
     expect(result.code).toBe(0);
-    expect(result.request.model).toBe(FLARE);
+    expect(result.request.model).toBe(SUNBURST);
     expect(result.request.aspect_ratio).toBe("auto");
     expect(result.request.input_references).toHaveLength(2);
     expect(result.request.prompt).toContain("Image 1 is the original");
     expect(result.request.prompt).toContain("Make the hat blue");
-    expect(JSON.parse(result.out).model).toBe(FLARE);
+    expect(JSON.parse(result.out).model).toBe(SUNBURST);
   });
 
-  test("character sheets use the installed Flare adapter and return the real output path", () => {
+  test("character sheet transformations use Sunburst and return the real output path", () => {
     const result = runCli("make-character-sheet.mjs", ["--source-url", reference, "--output", join(workspace, "character.jpg")]);
     expect(result.code).toBe(0);
-    expect(result.request.model).toBe(FLARE);
+    expect(result.request.model).toBe(SUNBURST);
     expect(result.request.input_references).toHaveLength(1);
     expect(result.out.trim()).toBe(join(workspace, "character.png"));
     expect(readFileSync(result.out.trim())).toEqual(PNG);
+  });
+
+  test("generation CLI supports Sunburst upgrades and explicit multi-reference edits", () => {
+    const generated = runCli("generate_image.mjs", ["A detailed tree", "--model", "sunburst", "--quality", "max", "--output-dir", workspace]);
+    expect(generated.code).toBe(0);
+    expect(generated.request.model).toBe(SUNBURST);
+    expect(generated.request.quality).toBe("max");
+    expect(JSON.parse(generated.out).model).toBe(SUNBURST);
+
+    const references = ["--image-urls", reference, "--image-urls", reference, "--output-dir", workspace];
+    const guided = runCli("generate_image.mjs", ["A new scene", ...references]);
+    expect(guided.code).toBe(0);
+    expect(guided.request.model).toBe(FLARE);
+    const edited = runCli("generate_image.mjs", ["Change the hat", "--model", "sunburst", ...references]);
+    expect(edited.code).toBe(0);
+    expect(edited.request.model).toBe(SUNBURST);
+    expect(edited.request.input_references).toHaveLength(2);
+    const flare = runCli("edit_image.mjs", ["A quick variant", "--input", reference, "--model", "flare", "--output-dir", workspace]);
+    expect(flare.code).toBe(0);
+    expect(flare.request.model).toBe(FLARE);
   });
 
   test("a fal-only configuration fails without issuing an image request", () => {
@@ -207,9 +235,9 @@ function webpVp8x(alpha: boolean): Buffer {
 }
 
 describe("transparent backgrounds", () => {
-  test("a caller that never asks for a background sends today's bytes, unchanged", () => {
+  test("a caller that never asks for a background omits it from the generation request", () => {
     expect(JSON.stringify(buildImageRequest({ prompt: "A tree" }))).toBe(
-      '{"model":"openai/gpt-image-2.5-sunburst","prompt":"A tree","n":1,"quality":"high","output_format":"png","aspect_ratio":"1:1"}',
+      '{"model":"openai/gpt-image-2.5-flare","prompt":"A tree","n":1,"quality":"high","output_format":"png","aspect_ratio":"1:1"}',
     );
     expect(buildImageRequest({ prompt: "A tree" })).not.toHaveProperty("background");
   });

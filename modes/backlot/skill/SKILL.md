@@ -402,7 +402,12 @@ Every subcommand takes the project directory as its first argument.
 
 `generate_image.mjs "<prompt>" --output-dir … [--image-urls <ref>]…` makes
 character sheets, the style key frame and any set concept; `--image-urls`
-takes local paths and is the continuity mechanism. The other four are invoked
+takes local paths and is the continuity mechanism. Use OpenRouter with GPT Image
+2.5 Flare for new sheets, style frames and concepts, even with references;
+`--model sunburst` upgrades a generation. For changes to an existing picture,
+use `edit_image.mjs` (Sunburst by default) or explicitly add `--model sunburst`
+to `generate_image.mjs --image-urls`. `previz.mjs anchor` selects Sunburst because
+it edits the greybox frame while preserving its camera and positions. The other four are invoked
 *for* you: `generate-tts.mjs` (read its header before `--voice`),
 `generate-bgm.mjs`, `transcribe.mjs`, `seedance-video.mjs` (only via `generate`).
 

@@ -8,8 +8,9 @@ import { loadDeck, saveDeck } from "./domain.js";
 
 const slideManifest: ModeManifest = {
   name: "slide",
-  version: "1.3.1",
+  version: "1.3.2",
   changelog: {
+    "1.3.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "1.3.1": ["Canvas dimensions come from contentWidth and contentHeight template params instead of hard-coded 592px figures; duplicate overflow self-check removed"],
     "1.3.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
   },

@@ -24,12 +24,11 @@ and need it to land first try, the notation pays back its tax.
 
 ## 1. Production-grade triggers — pushing the model onto the high-effort track
 
-Frontier image models (gpt-image-2.5-sunburst in particular) have multiple
-internal "tracks" they can render on. The default track produces
-serviceable casual output. The **production track** — the one that
-returns "looks like a Pixar pitch board" or "looks like an actual
-storyboard page" rather than "AI image" — is reliably activated by a
-specific vocabulary in the prompt.
+Explicit production constraints make the intended result easier to describe
+and review. Use the vocabulary below to state requirements for layout,
+identity and materials; it does not select a model or guarantee an internal
+reasoning mode. Start generation with Flare, upgrade with `--model sunburst`
+when needed, and use Sunburst for edits of an existing image.
 
 ### The trigger vocabulary
 
@@ -83,9 +82,9 @@ OUTPUT: Production-ready fidelity. Suitable for film development.
 Sharp focus, extremely high detail."
 ```
 
-The casual track returns a generic stock photo. The production track
-returns something with weight and intention. Same model, same cost
-(~$0.16), dramatically different signal-to-noise.
+The production track gives the model concrete staging and visual direction.
+Compare the resulting composition against the brief. Even with the same model,
+quality and dimensions, token usage and per-image cost can differ; read `usage.cost`.
 
 ## 2. Annotation Color System — encoding multiple intents in one reference image
 
@@ -98,7 +97,7 @@ brings that capacity to AIGC.
 
 The technique: **bake colored annotation overlays into the reference
 image itself**, using a fixed color vocabulary the model recognizes.
-gpt-image-2.5-sunburst will respect explicit "annotation" instructions in its
+GPT Image 2.5 will respect explicit "annotation" instructions in its
 prompt — colored arrows, dashes, dotted lines, callouts — and
 seedance's `reference` mode will read those annotations as
 directorial intent on top of the photographic content.
@@ -116,7 +115,7 @@ directorial intent on top of the photographic content.
 
 This isn't a universal AI standard — the model wasn't pre-trained on
 "red = body". The vocabulary works because **you state it explicitly
-in the generation prompt**, and gpt-image-2.5-sunburst carries that vocabulary
+in the generation prompt**, and GPT Image 2.5 carries that vocabulary
 into the rendered annotations. Then when the annotated image is
 passed to seedance, you reinforce the vocabulary in the seedance
 prompt: "the red arrows in the reference indicate body motion to
@@ -283,7 +282,7 @@ dilutes the active directives.
 
 FACS (Facial Action Coding System) is the academic vocabulary for
 naming individual facial muscle movements. AU1 = inner brow raise.
-AU4 = brow lowerer. AU12 = lip corner puller (smile). gpt-image-2.5-sunburst
+AU4 = brow lowerer. AU12 = lip corner puller (smile). GPT Image 2.5
 and seedance both have enough exposure to FACS in their training to
 respect explicit AU specifications.
 

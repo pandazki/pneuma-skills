@@ -30,6 +30,7 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  readdirSync,
   readSync,
   renameSync,
   rmSync,
@@ -446,23 +447,40 @@ function evaluate(loop, now, { withClock = false } = {}) {
   return { exit: "continue", ...base };
 }
 
-/** The fal jobs of this project priced at list price, or null without a job file. */
-function falCosts(dir, loop) {
+/** Saved image receipts and fal jobs, or null when neither exists. */
+function recordedCosts(dir, loop) {
   const path = join(resolve(dir), "assets", "fal-jobs.json");
-  if (!existsSync(path)) return null;
+  const receiptDir = join(resolve(dir), "assets", "image-receipts");
+  if (!existsSync(path) && !existsSync(receiptDir)) return null;
   let jobs = [];
+  const imageReceipts = [];
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8"));
-    jobs = Array.isArray(parsed) ? parsed : Array.isArray(parsed.jobs) ? parsed.jobs : [];
+    if (existsSync(path)) {
+      const parsed = JSON.parse(readFileSync(path, "utf-8"));
+      jobs = Array.isArray(parsed) ? parsed : Array.isArray(parsed.jobs) ? parsed.jobs : [];
+    }
   } catch {
     return { error: `${path} is not valid JSON` };
   }
-  const summary = summarizeCosts({ jobs, rounds: loop.rounds });
+  if (existsSync(receiptDir)) {
+    for (const name of readdirSync(receiptDir).filter((name) => name.endsWith(".json"))) {
+      const receiptPath = join(receiptDir, name);
+      try {
+        const receipt = JSON.parse(readFileSync(receiptPath, "utf-8"));
+        if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) throw new Error("not an object");
+        imageReceipts.push(receipt);
+      } catch {
+        return { error: `${receiptPath} is not a valid image receipt` };
+      }
+    }
+  }
+  const summary = summarizeCosts({ jobs, imageReceipts, rounds: loop.rounds });
   return {
     basis: summary.basis,
     asOf: summary.asOf,
-    fal: { count: summary.fal.count, usd: summary.fal.usd, unpriced: summary.fal.unpriced, jobs: summary.fal.jobs },
-    byRound: summary.byRound.map((w) => ({ round: w.index, falUsd: w.fal.usd, falJobs: w.fal.count })),
+    fal: summary.fal,
+    images: summary.images,
+    byRound: summary.byRound.map((w) => ({ round: w.index, falUsd: w.fal.usd, falJobs: w.fal.count, imageUsd: w.images.usd, images: w.images.count })),
   };
 }
 
@@ -1112,9 +1130,9 @@ function cmdStatus(dir, now) {
     ).length,
     assets: loop.assets.length,
     // What the outside services have been asked for so far, at list price.
-    // Only the fal jobs are visible from here; the viewer's cost panel adds
-    // image generations and tokens from the session.
-    costs: falCosts(dir, loop),
+    // Saved OpenRouter receipts and fal jobs are visible here; the viewer's
+    // cost panel adds legacy native image generations and session tokens.
+    costs: recordedCosts(dir, loop),
     // The ledger entries not yet on stage, so the thing blocking the next
     // ready frame is read here rather than inferred from loader logs.
     assetsPending: loop.assets

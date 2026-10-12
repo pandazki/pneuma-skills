@@ -22,8 +22,9 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.5.1",
+  version: "0.5.2",
   changelog: {
+    "0.5.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.5.1": [
       "Before handing a character over, the agent opens the Export tab and looks at it the way you will, instead of reading a file list",
       "The green rim a key can leave on an edge is now kept with each motion and shown beside the leftover plate colour, each against the limit the checks warn at",

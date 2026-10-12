@@ -47,8 +47,9 @@ brand decisions itself. Read-only sharing hides agent controls.
   Do not default to building an App, business website, complete campaign or print run.
 - Read actual reference images. Record the role of each reference; a layout example
   is not permission to replace the brand's identity with that reference's identity.
-- Use existing image generation/editing tools for raster art. Prefer a native image
-  tool when available; otherwise use the installed shared scripts when configured.
+- Prefer the installed shared scripts through OpenRouter for raster art. New
+  images use GPT Image 2.5 Flare; edits use Sunburst. Add `--model sunburst`
+  to upgrade a generation. See the image workflow for the commands and key setup.
   Keep consistent anchors for character identity. Do not redraw a detailed mascot
   with approximate CSS geometry in downstream examples.
 - Keep core source assets separate from their application mockups. A character on

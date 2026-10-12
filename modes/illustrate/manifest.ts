@@ -8,8 +8,9 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
-  version: "0.6.1",
+  version: "0.6.2",
   changelog: {
+    "0.6.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.6.1": ["Prompt guide drops quality-modifier padding, the icon example follows the identity playbook, manifest row rule matches the row lifecycle"],
     "0.6.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
     "0.5.0": [

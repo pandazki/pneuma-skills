@@ -14,7 +14,7 @@
 export const PRICES = {
   asOf: "2026-09-17",
   currency: "USD",
-  basis: "public list prices; a subscription pays for the model in quota instead",
+  basis: "OpenRouter image receipts use reported costs; other services use public list prices, and native model subscriptions consume quota",
   fal: {
     // "$0.20 (without textures), $0.30 (with standard textures), or $0.40
     // (with HD textures), plus an additional $0.20 for detailed geometry and
@@ -25,10 +25,9 @@ export const PRICES = {
     "fal-ai/trellis": { flat: 0.02 },
   },
   imageGeneration: {
-    // gpt-image is billed per output image token at $30 per 1M; a high-quality
-    // 1024² image is roughly 4k tokens, a 1536×1024 one roughly 6k. One flat
-    // estimate per image is what the panel can honestly show without the
-    // token counts, which the tool does not report.
+    // Legacy native image-tool calls do not report usage. Preserve their
+    // historical estimate; OpenRouter GPT Image 2.5 receipts always use
+    // usage.cost instead, and missing reported costs remain unpriced.
     perImage: 0.15,
   },
   tokensPer1M: {

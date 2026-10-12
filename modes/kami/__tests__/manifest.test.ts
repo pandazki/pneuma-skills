@@ -30,8 +30,8 @@ const DIAGRAM_FILES = [
 ];
 
 describe("kami version + changelog contract", () => {
-  it("is at the V1.16.0 sync version", () => {
-    expect(kamiManifest.version).toBe("1.8.0");
+  it("includes the image policy update after the V1.16.0 sync", () => {
+    expect(kamiManifest.version).toBe("1.8.1");
   });
 
   it("carries a changelog entry for the current version", () => {

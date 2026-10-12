@@ -55,7 +55,7 @@ describe("summarizeCosts", () => {
       rounds,
     });
     expect(s.fal).toMatchObject({ count: 4, usd: 0.92, unpriced: ["mystery"] });
-    expect(s.images).toEqual({ count: 4, usd: 0.6 });
+    expect(s.images).toEqual({ count: 4, usd: 0.6, reported: 0, estimated: 4, unpriced: [], unattributed: 0 });
     // 0.5M × $10 + 0.5M × $1 + 10k × $50 = $5.5 + $0.5
     expect(s.tokens).toMatchObject({ usd: 6, priced: true, model: "gpt-6-astra" });
     expect(s.total).toBe(Math.round((0.92 + 0.6 + 6) * 100) / 100);
@@ -65,6 +65,33 @@ describe("summarizeCosts", () => {
       { index: null, score: null, fal: { count: 1, usd: 0.3 }, images: { count: 1, usd: 0.15 } },
     ]);
     expect(s.basis).toBe(PRICES.basis);
+  });
+
+  test("OpenRouter receipts use actual costs, keep missing prices visible and retain legacy estimates", () => {
+    const s = summarizeCosts({
+      imageReceipts: [
+        { generatedAt: T(1), model: "openai/gpt-image-2.5-flare", files: ["a.png", "b.png"], usage: { cost: 0.07 } },
+        { generatedAt: T(15), model: "openai/gpt-image-2.5-sunburst", files: ["edit.png"], usage: { cost: 0.21 } },
+        { generatedAt: T(45), files: ["unpriced.png"], usage: {} },
+        { files: ["old-receipt.png"], usage: { cost: 0.03 } },
+      ],
+      imageTimestamps: [ms(2)],
+      rounds,
+    });
+    expect(s.images).toEqual({ count: 6, usd: 0.46, reported: 4, estimated: 1, unpriced: ["unpriced.png"], unattributed: 1 });
+    expect(s.byRound.map((row) => row.images)).toEqual([{ count: 3, usd: 0.22 }, { count: 1, usd: 0.21 }, { count: 1, usd: 0 }]);
+    expect(s.total).toBe(0.46);
+  });
+
+  test("invalid or negative receipt costs are unpriced, while a reported zero is retained", () => {
+    const s = summarizeCosts({ imageReceipts: [
+      { files: ["negative.png"], usage: { cost: -1 } },
+      { files: ["invalid.png"], usage: { cost: Number.NaN } },
+      { files: ["zero.png"], usage: { cost: 0 } },
+    ] });
+    expect(s.images.unpriced).toEqual(["negative.png", "invalid.png"]);
+    expect(s.images.reported).toBe(1);
+    expect(s.images.usd).toBe(0);
   });
 
   test("an empty loop costs nothing and says so without inventing a token price", () => {

@@ -522,7 +522,7 @@ describe("the definition and the manifest agree", () => {
   });
 
   test("0.5.1 fixes three leftovers, in the user's words", () => {
-    expect(spriteManifest.version).toBe("0.5.1");
+    expect(spriteManifest.version).toBe("0.5.2");
     const notes = spriteManifest.changelog!["0.5.1"];
     expect(notes.length).toBeGreaterThanOrEqual(1);
     expect(notes.length).toBeLessThanOrEqual(3);

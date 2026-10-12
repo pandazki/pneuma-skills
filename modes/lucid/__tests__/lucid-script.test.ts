@@ -24,7 +24,7 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -771,6 +771,20 @@ describe("lucid.mjs asset", () => {
     expect(costs.basis).toContain("list prices");
     writeFileSync(join(cwd, "shrine", "assets", "fal-jobs.json"), "{not json");
     expect(json(cwd, ["status", "shrine"]).costs.error).toContain("not valid JSON");
+  });
+
+  test("status includes saved OpenRouter image receipts without requiring a fal job file", () => {
+    const cwd = looping();
+    const receipts = join(cwd, "shrine", "assets", "image-receipts");
+    mkdirSync(receipts, { recursive: true });
+    writeFileSync(join(receipts, "target.json"), JSON.stringify({ generatedAt: T(2), model: "openai/gpt-image-2.5-flare", files: ["target-001.png"], usage: { cost: 0.08 } }));
+    writeFileSync(join(receipts, "edit.json"), JSON.stringify({ generatedAt: T(3), model: "openai/gpt-image-2.5-sunburst", files: ["edit-001.png"] }));
+    const costs = json(cwd, ["status", "shrine"]).costs;
+    expect(costs.fal.count).toBe(0);
+    expect(costs.images).toEqual({ count: 2, usd: 0.08, reported: 1, estimated: 0, unpriced: ["edit-001.png"], unattributed: 0 });
+    expect(costs.byRound.at(-1)).toMatchObject({ images: 2, imageUsd: 0.08 });
+    writeFileSync(join(receipts, "bad.json"), "{not json");
+    expect(json(cwd, ["status", "shrine"]).costs.error).toContain("not a valid image receipt");
   });
 
   test("status lists the entries not yet on stage", () => {

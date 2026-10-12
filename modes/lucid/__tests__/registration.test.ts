@@ -201,23 +201,25 @@ describe("the skill install surface", () => {
     // runtime, in the user's session, with ERR_MODULE_NOT_FOUND. image-to-3d
     // drives fal through fal-queue.mjs, so the transport has to be listed.
     const declared = lucidManifest.skill.sharedScripts ?? [];
-    expect(declared).toEqual(["fal-queue.mjs"]);
+    expect(declared).toEqual(["fal-queue.mjs", "generate_image.mjs", "edit_image.mjs"]);
   });
 
-  test("both external tools are mapped to the env vars the scripts read", () => {
+  test("external tools are mapped to the env vars the scripts read", () => {
     expect(lucidManifest.skill.envMapping).toEqual({
       BLENDER_PATH: "blenderPath",
       FAL_KEY: "falApiKey",
+      OPENROUTER_API_KEY: "openrouterApiKey",
     });
     const params = lucidManifest.init!.params!;
     // The fal key buys inference and is cleared from snapshots; a Blender
     // path is a local filename and marking it sensitive would hide the one
     // value a user most often needs to check.
     expect(params.find((p) => p.name === "falApiKey")?.sensitive).toBe(true);
+    expect(params.find((p) => p.name === "openrouterApiKey")?.sensitive).toBe(true);
     expect(params.find((p) => p.name === "blenderPath")?.sensitive).toBeUndefined();
   });
 
-  test("the backend lock is declared — the loop needs image generation", () => {
+  test("the backend lock is retained for the fresh-context judge", () => {
     expect(lucidManifest.supportedBackends).toEqual(["codex"]);
   });
 

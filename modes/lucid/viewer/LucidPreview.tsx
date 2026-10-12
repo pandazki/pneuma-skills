@@ -49,7 +49,7 @@ import type { Loop, Loops, RoundRecord } from "../domain.js";
 import { setLucidStageCapture } from "../pneuma-mode.js";
 import { AssetLedger } from "./AssetLedger.js";
 import { CostPanel } from "./CostPanel.js";
-import { summarizeCosts } from "../skill/scripts/costs.mjs";
+import { summarizeCosts, type ImageReceipt } from "../skill/scripts/costs.mjs";
 import {
   BRIDGE_TIMEOUT_MS,
   SceneBridgeChannel,
@@ -125,9 +125,11 @@ export default function LucidPreview(props: ViewerPreviewProps) {
   const { value: falJobFiles } = useSource(
     props.sources.falJobs as Source<ViewerFileContent[]> | undefined,
   );
-  // The cost panel's other two inputs live on the session, not in files:
-  // image generations are tool calls in the transcript, tokens are what the
-  // backend reported for the whole session.
+  const { value: imageReceiptFiles } = useSource(
+    props.sources.imageReceipts as Source<ViewerFileContent[]> | undefined,
+  );
+  // OpenRouter image costs come from saved receipts. Legacy native image
+  // calls and the backend's cumulative token usage remain session inputs.
   const messages = useStore((s) => s.messages);
   const session = useStore((s) => s.session);
   const activeContentSet = useStore((s) => s.activeContentSet);
@@ -149,6 +151,18 @@ export default function LucidPreview(props: ViewerPreviewProps) {
         jobs = [];
       }
     }
+    const receiptPrefix = dir ? `${dir}/assets/image-receipts/` : "assets/image-receipts/";
+    const imageReceipts: ImageReceipt[] = (imageReceiptFiles ?? [])
+      .filter((file) => file.path.startsWith(receiptPrefix))
+      .map((file) => {
+        try {
+          const receipt: unknown = JSON.parse(file.content);
+          if (receipt && typeof receipt === "object" && !Array.isArray(receipt)) return receipt as ImageReceipt;
+        } catch {
+          // Keep an unreadable receipt visible as unpriced, never as free.
+        }
+        return { model: `Unreadable receipt: ${file.path}` };
+      });
     // Image generations are session-wide, not per file: a project owns the
     // ones made while it was the newest project in the workspace — from its
     // creation until the next project's. One session, two stages: the
@@ -169,12 +183,13 @@ export default function LucidPreview(props: ViewerPreviewProps) {
     }
     return summarizeCosts({
       jobs,
+      imageReceipts,
       imageTimestamps,
       tokenUsage: session?.token_usage ?? null,
       model: session?.model ?? "",
       rounds: loop?.rounds ?? [],
     });
-  }, [falJobFiles, dir, messages, session?.token_usage, session?.model, loop?.rounds, loop?.createdAt, loops]);
+  }, [falJobFiles, imageReceiptFiles, dir, messages, session?.token_usage, session?.model, loop?.rounds, loop?.createdAt, loops]);
 
   // ── Stage state ──────────────────────────────────────────────────────────
   const [view, setView] = useState<ViewMode>("live");
@@ -880,7 +895,7 @@ export default function LucidPreview(props: ViewerPreviewProps) {
           type="button"
           onClick={() => setCostOpen((open) => !open)}
           aria-pressed={costOpen}
-          title={`Cost so far: $${costSummary.total.toFixed(2)} (list-price estimate)`}
+          title={`Cost so far: $${costSummary.total.toFixed(2)} (reported + estimated)`}
           className={`rounded p-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
             costOpen
               ? "bg-cc-primary/15 text-cc-primary"

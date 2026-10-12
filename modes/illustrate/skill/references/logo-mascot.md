@@ -54,7 +54,7 @@ expensive to compare in wasted generations — so propose before you generate.
    SKILL.md), but manifest updates stay yours alone, serialized.
 6. **Evaluate every output, then report honestly** — see the rubric at the end.
 7. **Refinement** of a picked candidate is the normal edit workflow (`edit_image.mjs`, or the
-   GPT Image 2.5 URL + mask path): new row labeled after the change, original preserved.
+   GPT Image 2.5 reference-image path with `--model sunburst`): new row labeled after the change, original preserved.
 
 ## Complexity budget
 
@@ -133,10 +133,12 @@ expensive to compare in wasted generations — so propose before you generate.
 
 ## Script settings (built-in models only)
 
-- **Model: `gpt-image-2.5-sunburst` — the default, and the right one here.** Use it for crisp geometry,
-  flat masses, and clean marks. `gpt-image-2.5-flare` is the other supported model,
-  selected automatically when reference images are provided for edits. Both use OpenRouter. Identity work is the
-  last place to economize — never drop to a cheaper path than these two.
+- **Start new candidates with `gpt-image-2.5-flare` through OpenRouter.** Add
+  `--model sunburst` for a deliberate generation upgrade when a candidate needs
+  closer control. Refine an existing candidate with `edit_image.mjs` (`gpt-image-2.5-sunburst`
+  by default), or `generate_image.mjs --image-urls ... --model sunburst`.
+  References alone keep new-image generation on Flare. Preserve crisp geometry,
+  flat masses, and clean marks in the brief and inspect the output.
 - **Never stand in for a generation.** No hand-written SVG, no code-drawn shape, no borrowed
   placeholder passed off as a candidate. If `OPENROUTER_API_KEY` is not
   configured, say exactly that and ask the user to add it — an unconfigured key is a

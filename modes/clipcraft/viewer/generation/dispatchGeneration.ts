@@ -244,8 +244,9 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       // it as a video anchor; otherwise request only the desired aspect ratio.
       const aspectRatio = p.aspectRatio ?? deriveAspectRatio(p.width, p.height) ?? "1:1";
       const reference = req.mode === "variant" ? req.source?.uri : null;
-      const model = reference ? "openai/gpt-image-2.5-flare" : "openai/gpt-image-2.5-sunburst";
+      const model = reference ? "openai/gpt-image-2.5-sunburst" : "openai/gpt-image-2.5-flare";
       const scriptArgs: Record<string, string | number> = {
+        "--model": model,
         "--quality": "high",
       };
       if (reference) scriptArgs["--image-urls"] = reference;
@@ -362,14 +363,14 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
 function buildInstructions(req: GenerationRequest): string {
   const isImage = req.params.kind === "image";
   const runStep = isImage
-    ? "4. Run the script in `script` — prompt is POSITIONAL, not a flag. Example: `node <script> \"<prompt>\" --aspect-ratio ... --quality ... --output-dir assets/image --filename-prefix <semantic-id>`. Fold `params.style` (if set) into the prompt text rather than a flag. Use `--image-urls <url>` to switch GPT Image 2.5 to edit mode (reference-driven continuation, first/last-frame pairs, character-on-background swaps, etc.)."
+    ? "4. Run the script in `script` with every flag in `script_args`, including `--model` — prompt is POSITIONAL, not a flag. Example: `node <script> \"<prompt>\" --model <script_args.--model> --aspect-ratio ... --quality ... --output-dir assets/image --filename-prefix <semantic-id>`. Fold `params.style` (if set) into the prompt text rather than a flag. For edits, pass `--image-urls <url> --model sunburst`; references alone do not select the editing model. New images, including reference-guided compositions, default to Flare."
     : "4. Run the script referenced in `script` with the flags in `script_args`. Append `--output <path>`.";
   if (req.mode === "variant") {
     // Variant is a fundamentally different shape: the user did NOT write a
     // prompt. They wrote a *change direction* ("make the card red", "add
     // grain"). The agent must synthesize the new prompt by fusing the
     // frozen source prompt with the user's change direction, and must
-    // preserve source dimensions/model unless the change direction
+    // preserve source dimensions unless the change direction
     // explicitly asks for a different shape or format.
     const lines = [
       "Handling (variant):",
@@ -382,7 +383,7 @@ function buildInstructions(req: GenerationRequest): string {
       "   - Prefer additive edits. Do not rewrite the whole prompt unless the change direction explicitly asks for a wholesale redo.",
       "3. Honor source format:",
       "   - Run the script with the exact same `--image-size` / `--duration` / `--aspect-ratio` as the source unless the change direction explicitly asks for a different size / duration.",
-      "   - For images, consider `--image-urls <source.uri>` to route through GPT Image 2.5's edit mode — that produces the tightest family resemblance for small-delta variants (add grain, text swap, minor swap-outs). Pure t2v without the reference is fine when the change direction is more structural (different composition, different character).",
+      "   - For image edits, retain `--image-urls <source.uri>` and the Sunburst `--model` from `script_args` to preserve composition and identity. Use the actual script result's model in provenance if the user explicitly requests another model.",
       "4. Pick a semantic asset id — never a UUID. Variants of `asset-panda-sad-v1` might be `asset-panda-sad-v2`, `asset-panda-sad-v3`, etc.",
       "5. Pick a relative output path under the matching `assets/{kind}/` directory.",
       runStep,

@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { spawnSync } from "node:child_process";
-import { DEFAULT_IMAGE_MODEL, DEFAULT_EDIT_IMAGE_MODEL, IMAGE_QUALITIES, generateImage, loadEnvKeys, resolveImageModel } from "./generate_image.mjs";
+import { DEFAULT_IMAGE_MODEL, IMAGE_QUALITIES, generateImage, loadEnvKeys, resolveImageModel } from "./generate_image.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -40,7 +40,7 @@ Options:
   --out-dir <path>            Output directory (default: .)
   --name <baseName>           Slice filename base (default: panel)
   --ref <source>              Reference URL, data URI, or local image path (repeatable, up to 16).
-  --model <name>              Sunburst for generation, Flare with --ref (auto by default)
+  --model <name>              Flare by default, including --ref; use sunburst to upgrade
   --no-annotations            Drop the annotation color-system block from the prompt prelude
   --keep-composite            Keep the composite image after slicing (default: true)
   --quality <level>           auto, low, medium, high, xhigh, max (default: high)
@@ -475,7 +475,7 @@ async function main() {
   }
 
   const refs = values.ref ?? [];
-  const model = resolveImageModel(values.model ?? (refs.length ? DEFAULT_EDIT_IMAGE_MODEL : DEFAULT_IMAGE_MODEL));
+  const model = resolveImageModel(values.model);
 
   // ---- pipeline ----
   ensureFfmpeg();

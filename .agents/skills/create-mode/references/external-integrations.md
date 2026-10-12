@@ -166,6 +166,8 @@ skill: {
 
 ### 何时用 MCP，何时用 sharedScripts
 
+For raster image generation and editing, prefer the shared OpenRouter scripts and map `OPENROUTER_API_KEY` to `openrouterApiKey`. `generate_image.mjs` defaults to GPT Image 2.5 Flare even with reference images; `--model sunburst` upgrades generation. `edit_image.mjs` defaults to Sunburst. Edits using `generate_image.mjs --image-urls` must pass `--model sunburst` explicitly. A fal key alone does not enable these image scripts; specialized background removal, video, and 3D tools keep their own providers.
+
 - **Pure helper script（generate_image, edit_image）** → `skill.sharedScripts`（共享源 `modes/_shared/scripts/`，装到 `<SKILL_PATH>/scripts/`）。Agent 调 `node <SKILL_PATH>/scripts/foo.mjs` 直接 invoke。
 - **Stateful / multi-turn tool 协议** → MCP Server。例如需要维护 connection 池、长时运行的 process、跨调用的 cache。
 

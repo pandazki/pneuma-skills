@@ -2,8 +2,8 @@
  * The cost panel — what this loop has spent, in total and per round.
  *
  * A heavy mode deserves a bill: every fal job priced by endpoint and option,
- * every image generation, the model's tokens. All of it is an ESTIMATE at
- * public list price and the panel says so on every render, because a
+ * OpenRouter image receipts, legacy image calls, and the model's tokens.
+ * Receipts report actual image usage; the other costs are estimates because a
  * subscription pays for the model in quota, not dollars, and a job the price
  * table does not know is shown as unpriced rather than free. Per-round rows
  * attribute the jobs and images that landed between two captures; tokens
@@ -30,7 +30,7 @@ export function CostPanel({ summary, open, onClose }: CostPanelProps) {
     <aside className="absolute inset-y-0 right-0 z-20 flex w-80 max-w-[85%] flex-col border-l border-cc-border bg-cc-surface/95 backdrop-blur">
       <header className="flex shrink-0 items-center gap-2 border-b border-cc-border px-3 py-2">
         <h2 className="text-xs font-medium text-cc-fg">Cost</h2>
-        <span className="text-[11px] text-cc-muted">estimate · list price</span>
+        <span className="text-[11px] text-cc-muted">reported + estimated</span>
         <button
           type="button"
           onClick={onClose}
@@ -44,7 +44,7 @@ export function CostPanel({ summary, open, onClose }: CostPanelProps) {
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         <div className="rounded-md border border-cc-border bg-cc-card px-2.5 py-2">
           <div className="flex items-baseline">
-            <span className="text-[11px] text-cc-muted">Total so far</span>
+            <span className="text-[11px] text-cc-muted">{images.unpriced.length || fal.unpriced.length ? "Known cost so far" : "Total so far"}</span>
             <span className="ml-auto text-base font-semibold tabular-nums text-cc-fg">{usd(summary.total)}</span>
           </div>
           <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-[11px]">
@@ -55,7 +55,10 @@ export function CostPanel({ summary, open, onClose }: CostPanelProps) {
               )}
             </dt>
             <dd className="text-right tabular-nums text-cc-fg">{usd(fal.usd)}</dd>
-            <dt className="text-cc-muted">image generations · {count(images.count)}</dt>
+            <dt className="text-cc-muted">
+              image generations · {count(images.count)}
+              {images.unpriced.length > 0 && <span className="text-cc-warning"> · {images.unpriced.length} unpriced</span>}
+            </dt>
             <dd className="text-right tabular-nums text-cc-fg">{usd(images.usd)}</dd>
             <dt className="text-cc-muted">
               model tokens{tokenTotal !== null ? ` · ${formatTokens(tokenTotal)}` : ""}
@@ -111,7 +114,11 @@ export function CostPanel({ summary, open, onClose }: CostPanelProps) {
         )}
 
         <p className="mt-3 text-[10px] leading-relaxed text-cc-muted">
-          {summary.basis}. Prices as of {summary.asOf}; image generations at a flat ${summary.images.count >= 0 ? (summary.images.usd / Math.max(1, summary.images.count) || 0.15).toFixed(2) : "0.15"} each.
+          OpenRouter images use reported usage costs ({images.reported} images).
+          {images.estimated > 0 && ` ${images.estimated} legacy image calls use estimates.`}
+          {images.unpriced.length > 0 && " Image requests without usage costs are excluded from the total."}
+          {images.unattributed > 0 && " Images without completion times are included in the total but excluded from round rows."}
+          {" "}{summary.basis}. Other estimates use prices as of {summary.asOf}.
         </p>
       </div>
     </aside>

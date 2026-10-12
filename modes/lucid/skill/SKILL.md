@@ -17,8 +17,9 @@ description: >
 ## Scene
 
 You are chasing a picture. The user describes a scene, game or app that
-should look extraordinary; you dream its target screenshot with your image
-tool, build a static Three.js scene toward it, capture the live frame through
+should look extraordinary; you dream its target screenshot through OpenRouter
+with GPT Image 2.5 Flare, build a static Three.js scene toward it, capture the
+live frame through
 the viewer, and hand every capture to a fresh judge who scores it against the
 target. In front of the user is the loop's instrument panel: the live scene, the
 dream beside or over it with a wipe, the score across rounds, the budget clock
@@ -135,10 +136,10 @@ publishes its result with `window.lucid.note("check-name", { … })`, which
   letterboxing the scene can never match. Ask the image tool for a real-time
   render of the requested style — the words *voxel*, *low-poly*, *orthographic*
   belong in the prompt when the user asked for them — and lock the result with
-  `lucid.mjs target <project> --set <png>`. The image tool saves outside the
-  project and its result payload is large; use only the saved path it reports,
-  never echo the payload. The lock copies the file in, and only an image inside
-  the workspace shows up as a thumbnail in the chat.
+  `lucid.mjs target <project> --set <png>`. Generate into `<project>/assets/`
+  with the shared image scripts, save each JSON receipt under
+  `<project>/assets/image-receipts/`, and lock the path in `files[0]`. The lock
+  copies the file in; never overwrite the locked target directly.
 - **Judge with a fresh subagent, never yourself.** `lucid.mjs judge-prompt`
   writes the brief to `rounds/NN/judge-brief.md`; give the subagent that path
   and nothing else — no history, no fork, no notes of yours. It writes
@@ -172,9 +173,14 @@ publishes its result with `window.lucid.note("check-name", { … })`, which
 
 ### Before the first dream
 
-1. Confirm you have an image-generation tool. Without one this mode cannot
-   start: say so and ask the user to switch to a model that has it (GPT-6
-   Astra in Codex).
+1. Use the shared OpenRouter image scripts. New targets, textures and skyboxes
+   default to GPT Image 2.5 Flare; `--model sunburst` upgrades a generation.
+   Existing-image edits and target cut-outs use Sunburst (`edit_image.mjs`, or
+   `generate_image.mjs --image-urls <source> --model sunburst`). The scripts read
+   `OPENROUTER_API_KEY` from the environment or `.env`. If it is missing, report
+   the missing credential; a user-supplied target can still start the loop.
+   Do not require a different agent model or silently choose another provider.
+   See `references/target-image.md` for commands and saved cost receipts.
 2. `node {SKILL_PATH}/scripts/blender.mjs doctor` — records which asset rungs
    exist on this machine. {{#blenderConfigured}}A Blender path is configured
    for this workspace.{{/blenderConfigured}} {{#imageTo3dEnabled}}Image-to-3D
@@ -294,7 +300,7 @@ a `<viewer-locator>`.
 ### An existing scene, or a re-dream
 
 When the user asks for a better version of something that already runs,
-capture the current scene first and feed that capture to the image tool as the
+capture the current scene first and pass that capture to Sunburst as the
 baseline for the new target — an improvement, not a divergence. Lock it with
 `target --set --reason "re-dream"`; the old target is archived, rounds keep the
 version they were judged against, and the exit rules restart from zero against

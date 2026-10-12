@@ -24,7 +24,7 @@ export async function main(args = process.argv.slice(2)) {
 
   --input, -i <path>          Original image to modify
   --annotation, -a <path>     Highlighter region crop (second reference image)
-  --model <name>             ${IMAGE_MODELS.join(", ")} (openai/ prefix optional)
+  --model <name>             ${IMAGE_MODELS.join(", ")} (aliases: sunburst, flare; openai/ prefix optional)
   --aspect-ratio <ratio>     ${IMAGE_ASPECTS.join(", ")} (default: auto)
   --image-size <preset|WxH>  Explicit output size
   --quality <level>         ${IMAGE_QUALITIES.join(", ")} (default: high)
@@ -35,7 +35,7 @@ export async function main(args = process.argv.slice(2)) {
   --filename-prefix <name>  Filename prefix (default: edited)
 
 Default: ${DEFAULT_EDIT_IMAGE_MODEL}. Requires OPENROUTER_API_KEY.
-Annotations are visual guides, not pixel masks. For multiple references use generate_image.mjs --image-urls.`);
+Annotations are visual guides, not pixel masks. For multiple references use generate_image.mjs --model sunburst --image-urls.`);
     return;
   }
   if (positionals.length !== 1 || !values.input) throw new Error("Usage: edit_image.mjs <modification prompt> --input <image> [options]");

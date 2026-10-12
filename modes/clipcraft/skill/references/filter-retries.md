@@ -53,7 +53,7 @@ was never evaluated. Prompt rewording does NOT defeat this filter.
    `--outfit` and `--traits` are both optional — omit them and
    the model reads them from the source image, at the cost of
    less-controlled annotations. For richer annotations or a more
-   custom sheet layout, prefer `generate_image.mjs --image-urls` with
+   custom sheet layout, prefer `generate_image.mjs --image-urls <photo> --model sunburst` with
    a hand-written prompt (GPT Image 2.5 composes the 4-panel layout +
    typewriter text reliably).
 

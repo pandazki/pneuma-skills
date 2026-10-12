@@ -381,9 +381,10 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
   appending style text before dispatch, which fights any style you already
   wrote into the prompt. Write the style into the prompt and leave the flag
   alone.
-- Default model is `gpt-image-2.5-sunburst` via OpenRouter for illustrations and
-  labels. Reference-image edits use `gpt-image-2.5-flare` automatically. Both require
-  `OPENROUTER_API_KEY`.
+- Use OpenRouter with `OPENROUTER_API_KEY`. New illustrations default to
+  `gpt-image-2.5-flare`, with or without references. Add `--model sunburst`
+  to upgrade a generation or to edit an existing image with `--image-urls`;
+  attaching references alone does not select the editing model.
 - `--output-dir` is always the explainer's own `assets/` directory. The page
   that shows the image lives in `<topic-slug>/pages/`, and that directory —
   not the topic root — is the iframe's base URL, so the reference is

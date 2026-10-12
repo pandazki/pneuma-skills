@@ -13,6 +13,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_IMAGE_MODEL } from "../../_shared/scripts/generate_image.mjs";
 import { parseStyleCatalog } from "../skill/scripts/segment-lib.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "make-style-sample.mjs");
@@ -68,7 +69,7 @@ describe("make-style-sample.mjs", () => {
     const styleDir = join(ws, "fourier", "style");
     mkdirSync(styleDir, { recursive: true });
     writeFileSync(join(styleDir, "anchor.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "傅里叶变换", action }));
+    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ model: DEFAULT_IMAGE_MODEL, style_id: "papercraft", recipe, topic: "傅里叶变换", action }));
     const before = statSync(join(styleDir, "anchor.png")).mtimeMs;
 
     const r = run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--json");
@@ -77,12 +78,15 @@ describe("make-style-sample.mjs", () => {
     expect(out.reason).toContain("sample shoot failed");
     expect(out.reason).not.toContain("anchor");
     expect(statSync(join(styleDir, "anchor.png")).mtimeMs).toBe(before);
+    // Requesting the other image model must not reuse the old generation.
+    const otherModel = DEFAULT_IMAGE_MODEL.endsWith("flare") ? "openai/gpt-image-2.5-sunburst" : "openai/gpt-image-2.5-flare";
+    expect(JSON.parse(run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--image-model", otherModel, "--json").out).reason).toContain("anchor");
     // A different topic is a different frame: the record no longer matches.
-    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "something else", action }));
+    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ model: DEFAULT_IMAGE_MODEL, style_id: "papercraft", recipe, topic: "something else", action }));
     expect(JSON.parse(run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--json").out).reason).toContain("anchor");
     // And so is a different device: the anchor is composed around it now,
     // so an anchor of the old device would anchor the whole course wrong.
-    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ style_id: "papercraft", recipe, topic: "傅里叶变换", action: "an empty paper stage" }));
+    writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ model: DEFAULT_IMAGE_MODEL, style_id: "papercraft", recipe, topic: "傅里叶变换", action: "an empty paper stage" }));
     expect(JSON.parse(run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--json").out).reason).toContain("anchor");
   });
 

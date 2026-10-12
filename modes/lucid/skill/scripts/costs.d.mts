@@ -17,13 +17,19 @@ export interface RoundWindow {
   fal: { count: number; usd: number };
   images: { count: number; usd: number };
 }
+export interface ImageReceipt {
+  generatedAt?: string;
+  model?: string;
+  files?: string[];
+  usage?: { cost?: number; [key: string]: unknown };
+}
 export interface CostSummary {
   asOf: string;
   basis: string;
   currency: string;
   total: number;
   fal: { count: number; usd: number; unpriced: string[]; jobs: Array<{ id: string | null; endpoint: string | null; state: string | null; usd: number | null }> };
-  images: { count: number; usd: number };
+  images: { count: number; usd: number; reported: number; estimated: number; unpriced: string[]; unattributed: number };
   tokens: { usage: TokenUsageCounts | null; model: string; usd: number | null; priced: boolean };
   byRound: RoundWindow[];
 }
@@ -32,6 +38,7 @@ export function estimateTokens(usage: TokenUsageCounts | null | undefined, model
 export function summarizeCosts(args?: {
   jobs?: FalJobRecord[];
   imageTimestamps?: number[];
+  imageReceipts?: ImageReceipt[];
   tokenUsage?: TokenUsageCounts | null;
   model?: string;
   rounds?: Array<{ index: number; at: string; verdict?: { total: number } | null }>;

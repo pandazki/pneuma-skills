@@ -172,7 +172,7 @@ After scaffolding, the canvas shows a placeholder row; run the generation script
 
 ## AI Image Generation
 
-- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2.5-sunburst`, strong at legible text/logos; reference-image edits automatically use `gpt-image-2.5-flare`)
+- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2.5-flare`; use `--model sunburst` for edits or a generation upgrade)
 - `scripts/edit_image.mjs` — Modify an existing local image with an optional highlighter annotation (GPT Image 2.5 via OpenRouter)
 
 **Workflow at a glance**: write placeholder row to `manifest.json` (status: "generating") → run script → update manifest with result. Detailed flags, prompt engineering, and the GPT Image 2.5 reference-image edit path are documented in the sections below.
@@ -313,16 +313,16 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 
 | Model | Pick when | Backend |
 |---|---|---|
-| `gpt-image-2.5-sunburst` | Default for text-to-image generation | OpenRouter |
-| `gpt-image-2.5-flare` | Default for edits and calls with reference images | OpenRouter |
+| `gpt-image-2.5-flare` | Default for new images, with or without references | OpenRouter |
+| `gpt-image-2.5-sunburst` | Default for editing; optional generation upgrade | OpenRouter |
 
-Both models require `OPENROUTER_API_KEY`. The script selects Sunburst for text-only generation and Flare whenever `--image-urls` is present. `edit_image.mjs` defaults to Flare. `--model` overrides this selection; the `openai/` prefix is optional.
+Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.5-flare`, including generations guided by reference images. `edit_image.mjs` defaults to `gpt-image-2.5-sunburst`. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
 
 ### Parameters
 
 | Parameter | Values | Default | Notes |
 |-----------|--------|---------|-------|
-| `--model` | `gpt-image-2.5-sunburst`, `gpt-image-2.5-flare` | Sunburst for generation; Flare with references | Both use OpenRouter |
+| `--model` | `flare`, `sunburst`, full model slug or ID | Flare, with or without references | Use Sunburst for editing or a generation upgrade; both use OpenRouter |
 | `--aspect-ratio` | `auto`, `21:9`, `16:9`, `3:2`, `4:3`, `1:1`, `3:4`, `2:3`, `9:16` | `1:1` | Match the intended use |
 | `--output-format` | `png`, `jpeg`, `webp` | `png` | Read the actual output path from `files` |
 | `--num-images` | 1–10 | 1 | Multiple variations |
@@ -358,7 +358,7 @@ cd {SKILL_PATH} && node scripts/edit_image.mjs \
 | `--input, -i` | file path | **required** | Original image to modify |
 | `--annotation, -a` | file path | none | Highlighter region crop (sent as 2nd image) |
 | `--aspect-ratio` | same as generate | `auto` | Keeps original ratio by default |
-| `--model` | same as generate | `gpt-image-2.5-flare` | Edits default to Flare |
+| `--model` | same as generate | `gpt-image-2.5-sunburst` | Edits default to Sunburst |
 | `--quality` | same as generate | `high` | Output quality |
 | `--image-size` | preset or `WxH` | — | Explicit output size |
 | `--output-format` | `png`, `jpeg`, `webp` | `png` | Output file format |
@@ -374,6 +374,7 @@ Pass `--image-urls` for one or more remote URLs, data URIs, or local files. Desc
 cd {SKILL_PATH} && node scripts/generate_image.mjs \
   "Same composition, replace the tagline with 'Hello World'" \
   --image-urls https://example.com/source.png \
+  --model sunburst \
   --output-dir <workspace>/<content-set>/images \
   --filename-prefix edited-hero
 ```
@@ -384,7 +385,7 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 |----------|---------|
 | User says "make this darker" / "change the color" on a selected local image | `edit_image.mjs` |
 | User highlights a region and says "fix this part" | `edit_image.mjs --annotation` |
-| Source image is a URL and the change needs precise text/layout preservation | `generate_image.mjs --image-urls` (GPT Image 2.5 edit) |
+| Source image is a URL and the change needs precise text/layout preservation | `generate_image.mjs --image-urls ... --model sunburst` (GPT Image 2.5 edit) |
 | User wants completely new images from a text description | `generate_image.mjs` |
 | User wants variations of a concept (not tied to a specific image file) | `generate_image.mjs` with modified prompt |
 
@@ -421,7 +422,7 @@ When the user selects an image and asks for modifications:
 3. **If highlighter annotation exists** — save the region data URL to a temp file, pass as `--annotation`
 4. **Add placeholder row** — create a new row in manifest with `"status": "generating"` on the item, labeled "Edit of [original title] — [change description]". The user sees a generating placeholder immediately.
 5. **Craft the edit prompt** — describe the change clearly, referencing the annotation if present
-6. **Run the edit** — `edit_image.mjs` for annotation-driven, or `generate_image.mjs --image-urls ...` for reference-image edits
+6. **Run the edit** — `edit_image.mjs` for annotation-driven, or `generate_image.mjs --image-urls ... --model sunburst` for reference-image edits
 7. **Update manifest** — remove `"status"` from the item and add metadata
 8. **Keep the original** — don't modify or delete the original image/row
 
