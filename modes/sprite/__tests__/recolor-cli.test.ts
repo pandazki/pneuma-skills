@@ -11,6 +11,7 @@
  * Gated on ffmpeg, like every suite that writes images.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -23,10 +24,12 @@ import type { RgbaImage } from "../skill/scripts/pixel-lattice.mjs";
 
 const SHEET = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 const PROJECT = join(import.meta.dir, "..", "skill", "scripts", "sprite-project.mjs");
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite recolor-cli ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
-if (!HAS_FFMPEG) console.warn("(skip) modes/sprite recolor CLI suite — ffmpeg/ffprobe not on PATH");
+if (MEDIA_TIER && !HAS_FFMPEG) console.warn("(skip) modes/sprite recolor CLI suite — ffmpeg/ffprobe not on PATH");
 
 function cmd(script: string, argv: string[], stdin?: string) {
   const r = Bun.spawnSync([process.execPath, script, ...argv], {

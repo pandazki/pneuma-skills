@@ -13,6 +13,7 @@
  * reason without it.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -42,10 +43,12 @@ import { buildSheet } from "./fixtures/pipeline/make-sheet.mjs";
 const PROJECT = join(import.meta.dir, "..", "skill", "scripts", "sprite-project.mjs");
 const SHEET = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite guide PNG and anchor-reference media tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
-if (!HAS_FFMPEG) console.warn("(skip) sheet-prompt guide PNG + anchor ref cases — ffmpeg/ffprobe not on PATH");
+if (MEDIA_TIER && !HAS_FFMPEG) console.warn("(skip) sheet-prompt guide PNG + anchor ref cases — ffmpeg/ffprobe not on PATH");
 
 const BLOB: SheetCharacter = {
   style: "Flat vector blob, thick outline",

@@ -42,6 +42,8 @@ import { dirname, join } from "node:path";
 import {
   announceLiveTierSkip,
   LIVE_TIER,
+  announceMediaTierSkip,
+  mediaTierEnabled,
   LIVE_TIER_LABEL,
 } from "../../../core/__tests__/test-tier.js";
 
@@ -51,8 +53,11 @@ const SEED = join(import.meta.dir, "..", "seed", "lumi");
 const require = createRequire(import.meta.url);
 const RUNTIME_DIR = dirname(require.resolve("@rive-app/canvas/package.json"));
 
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite frame preparation for the live Rive runtime");
+
 // Module-level probes run during collection, so they are gated too.
-const CHROME = LIVE_TIER
+const CHROME = LIVE_TIER && MEDIA_TIER
   ? [
       process.env.CHROME_PATH,
       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -61,11 +66,11 @@ const CHROME = LIVE_TIER
       "/usr/bin/chromium-browser",
     ].find((path): path is string => !!path && existsSync(path))
   : undefined;
-const HAS_FFMPEG = LIVE_TIER && spawnSync("ffprobe", ["-version"]).status === 0;
+const HAS_FFMPEG = LIVE_TIER && MEDIA_TIER && spawnSync("ffprobe", ["-version"]).status === 0;
 
 announceLiveTierSkip("the .riv played in the official Rive runtime in headless Chrome");
-if (LIVE_TIER && !CHROME) console.log("[rive-runtime] no Chrome found (set CHROME_PATH) — skipped");
-if (LIVE_TIER && !HAS_FFMPEG) console.log("[rive-runtime] no ffmpeg/ffprobe on PATH — skipped");
+if (LIVE_TIER && MEDIA_TIER && !CHROME) console.log("[rive-runtime] no Chrome found (set CHROME_PATH) — skipped");
+if (LIVE_TIER && MEDIA_TIER && !HAS_FFMPEG) console.log("[rive-runtime] no ffmpeg/ffprobe on PATH — skipped");
 
 interface RiveReport {
   out: string;

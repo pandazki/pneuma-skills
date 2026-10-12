@@ -14,6 +14,7 @@
  *      align → pack → gif → inspect (skipped without ffmpeg).
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -668,10 +669,12 @@ describe("breathe.mjs — smooth", () => {
 // ---------------------------------------------------------------------------
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite breathe ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
-if (!HAS_FFMPEG) console.warn("(skip) modes/sprite breathe CLI — ffmpeg/ffprobe not on PATH");
+if (MEDIA_TIER && !HAS_FFMPEG) console.warn("(skip) modes/sprite breathe CLI — ffmpeg/ffprobe not on PATH");
 
 function run(cwd: string, ...argv: string[]) {
   const r = Bun.spawnSync([process.execPath, SCRIPT, ...argv], { cwd, stdout: "pipe", stderr: "pipe" });

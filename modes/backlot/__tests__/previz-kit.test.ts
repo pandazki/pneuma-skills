@@ -29,7 +29,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { announceLiveTierSkip, LIVE_TIER, LIVE_TIER_LABEL } from "../../../core/__tests__/test-tier.js";
+import { announceLiveTierSkip, announceMediaTierSkip, mediaTierEnabled, LIVE_TIER, LIVE_TIER_LABEL } from "../../../core/__tests__/test-tier.js";
 
 const SCRIPTS = join(import.meta.dir, "..", "skill", "scripts");
 const PREVIZ = join(SCRIPTS, "previz.mjs");
@@ -40,6 +40,8 @@ const EXAMPLES = join(SCRIPTS, "scene-starter", "examples");
 
 /** A Blender run is seconds, not milliseconds. */
 const SLOW = 300_000;
+const MEDIA_TIER = mediaTierEnabled("backlot");
+announceMediaTierSkip("backlot", "backlot real Blender rendering and exports");
 
 announceLiveTierSkip(
   "every real Blender run behind previz_kit's orbit/zoom/dolly_zoom/dash, its slowmo/impact tempo and the duel examples",
@@ -52,7 +54,7 @@ announceLiveTierSkip(
 /** Probe ONCE, and only when the live tier was asked for: a module-level
  *  probe runs during collection, before any `skipIf` is consulted. */
 const BLENDER: string | null = (() => {
-  if (!LIVE_TIER) return null;
+  if (!LIVE_TIER || !MEDIA_TIER) return null;
   const probe = Bun.spawnSync([process.execPath, PREVIZ, "doctor"], {
     cwd: import.meta.dir,
     stdout: "pipe",
@@ -66,7 +68,7 @@ const BLENDER: string | null = (() => {
   }
 })();
 
-if (LIVE_TIER && !BLENDER) {
+if (LIVE_TIER && MEDIA_TIER && !BLENDER) {
   console.warn("(skip) modes/backlot previz_kit live suite — no Blender binary on this machine");
 }
 

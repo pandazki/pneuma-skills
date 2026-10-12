@@ -17,6 +17,7 @@
  * `pose-geometry-modules.test.ts`.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -28,10 +29,12 @@ import { buildExprClip, readBbox } from "./fixtures/pipeline/make-sheet.mjs";
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 const PROJECT = join(import.meta.dir, "..", "skill", "scripts", "sprite-project.mjs");
 
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite sprite-sheet-pose-geometry ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
-if (!HAS_FFMPEG) console.warn("(skip) modes/sprite pose-geometry suite — ffmpeg/ffprobe not on PATH");
+if (MEDIA_TIER && !HAS_FFMPEG) console.warn("(skip) modes/sprite pose-geometry suite — ffmpeg/ffprobe not on PATH");
 
 /** Each case spawns ffmpeg a few dozen times; 5 s is not a budget for that. */
 const SLOW = 60_000;

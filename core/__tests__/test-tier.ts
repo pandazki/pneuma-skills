@@ -2,15 +2,16 @@
  * Test tiers — which suite a test belongs to.
  *
  * The routine suite (`bun run test`) has one job: be fast enough that nobody
- * is tempted to skip it. Tests that drive a REAL external binary do not fit
- * there — they pay for process spawns, for the network, and for machine-local
+ * is tempted to skip it. Tests that drive authenticated external tools or
+ * machine-dependent runtimes pay for the network and machine-local
  * auth state (a keychain read alone measured 5.25s), and what they assert
  * depends on what happens to be installed on the box. Those live in the
  * **live tier**, alongside `backends/` — which the routine suite already
- * leaves out by path.
+ * leaves out by path. Expensive local frame processing is the separate media
+ * tier below, enabled for the affected modes rather than every ordinary run.
  *
- * `bun run test:all` and `bun run test:backends` set `PNEUMA_TEST_LIVE=1`, so
- * the full suite still runs every test that exists.
+ * `bun run test:all` enables both live and media tiers to run every test.
+ * `bun run test:backends` enables the live tier for the backend suites only.
  *
  * How to put a file in the live tier:
  *
@@ -46,4 +47,25 @@ export const LIVE_TIER_LABEL = "[live tier — set PNEUMA_TEST_LIVE=1, or run bu
 export function announceLiveTierSkip(what: string): void {
   if (LIVE_TIER) return;
   console.log(`[test-tier] skipped ${what} ${LIVE_TIER_LABEL}`);
+}
+
+/**
+ * Local media processing is independent of paid/network integration tests.
+ * Enable every mode with PNEUMA_TEST_MEDIA=1, or select comma-separated mode
+ * names. Read at call time so a runner can pass an explicit selection without
+ * relying on import order. A missing setting never opts into media work.
+ * Gate module-level binary probes as well as the tests that run the pipeline;
+ * put fixture construction in beforeAll because skipped describe bodies run.
+ */
+export function mediaTierEnabled(modeName: string): boolean {
+  const setting = process.env.PNEUMA_TEST_MEDIA?.trim() ?? "";
+  if (setting === "1") return true;
+  return modeName.length > 0 && setting.split(",").some((name) => name.trim() === modeName);
+}
+
+export function announceMediaTierSkip(modeName: string, what: string): void {
+  if (mediaTierEnabled(modeName)) return;
+  console.log(
+    `[test-tier] skipped ${what} [media tier — set PNEUMA_TEST_MEDIA=${modeName} or 1, or run bun run test:all]`,
+  );
 }

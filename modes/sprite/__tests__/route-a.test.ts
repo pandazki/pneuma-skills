@@ -15,6 +15,7 @@
  * Layers 2 and 3 need ffmpeg and skip without it, like every CLI suite here.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -153,10 +154,12 @@ describe("still.mjs — the still at the size it plays", () => {
 const SCRIPTS = join(import.meta.dir, "..", "skill", "scripts");
 const SHEET = join(SCRIPTS, "sprite-sheet.mjs");
 const PROJECT = join(SCRIPTS, "sprite-project.mjs");
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite route-a ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
-if (!HAS_FFMPEG) console.warn("(skip) modes/sprite route A CLI — ffmpeg/ffprobe not on PATH");
+if (MEDIA_TIER && !HAS_FFMPEG) console.warn("(skip) modes/sprite route A CLI — ffmpeg/ffprobe not on PATH");
 
 /** Run a script with its cwd pinned (a Bun child reads the cwd's .env). */
 function run(cwd: string, script: string, argv: string[], stdin?: string) {

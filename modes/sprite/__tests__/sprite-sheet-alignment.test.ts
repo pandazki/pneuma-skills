@@ -9,6 +9,7 @@
  * pinned without ffmpeg in `alignment-modules.test.ts`.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -22,10 +23,12 @@ import { roomCanvas } from "../skill/scripts/canvas.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite sprite-sheet-alignment ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
-if (!HAS_FFMPEG) console.warn("(skip) modes/sprite alignment suite — ffmpeg/ffprobe not on PATH");
+if (MEDIA_TIER && !HAS_FFMPEG) console.warn("(skip) modes/sprite alignment suite — ffmpeg/ffprobe not on PATH");
 
 function run(...argv: string[]) {
   const r = Bun.spawnSync([process.execPath, SCRIPT, ...argv], { cwd: import.meta.dir, stdout: "pipe", stderr: "pipe" });

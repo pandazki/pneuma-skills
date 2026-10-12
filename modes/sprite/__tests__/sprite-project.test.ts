@@ -13,6 +13,7 @@
  * instead of a second full `sprite-sheet run`, which is ~30 ffmpeg spawns.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
@@ -28,11 +29,13 @@ const LOOP_FIXTURE = join(import.meta.dir, "fixtures", "loop");
 const PROJECT = join(import.meta.dir, "..", "skill", "scripts", "sprite-project.mjs");
 const SHEET = join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs");
 
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite sprite-project ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
 
-if (!HAS_FFMPEG) {
+if (MEDIA_TIER && !HAS_FFMPEG) {
   console.warn("(skip) modes/sprite sprite-project.mjs suite — ffmpeg/ffprobe not on PATH");
 }
 

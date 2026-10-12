@@ -18,6 +18,7 @@
  * and because the gate every paid shot command answers to lives there.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { afterAll, describe, expect, test } from "bun:test";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -518,7 +519,9 @@ export async function generateSeedanceVideo({ output }) {
 // `Bun.which`, not `Bun.spawnSync(["ffmpeg", "-version"])`: spawnSync throws
 // "Executable not found in $PATH" on a machine without ffmpeg (the CI runner),
 // which killed this whole file at collection instead of skipping its tests.
-const HAS_FFMPEG = !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
+const MEDIA_TIER = mediaTierEnabled("backlot");
+announceMediaTierSkip("backlot", "backlot previz-cli ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER && !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
 
 describe("a take in flight never rewinds the shot", () => {
   const SHOT = "film/shots/lab-walk";

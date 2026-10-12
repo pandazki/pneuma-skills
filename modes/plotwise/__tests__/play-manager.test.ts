@@ -16,6 +16,7 @@
  * more — that is the point of the change.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -685,8 +686,10 @@ describe("play-manager.mjs --detach", () => {
   });
 });
 
-describe("defaultDeps().concat", () => {
-  const ffmpeg = !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
+const MEDIA_TIER = mediaTierEnabled("plotwise");
+announceMediaTierSkip("plotwise", "plotwise ffmpeg concatenation tests");
+describe.skipIf(!MEDIA_TIER)("defaultDeps().concat", () => {
+  const ffmpeg = MEDIA_TIER && !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
   const made = (file: string, sampleRate: number, seconds = 1) => {
     const r = Bun.spawnSync([
       "ffmpeg", "-y", "-v", "error",

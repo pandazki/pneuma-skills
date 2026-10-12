@@ -26,6 +26,7 @@
  * when ffmpeg is missing.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
@@ -43,10 +44,12 @@ const SHEET = join(SCRIPTS, "sprite-sheet.mjs");
 const PROJECT = join(SCRIPTS, "sprite-project.mjs");
 const LUMI_IDLE_00 = join(import.meta.dir, "..", "seed", "lumi", "motions", "idle", "frames", "00.png");
 
-const HAS_FFMPEG =
+const MEDIA_TIER = mediaTierEnabled("sprite");
+announceMediaTierSkip("sprite", "sprite integration-seams ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER &&
   spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
   spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
-if (!HAS_FFMPEG) console.warn("(skip) modes/sprite integration seams — ffmpeg/ffprobe not on PATH");
+if (MEDIA_TIER && !HAS_FFMPEG) console.warn("(skip) modes/sprite integration seams — ffmpeg/ffprobe not on PATH");
 
 function exec(script: string, argv: string[], input?: string) {
   const r = Bun.spawnSync([process.execPath, script, ...argv], {

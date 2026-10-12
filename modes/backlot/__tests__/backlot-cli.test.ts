@@ -15,6 +15,7 @@
  * `lavfi` sources, as in `previz-cli.test.ts`.
  */
 
+import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,7 +28,9 @@ const PREVIZ = join(SCRIPTS, "previz.mjs");
 // `Bun.which`, not `Bun.spawnSync(["ffmpeg", "-version"])`: spawnSync throws
 // "Executable not found in $PATH" on a machine without ffmpeg (the CI runner),
 // which killed this whole file at collection instead of skipping its tests.
-const HAS_FFMPEG = !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
+const MEDIA_TIER = mediaTierEnabled("backlot");
+announceMediaTierSkip("backlot", "backlot backlot-cli ffmpeg pipeline tests");
+const HAS_FFMPEG = MEDIA_TIER && !!Bun.which("ffmpeg") && !!Bun.which("ffprobe");
 
 const workspaces: string[] = [];
 afterAll(() => {
