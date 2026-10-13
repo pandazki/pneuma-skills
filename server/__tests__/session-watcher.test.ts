@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ViewerConfig } from "../../core/types/mode-manifest.js";
 import type { WatcherHealth } from "../../core/types/workspace-watcher.js";
+import type { SessionInfo } from "../../core/types/session-info.js";
 import { createSessionWatcher } from "../file-watcher.js";
 import { startServer } from "../index.js";
 import { resolveWatcherBackend, type WorkspaceWatcher } from "../watch/index.js";
@@ -93,6 +94,28 @@ describe("GET /api/session → sessionId", () => {
   test("names the session this server serves while no agent is connected", async () => {
     const body = (await (await api("/api/session")).json()) as { sessionId: string | null };
     expect(body.sessionId).toBe(SESSION_ID);
+  });
+});
+
+describe("GET /api/session → title", () => {
+  test("reads refined names from the session state directory without a restart", async () => {
+    const sessionPath = join(ws, ".pneuma", "session.json");
+    const identity = { sessionId: SESSION_ID, mode: "doc" };
+    const readInfo = async () => (await (await api("/api/session")).json()) as SessionInfo;
+    try {
+      expect((await readInfo()).title).toBeNull();
+      writeFileSync(sessionPath, JSON.stringify({ ...identity, displayName: "First topic", refinedAt: 1 }));
+      expect((await readInfo()).title).toBe("First topic");
+      writeFileSync(sessionPath, JSON.stringify({ ...identity, displayName: "Refined topic", refinedAt: 2 }));
+      const updated = await readInfo();
+      expect(updated.title).toBe("Refined topic");
+      expect(updated.sessionId).toBe(SESSION_ID);
+      expect(updated.workspace).toBe(ws);
+      writeFileSync(sessionPath, "{malformed");
+      expect((await readInfo()).title).toBeNull();
+    } finally {
+      writeFileSync(sessionPath, JSON.stringify(identity));
+    }
   });
 });
 

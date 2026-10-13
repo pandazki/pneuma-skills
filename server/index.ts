@@ -15,6 +15,7 @@ import type { ServerWebSocket } from "bun";
 import { TerminalManager } from "./terminal-manager.js";
 import { registerModeViewerRoutes } from "./mode-viewer-routes.js";
 import type { ModeInfo } from "../core/types/mode-viewer.js";
+import { resolveSessionTitle, type SessionInfo } from "../core/types/session-info.js";
 import { registerModeMakerRoutes } from "./mode-maker-routes.js";
 import { hostAbiImportMap } from "../snapshot/mode-build.js";
 import { registerEvolutionRoutes } from "./evolution-routes.js";
@@ -2702,17 +2703,31 @@ export async function startServer(options: ServerOptions) {
   // Project sessions also include the project paths so the frontend can
   // populate `projectContext` (used by HandoffCard, etc.).
   app.get("/api/session", async (c) => {
+    // Read current metadata on every request: refinement and manual renames
+    // must reach an already-open window without restarting this server.
+    let persisted: unknown = null;
+    try {
+      persisted = await Bun.file(join(stateDirForSession, "session.json")).json();
+    } catch (error) {
+      if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+        console.warn("[server] /api/session: failed to read session metadata:", error);
+      }
+    }
+    const registryId = options.pneumaProjectRoot
+      ? `${options.pneumaProjectRoot}::${options.sessionId ?? ""}`
+      : `${workspace}::${options.modeName ?? ""}`;
+    let registered: AnySessionRegistryEntry | undefined;
+    try {
+      registered = readSessionsFileSync(join(homedir(), ".pneuma", "sessions.json"))
+        .sessions.find((entry) => entry?.id === registryId);
+    } catch (error) {
+      console.warn("[server] /api/session: failed to read session registry:", error);
+    }
     // Project-session paths come from `pneumaProjectRoot` (the user's project
     // root). The legacy `projectRoot` field is overloaded to mean the
     // pneuma-skills repo root (used by mode-maker / registry routes), so it
     // can't be used to detect a project session here.
-    let projectInfo: {
-      projectRoot: string;
-      homeRoot: string;
-      sessionDir: string;
-      projectName?: string;
-      projectDescription?: string;
-    } | null = null;
+    let projectInfo: SessionInfo["project"] = null;
     if (options.pneumaProjectRoot) {
       // Enrich with manifest fields so the frontend can label the chip
       // without an extra fetch. Manifest read is cheap (small JSON file)
@@ -2728,6 +2743,7 @@ export async function startServer(options: ServerOptions) {
     }
     return c.json({
       sessionId: currentSessionId(),
+      title: resolveSessionTitle(persisted, registered),
       project: projectInfo,
       // Per-session working directory — the agent's CWD. Equals the project
       // session dir for project sessions and the quick-session workspace for
@@ -2740,7 +2756,7 @@ export async function startServer(options: ServerOptions) {
       // backend delivers file changes, whether it is ready, whether it fell
       // back or reported an error, and when it last heard a change.
       watcher: options.workspaceWatcher?.health() ?? null,
-    });
+    } satisfies SessionInfo);
   });
 
   // Save session thumbnail
