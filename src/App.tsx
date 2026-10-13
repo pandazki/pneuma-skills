@@ -22,6 +22,7 @@ import { useViewerProps } from "./hooks/useViewerProps.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 import { useCaptureAction } from "./hooks/useCaptureAction.js";
 import { useBackgroundStatusReporter } from "./hooks/useBackgroundStatusReporter.js";
+import { useWindowTitle } from "./hooks/useWindowTitle.js";
 import { normalizeViewerState } from "./utils/viewer-state.js";
 import { ViewerErrorBoundary } from "./components/ViewerErrorBoundary.js";
 
@@ -76,6 +77,7 @@ export default function App() {
   // Placed before the early returns below so its hook order stays stable
   // across launcher / empty-shell / session renders.
   useBackgroundStatusReporter();
+  useWindowTitle({ session: !isLauncher, projectRoot: isEmptyShell ? projectParam : null, chat: isChatWindow });
 
   if (isEmptyShell && projectParam) {
     return (
