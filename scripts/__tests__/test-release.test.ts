@@ -124,13 +124,14 @@ describe("release test scope", () => {
     expect(plan.live).toBe(false);
   });
 
-  test("shared video, core runtime, dependencies and unknown paths conservatively run everything", () => {
+  test("shared video, dependencies and unknown paths conservatively run everything", () => {
     for (const [path, text] of [
       ["modes/_shared/scripts/fal-queue.mjs", "export const queue = 2;"],
-      ["core/runtime.ts", "export const value = 2;"],
       ["package.json", '{"version":"1.0.1","dependencies":{"new":"1"}}'],
       ["core/__tests__/test-tier.ts", "// changed gating"],
       ["bun.lock", "changed dependencies"],
+      ["desktop/tsup.config.ts", "export default { changed: true };"],
+      ["src/test.config.ts", "export default { changed: true };"],
       ["unknown/input", "unknown impact"],
     ]) {
       const root = fixture();
@@ -141,6 +142,23 @@ describe("release test scope", () => {
       expect(plan.mediaModes).toBe("all");
       expect(plan.paths).toEqual([]);
       expect(plan.reasons.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("shared application code retains every suite and live backends without unrelated media", () => {
+    for (const path of ["src/App.tsx", "server/index.ts", "core/types/session-info.ts", "bin/pneuma.ts", "scripts/test-release.ts"]) {
+      const root = fixture();
+      write(root, path, "export const changed = true;");
+      const plan = buildReleaseTestPlan(root);
+      expect(plan.scope).toBe("full");
+      expect(plan.paths).toEqual([]);
+      expect(plan.live).toBe(true);
+      expect(plan.mediaModes).toEqual([]);
+      expect(releaseTestCommand(plan).env.PNEUMA_TEST_MEDIA).toBe("");
+      write(root, "modes/alpha/skill/scripts/process.mjs", "export const changed = true;");
+      expect(buildReleaseTestPlan(root).mediaModes).toEqual(["alpha"]);
+      write(root, "bun.lock", "dependency changes override application scope");
+      expect(buildReleaseTestPlan(root).mediaModes).toBe("all");
     }
   });
 

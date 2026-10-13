@@ -41,7 +41,12 @@ paths:
   viewer/domain, processing-script, fixture and runtime/test changes; a viewer
   export can be consumed by a media pipeline. Guidance-only paths and parsed
   manifest version/changelog-only edits stay cheap; seed Markdown is runtime
-  input. Shared image-family changes do not select unrelated video suites.
+  input. Shared application source changes retain every suite and live backends,
+  while media stays limited to changed modes; those pipelines execute mode-owned
+  scripts. Shared image-family changes do not select unrelated video suites.
+  Dependencies, test-environment changes, unknown impact and `--full` still enable
+  all media. Changing the release selector runs all ordinary/backend checks;
+  Git-fixture and runner-exit tests verify its selection policy.
   `test:media` opts into media only; `test:all` opts into media and live tiers.
 - **Live tier (`PNEUMA_TEST_LIVE=1`).** Host CLI/authentication checks and backend
   lifecycle tests depend on installed binaries, local credentials and sometimes

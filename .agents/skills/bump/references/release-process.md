@@ -27,8 +27,12 @@ baseline, selected modes, enabled tiers and reasons before running anything.
   Mode changes add their
   whole test directories, so a version bump still checks registration and
   guidance; common tests cover consumers outside the mode directory. Common
-  runtime, dependency and test-configuration changes, missing baselines, or
-  unknown impact select the full suite with both expensive tiers. The shared
+  application source changes select every suite and live backends, but enable
+  media only for modes whose own runtime changed: local media pipelines consume
+  mode scripts, not application shell code. The release selector itself follows
+  this rule; its policy is verified with Git fixtures and runner-exit tests.
+  Dependency and test-environment changes (including `test-tier.ts`), missing
+  baselines, or unknown impact select the full suite with both expensive tiers. The shared
   image family (`generate_image.mjs`, `edit_image.mjs`, `storyboard.mjs` and
   their tests) selects all modes without unrelated video or live backend suites;
   other shared media/transport changes, such as video scripts or `fal-queue.mjs`,

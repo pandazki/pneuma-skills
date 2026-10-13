@@ -114,13 +114,15 @@ export function buildReleaseTestPlan(root: string, options: { base?: string; ful
   const plan: ReleaseTestPlan = { baseline: null, changedFiles: [], scope: "affected", reasons: [], modes: [], mediaModes: [], live: false, paths: [] };
   const selected = new Set<string>();
   const media = new Set<string>();
+  let allMedia = false;
   // Registration tests read root README/CLAUDE and installation declarations.
   // Keep them on every release without selecting every mode's runtime suite
   // merely because the bump updates CHANGELOG.md or AGENTS.md.
   const declarations = [...new Bun.Glob("modes/*/__tests__/{manifest,registration,mode-definition}.test.{ts,tsx}")
     .scanSync({ cwd: root, onlyFiles: true })].sort();
-  const full = (why: string) => {
+  const full = (why: string, includeAllMedia = true) => {
     plan.scope = "full";
+    allMedia ||= includeAllMedia;
     if (!plan.reasons.includes(why)) plan.reasons.push(why);
   };
   try {
@@ -160,6 +162,14 @@ export function buildReleaseTestPlan(root: string, options: { base?: string; ful
       } else if (COMMON.some(directory => path.startsWith(`${directory}/`)) && /(?:^|\/)__tests__\//.test(path)
         && path !== "core/__tests__/test-tier.ts") {
         // These tests are already in the mandatory common suite.
+      } else if ((/^(?:core|server|bin|snapshot|plugins|src|desktop\/src)\/.*\.(?:[cm]?[jt]sx?|css)$/.test(path)
+        && !/\.config\.[^/]+$/.test(path)
+        && path !== "core/__tests__/test-tier.ts") || path === "scripts/test-release.ts") {
+        // Application contracts can affect every viewer and backend, so retain
+        // full discovery and live integration. Local media pipelines execute
+        // mode scripts, not the shell: only their own changes opt into media.
+        // Selector behavior is covered by Git-fixture and runner-exit tests.
+        full(`shared application code: ${path}; media follows mode changes`, false);
       } else {
         full(`shared runtime or unclassified change: ${path}`);
       }
@@ -170,7 +180,7 @@ export function buildReleaseTestPlan(root: string, options: { base?: string; ful
   if (options.full) full("explicit --full");
   if (plan.scope === "full") {
     plan.modes = modes;
-    plan.mediaModes = "all";
+    plan.mediaModes = allMedia ? "all" : [...media].sort();
     plan.live = true;
     // No positional filters: preserve Bun's full discovery, including new roots.
     plan.paths = [];
