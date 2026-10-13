@@ -132,6 +132,9 @@ describe("release test scope", () => {
       ["bun.lock", "changed dependencies"],
       ["desktop/tsup.config.ts", "export default { changed: true };"],
       ["src/test.config.ts", "export default { changed: true };"],
+      ["templates/session-commands/helper.mjs", "export const changed = true;"],
+      ["templates/session-commands/nested/prompt.md", "Unknown nested template"],
+      ["templates/agent-commands/handoff-pneuma.md", "Other template family"],
       ["unknown/input", "unknown impact"],
     ]) {
       const root = fixture();
@@ -158,6 +161,26 @@ describe("release test scope", () => {
       write(root, "modes/alpha/skill/scripts/process.mjs", "export const changed = true;");
       expect(buildReleaseTestPlan(root).mediaModes).toEqual(["alpha"]);
       write(root, "bun.lock", "dependency changes override application scope");
+      expect(buildReleaseTestPlan(root).mediaModes).toBe("all");
+    }
+  });
+
+  test("session-command prompts retain all suites and live backends while media follows runtime changes", () => {
+    for (const name of ["handoff", "borrow"]) {
+      const root = fixture();
+      write(root, `templates/session-commands/${name}.md`, "Updated backend prompt");
+      const plan = buildReleaseTestPlan(root);
+      expect(plan.scope).toBe("full");
+      expect(plan.paths).toEqual([]);
+      expect(plan.modes).toEqual(["_shared", "alpha", "beta"]);
+      expect(plan.live).toBe(true);
+      expect(plan.mediaModes).toEqual([]);
+      expect(releaseTestCommand(plan).env.PNEUMA_TEST_LIVE).toBe("1");
+      expect(releaseTestCommand(plan).env.PNEUMA_TEST_MEDIA).toBe("");
+
+      write(root, "modes/alpha/skill/scripts/process.mjs", "export const changed = true;");
+      expect(buildReleaseTestPlan(root).mediaModes).toEqual(["alpha"]);
+      write(root, "unknown/input", "Unknown impact still requires media");
       expect(buildReleaseTestPlan(root).mediaModes).toBe("all");
     }
   });

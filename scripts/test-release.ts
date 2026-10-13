@@ -159,6 +159,10 @@ export function buildReleaseTestPlan(root: string, options: { base?: string; ful
         if (!versionOnlyPackage(previous(root, commit, path), current(root, path))) full(`package/configuration change: ${path}`);
       } else if (/^(?:docs\/|\.agents\/|\.claude\/).*\.md$/.test(path) || /^[^/]+\.md$/.test(path)) {
         // Common guidance and mode declaration checks cover these documents.
+      } else if (/^templates\/session-commands\/[^/]+\.md$/.test(path)) {
+        // installSessionCommands copies these prompts into backend command
+        // directories; local media pipelines do not consume them.
+        full(`session-command prompt: ${path}; media follows mode changes`, false);
       } else if (COMMON.some(directory => path.startsWith(`${directory}/`)) && /(?:^|\/)__tests__\//.test(path)
         && path !== "core/__tests__/test-tier.ts") {
         // These tests are already in the mandatory common suite.

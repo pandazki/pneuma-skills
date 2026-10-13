@@ -31,6 +31,9 @@ baseline, selected modes, enabled tiers and reasons before running anything.
   media only for modes whose own runtime changed: local media pipelines consume
   mode scripts, not application shell code. The release selector itself follows
   this rule; its policy is verified with Git fixtures and runner-exit tests.
+  Direct Markdown files in `templates/session-commands/` follow the same rule:
+  the installer copies them into backend command directories, and local media
+  pipelines do not consume them. Other template paths retain full media coverage.
   Dependency and test-environment changes (including `test-tier.ts`), missing
   baselines, or unknown impact select the full suite with both expensive tiers. The shared
   image family (`generate_image.mjs`, `edit_image.mjs`, `storyboard.mjs` and

@@ -47,6 +47,8 @@ paths:
   Dependencies, test-environment changes, unknown impact and `--full` still enable
   all media. Changing the release selector runs all ordinary/backend checks;
   Git-fixture and runner-exit tests verify its selection policy.
+  `templates/session-commands/*.md` also retains all ordinary/backend checks
+  without unrelated media: these files are backend prompts, not pipeline inputs.
   `test:media` opts into media only; `test:all` opts into media and live tiers.
 - **Live tier (`PNEUMA_TEST_LIVE=1`).** Host CLI/authentication checks and backend
   lifecycle tests depend on installed binaries, local credentials and sometimes
