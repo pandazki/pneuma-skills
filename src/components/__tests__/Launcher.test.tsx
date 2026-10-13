@@ -219,6 +219,31 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     expect(launches[0]?.backendType).toBe("claude-code");
   });
 
+  test("revisiting a previous path waits for a fresh workspace check", async () => {
+    await mountDialog("/previous");
+    await click("Codex");
+    const finishOther = deferWorkspace("/other");
+    await typeWorkspace("/other");
+    const finishPrevious = deferWorkspace("/previous");
+    await typeWorkspace("/previous");
+    expect(button("Launch").disabled).toBe(true);
+    await finishOther({ hasSession: false });
+    expect(button("Launch").disabled).toBe(true);
+    await finishPrevious({ hasSession: true, mode: "doc", backendType: "claude-code", config: {} });
+    await click("Launch");
+    expect(launches[0]?.workspace).toBe("/previous");
+    expect(launches[0]?.backendType).toBe("claude-code");
+  });
+
+  test("selecting the current directory keeps its completed check usable", async () => {
+    await mountDialog("/current");
+    await click("Codex");
+    await browseWorkspace("/current");
+    expect(button("Launch").disabled).toBe(false);
+    await click("Launch");
+    expect(launches[0]?.backendType).toBe("codex");
+  });
+
   test("a failed workspace check is visible and cannot launch with an assumed backend", async () => {
     await mountDialog();
     const finish = deferWorkspace("/unreadable");

@@ -2852,9 +2852,16 @@ export function LaunchDialog({
   const { resolved: dialogTheme } = useAppTheme();
   const isLight = dialogTheme === "light";
 
+  const changeWorkspace = (nextWorkspace: string) => {
+    if (nextWorkspace === workspace) return;
+    // Invalidate in the same event as the path edit. Clearing from the effect
+    // schedules a second synchronous update for every typed character.
+    setWorkspaceCheck(null);
+    setWorkspace(nextWorkspace);
+  };
+
   useEffect(() => {
     const controller = new AbortController();
-    setWorkspaceCheck(null);
     const check = async () => {
       try {
         const res = await fetch(`${getApiBase()}/api/workspace-check?path=${encodeURIComponent(workspace)}`, {
@@ -2983,7 +2990,7 @@ export function LaunchDialog({
           <input
             type="text"
             value={workspace}
-            onChange={(e) => setWorkspace(e.target.value)}
+            onChange={(e) => changeWorkspace(e.target.value)}
             className="flex-1 min-w-0 px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
           />
           <button
@@ -2996,7 +3003,7 @@ export function LaunchDialog({
                   defaultPath: workspace || undefined,
                 });
                 if (selected) {
-                  setWorkspace(selected);
+                  changeWorkspace(selected);
                 }
               } else {
                 setBrowsing(!browsing);
@@ -3018,7 +3025,7 @@ export function LaunchDialog({
           <DirBrowser
             startPath={workspace || homeDir}
             apiBase={getApiBase()}
-            onSelect={setWorkspace}
+            onSelect={changeWorkspace}
             onClose={() => setBrowsing(false)}
           />
         )}
