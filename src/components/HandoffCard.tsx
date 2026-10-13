@@ -15,6 +15,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store/index.js";
 import { getApiBase } from "../utils/api.js";
+import { BackendLogo, FALLBACK_BACKENDS } from "./Launcher.js";
 
 export default function HandoffCard() {
   const { t } = useTranslation("handoff");
@@ -115,6 +116,13 @@ export default function HandoffCard() {
             {sourceLabel} → {payload.target_mode}
           </span>
         </div>
+
+        {payload.target_backend ? (
+          <div className="flex items-center gap-1.5 text-xs text-cc-muted mb-3">
+            <BackendLogo type={payload.target_backend} className="w-3.5 h-3.5" />
+            <span>{FALLBACK_BACKENDS.find((backend) => backend.type === payload.target_backend)?.label ?? payload.target_backend}</span>
+          </div>
+        ) : null}
 
         {/* Intent — the high-order line, biggest type weight. */}
         <p className="text-cc-fg text-sm leading-relaxed mb-3">{payload.intent}</p>

@@ -46,6 +46,8 @@ $PNEUMA_CLI handoff --json '{
 
 Field guidance:
 
+- When responding to a `<pneuma:request-handoff request_id="..." />` UI tag, include that exact `request_id` in the JSON. Keep the tag's target, target session and intent; Pneuma owns the selected backend. Omit `request_id` for a direct `/handoff` with no UI request.
+
 - `intent` — required. One sentence, in the user's language and their terms.
 - `summary` — what this session actually produced and what state it is in.
   Write it for someone who was not here.

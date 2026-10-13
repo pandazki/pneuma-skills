@@ -26,9 +26,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
-import { basename, escapeXml, shortenPath } from "../utils/string.js";
+import { basename, shortenPath } from "../utils/string.js";
 import { timeAgo } from "../utils/timeAgo.js";
-import { sendUserMessage } from "../ws.js";
+import type { HandoffRequestInput } from "../../core/types/handoff.js";
 import { useAnimatedMount } from "../utils/useAnimatedMount.js";
 import { CoverImage, type ProjectCoverEntry } from "./ProjectCover.js";
 import { ModeIcon } from "./ModeIcon.js";
@@ -245,7 +245,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // Launch sheet — when set, the right pane swaps from the mode-tile grid
   // to a sheet that fetches the mode's init params, optionally reveals a
   // Smart Handoff toggle, and only fires `/api/launch` (or dispatches the
-  // request-handoff tag) on Confirm. `null` means "show the grid".
+  // structured handoff request) on Confirm. `null` means "show the grid".
   const [launchTarget, setLaunchTarget] = useState<ModeInfo | null>(null);
 
   const [sheetParams, setSheetParams] = useState<InitParamWithAutoFill[]>([]);
@@ -699,24 +699,42 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   // so we intentionally do NOT exclude `launchTarget.name === sessionMode`.
   const canHandoff = !!ctx && !!activeSessionId && !!sessionMode;
 
-  const confirmLaunch = () => {
-    if (!launchTarget) return;
+  const confirmLaunch = async () => {
+    if (!launchTarget || launching) return;
     if (smartHandoff && canHandoff) {
       const flat = handoffIntent.replace(/\s+/g, " ").trim();
       if (!flat) {
         setSheetError(t("error.tell_session_what_to_do"));
         return;
       }
-      const tag = `<pneuma:request-handoff target="${escapeXml(launchTarget.name)}" target_session="auto" intent="${escapeXml(flat)}" />`;
-      void sendUserMessage(tag);
-      // Reset sheet + close the panel so the user sees the chat where the
-      // tag now lives, plus the eventual HandoffCard once the source agent
-      // writes the handoff file.
-      setLaunchTarget(null);
+      setLaunching(true);
       setSheetError(null);
-      setSmartHandoff(false);
-      setHandoffIntent("");
-      onClose?.();
+      try {
+        // Save the launch choice before asking the agent to write the brief.
+        // The server owns it through confirmation, including in sibling tabs.
+        const res = await fetch(`${apiBase}/api/handoffs/request`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            source_session_id: activeSessionId!,
+            target_mode: launchTarget.name,
+            target_backend: selectedBackendType,
+            intent: flat,
+          } satisfies HandoffRequestInput),
+        });
+        const data = (await res.json()) as { request_id?: string; status?: string; error?: string };
+        if (!res.ok || !data.request_id || data.status !== "preparing") {
+          throw new Error(data.error ?? t("error.prepare_failed"));
+        }
+        setLaunchTarget(null);
+        setSmartHandoff(false);
+        setHandoffIntent("");
+        onClose?.();
+      } catch (error) {
+        setSheetError(error instanceof Error ? error.message : t("error.prepare_failed"));
+      } finally {
+        setLaunching(false);
+      }
       return;
     }
     void launch(launchTarget.name, undefined, sheetValues);
@@ -1495,7 +1513,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                       <button
                         key={backend.type}
                         type="button"
-                        disabled={unavailable}
+                        disabled={unavailable || launching}
                         title={unavailable ? (backend.reason || t("launch_sheet.backend_unavailable")) : backend.label}
                         onClick={() => setSelectedBackendType(backend.type)}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
@@ -1540,6 +1558,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                 <label className="flex items-start gap-2 text-sm text-cc-fg cursor-pointer">
                   <input
                     type="checkbox"
+                    disabled={launching}
                     checked={smartHandoff}
                     onChange={(e) => {
                       setSmartHandoff(e.target.checked);
@@ -1561,6 +1580,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                       {t("launch_sheet.intent_label")}
                     </label>
                     <textarea
+                      disabled={launching}
                       value={handoffIntent}
                       onChange={(e) => {
                         setHandoffIntent(e.target.value);

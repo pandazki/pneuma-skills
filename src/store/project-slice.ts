@@ -1,31 +1,8 @@
 import type { StateCreator } from "zustand";
 import type { AppState } from "./types.js";
 
-/**
- * Structured handoff payload — mirrors what `pneuma handoff` accepted on the
- * agent side and what `/api/handoffs/emit` broadcast to the source session's
- * browser. Used by the HandoffCard to render the review surface.
- */
-export interface HandoffProposalPayload {
-  source_session_id?: string;
-  source_mode?: string;
-  source_display_name?: string;
-  target_mode: string;
-  target_session?: string;
-  intent: string;
-  summary?: string;
-  suggested_files?: string[];
-  key_decisions?: string[];
-  open_questions?: string[];
-  /**
-   * What confirming will do to this workspace. A project source gains a
-   * sibling session and keeps this one's history; a quick source hands its
-   * workspace to a new session, which is a different sentence to put on a
-   * button. Absent on a proposal whose source the server could not resolve —
-   * confirm refuses those anyway.
-   */
-  source_kind?: "quick" | "project";
-}
+import type { HandoffProposalPayload } from "../../core/types/handoff.js";
+export type { HandoffProposalPayload } from "../../core/types/handoff.js";
 
 /**
  * One in-flight handoff proposal — at most one is held in store state at a

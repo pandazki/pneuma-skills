@@ -156,12 +156,14 @@ Two directions matter to you: **emitting** a handoff (someone — usually you �
 The user triggers an outbound handoff via the UI's **Smart Handoff** control. You'll see a chat message arrive that looks like:
 
 ```
-<pneuma:request-handoff target="webcraft" target_session="auto" intent="Build a one-page landing site from this brand identity" />
+<pneuma:request-handoff request_id="<request-id>" target="webcraft" target_session="auto" intent="Build a one-page landing site from this brand identity" />
 ```
+
+Copy `request_id` exactly into the handoff JSON. Pneuma has already saved the user's target and backend under this id; your brief cannot change them. Copy the tag's `target` into `target_mode`, and keep its `target_session` and `intent`. If an older tag has no `request_id`, omit the field.
 
 This is your cue to **prepare a structured handoff** for the target. Think hard about what the target needs:
 
-- **What's the user's current intent?** Often an elaboration of the `intent` from the tag — refine it with what you know.
+- **What's the user's current intent?** Keep the `intent` from the tag; put useful elaboration in the summary.
 - **What progress has been made here that the target should know?** Files produced, decisions locked in, mood and aesthetic established.
 - **What files should the target read first?** Be specific — paths relative to `$PNEUMA_PROJECT_ROOT`. Order them by importance.
 - **What's already decided?** Aesthetic, technical, scope decisions the target shouldn't relitigate.
@@ -171,6 +173,7 @@ Once you've organized that context, **call the handoff CLI through the `$PNEUMA_
 
 ```bash
 $PNEUMA_CLI handoff --json '{
+  "request_id": "<request-id from the tag>",
   "target_mode": "webcraft",
   "target_session": "auto",
   "intent": "Build a one-page landing site from this brand identity",
@@ -196,8 +199,9 @@ Field reference:
 
 | Field | Required | Notes |
 |---|---|---|
+| `request_id` | when present in the tag | Copy exactly; binds the brief to the user's saved target and backend. Stale or cancelled requests are rejected |
 | `target_mode` | yes | Mode name (e.g. `webcraft`, `slide`, `doc`) |
-| `target_session` | no | Existing session id to resume into; `auto` or omit to spawn fresh. Project sessions only — a quick session has no siblings to name, and the field is ignored there |
+| `target_session` | no | Keep `auto` for a UI request. Legacy agent-only proposals may name an existing project session, or use `auto` / omit to spawn fresh. Ignored for quick sessions |
 | `intent` | yes | One sentence — what the target should accomplish |
 | `summary` | recommended | A few sentences on what's done in this session |
 | `suggested_files` | recommended | Ordered list of `$PNEUMA_PROJECT_ROOT`-relative paths the target should read first |
