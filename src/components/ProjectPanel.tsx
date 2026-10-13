@@ -208,19 +208,20 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               defaultBackendType?: BackendType;
             };
             if (bData.backends?.length) setBackendOptions(bData.backends);
-            // Default selection follows the server's preference — but only
-            // when the chosen default is actually available, mirroring
-            // BackendLaunchDialog's auto-select-first-available behavior.
-            const opts = bData.backends ?? FALLBACK_BACKENDS;
-            const preferred = bData.defaultBackendType;
-            const preferredAvail = preferred
-              ? opts.find((o) => o.type === preferred)
-              : undefined;
-            if (preferred && preferredAvail?.available !== false) {
-              setSelectedBackendType(preferred);
-            } else {
-              const firstAvail = opts.find((o) => o.available && o.implemented);
-              if (firstAvail) setSelectedBackendType(firstAvail.type);
+            // Metadata refreshes may update availability, but the server
+            // default only applies until the user chooses a backend.
+            if (!backendSelectionTouched.current) {
+              const opts = bData.backends ?? FALLBACK_BACKENDS;
+              const preferred = bData.defaultBackendType;
+              const preferredAvail = preferred
+                ? opts.find((o) => o.type === preferred)
+                : undefined;
+              if (preferred && preferredAvail?.available !== false) {
+                setSelectedBackendType(preferred);
+              } else {
+                const firstAvail = opts.find((o) => o.available && o.implemented);
+                if (firstAvail) setSelectedBackendType(firstAvail.type);
+              }
             }
           } catch { /* ignore */ }
         }
@@ -300,6 +301,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     useState<BackendOption[]>(FALLBACK_BACKENDS);
   const [selectedBackendType, setSelectedBackendType] =
     useState<BackendType>("codex");
+  const backendSelectionTouched = useRef(false);
 
   const deleteSession = async (sessionId: string) => {
     if (deleting) return;
@@ -1515,7 +1517,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         type="button"
                         disabled={unavailable || launching}
                         title={unavailable ? (backend.reason || t("launch_sheet.backend_unavailable")) : backend.label}
-                        onClick={() => setSelectedBackendType(backend.type)}
+                        onClick={() => {
+                          backendSelectionTouched.current = true;
+                          setSelectedBackendType(backend.type);
+                        }}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                           active && !unavailable
                             ? "border-cc-primary/50 bg-cc-primary/10 text-cc-fg"

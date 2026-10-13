@@ -5,7 +5,7 @@ import { Window } from "happy-dom";
 // Isolate the Vite-only i18n module replacement so it cannot change
 // other frontend suites' imports or global browser state.
 if (process.env.PNEUMA_HANDOFF_UI_TEST !== "1") {
-  test("ProjectPanel preserves the selected backend through Smart Handoff", async () => {
+  test("ProjectPanel preserves the selected backend through launch and Smart Handoff", async () => {
     const proc = Bun.spawn([process.execPath, "test", import.meta.path], {
       env: { ...process.env, PNEUMA_HANDOFF_UI_TEST: "1" },
       stdout: "pipe", stderr: "pipe",
@@ -123,6 +123,31 @@ if (process.env.PNEUMA_HANDOFF_UI_TEST !== "1") {
     });
     expect(closes).toBe(1);
     expect(requests.some(req => req.path.endsWith("/api/launch"))).toBe(false);
+  });
+
+  test("normal launch preserves the chosen backend after project metadata refreshes", async () => {
+    await mountPanel();
+    await clickButton("Slides");
+    await clickButton("Codex");
+    const { useStore } = await import("../../store.js");
+    await act(async () => { useStore.getState().bumpSessionMetaTick(); });
+    await clickButton("Confirm");
+    expect(requests.find(req => req.path.endsWith("/api/launch"))?.body.backendType).toBe("codex");
+  });
+
+  test("normal launch follows the server default until the user chooses a backend", async () => {
+    await mountPanel();
+    await clickButton("Slides");
+    await clickButton("Confirm");
+    expect(requests.find(req => req.path.endsWith("/api/launch"))?.body.backendType).toBe("claude-code");
+  });
+
+  test("Smart Handoff preserves the chosen backend after project metadata refreshes", async () => {
+    await chooseHandoff();
+    const { useStore } = await import("../../store.js");
+    await act(async () => { useStore.getState().bumpSessionMetaTick(); });
+    await clickButton("Confirm");
+    expect(requests.find(req => req.path.endsWith("/api/handoffs/request"))?.body.target_backend).toBe("codex");
   });
 
   test("a review opened without the launch sheet displays the server-owned backend", async () => {
