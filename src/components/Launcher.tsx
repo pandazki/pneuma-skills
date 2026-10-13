@@ -2773,7 +2773,7 @@ function GalleryModeCard({
 
 // ── LaunchDialog ──────────────────────────────────────────────────────────
 
-function LaunchDialog({
+export function LaunchDialog({
   specifier,
   displayName,
   description,
@@ -2830,34 +2830,64 @@ function LaunchDialog({
     const firstAvail = backendOptions.find((b) => b.available && b.implemented);
     return firstAvail?.type ?? defaultBackendType;
   });
-  const [existingSession, setExistingSession] = useState<{
-    mode: string;
-    backendType: BackendType;
-    config: Record<string, string | number>;
+  const [workspaceCheck, setWorkspaceCheck] = useState<{
+    path: string;
+    session: {
+      mode: string;
+      backendType: BackendType;
+      config: Record<string, string | number>;
+    } | null;
+    error?: string;
   } | null>(null);
+  // A workspace lock is separate from the user's choice for a new session.
+  // Results for another path never affect this form, including between a
+  // path edit and the effect that starts its next check.
+  const currentWorkspaceCheck = workspaceCheck?.path === workspace ? workspaceCheck : null;
+  const existingSession = currentWorkspaceCheck?.session ?? null;
+  const checkingWorkspace = currentWorkspaceCheck === null;
+  const effectiveParamValues = existingSession && Object.keys(existingSession.config).length > 0
+    ? existingSession.config : paramValues;
+  const launchError = error || currentWorkspaceCheck?.error;
+  const canLaunch = !loading && !preparing && !checkingWorkspace && !currentWorkspaceCheck?.error && !!workspace.trim();
   const { resolved: dialogTheme } = useAppTheme();
   const isLight = dialogTheme === "light";
 
-  const checkWorkspace = useCallback(async (path: string) => {
-    setWorkspace(path);
-    setExistingSession(null);
-    try {
-      const res = await fetch(`${getApiBase()}/api/workspace-check?path=${encodeURIComponent(path)}`);
-      const data = await res.json();
-      if (data.hasSession) {
-        const backendType = (data.backendType || defaultBackendType) as BackendType;
-        setExistingSession({ mode: data.mode, backendType, config: data.config || {} });
-        setSelectedBackendType(backendType);
-        if (data.config && Object.keys(data.config).length > 0) {
-          setParamValues(data.config);
+  useEffect(() => {
+    const controller = new AbortController();
+    setWorkspaceCheck(null);
+    const check = async () => {
+      try {
+        const res = await fetch(`${getApiBase()}/api/workspace-check?path=${encodeURIComponent(workspace)}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (controller.signal.aborted) return;
+        if (!res.ok || data.error) throw new Error(data.error || t("launch_dialog.prepare_failed"));
+        setWorkspaceCheck({
+          path: workspace,
+          session: data.hasSession ? {
+            mode: data.mode,
+            backendType: (data.backendType || defaultBackendType) as BackendType,
+            config: data.config || {},
+          } : null,
+        });
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setWorkspaceCheck({
+            path: workspace,
+            session: null,
+            error: err instanceof Error ? err.message : t("launch_dialog.prepare_failed"),
+          });
         }
-      } else {
-        setSelectedBackendType(defaultBackendType);
       }
-    } catch { }
-  }, [defaultBackendType]);
+    };
+    void check();
+    return () => controller.abort();
+  }, [workspace, defaultBackendType, t]);
 
   useEffect(() => {
+    let cancelled = false;
+    setPreparing(true);
     const prepare = async () => {
       try {
         const res = await fetch(`${getApiBase()}/api/launch/prepare`, {
@@ -2866,6 +2896,7 @@ function LaunchDialog({
           body: JSON.stringify({ specifier }),
         });
         const data = await res.json();
+        if (cancelled) return;
         if (data.error) {
           setError(data.error);
         } else if (data.initParams?.length) {
@@ -2878,17 +2909,16 @@ function LaunchDialog({
           setParamValues(defaults);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : t("launch_dialog.prepare_failed"));
+        if (!cancelled) setError(err instanceof Error ? err.message : t("launch_dialog.prepare_failed"));
       }
-      setPreparing(false);
-      if (defaultWorkspace) {
-        checkWorkspace(defaultWorkspace);
-      }
+      if (!cancelled) setPreparing(false);
     };
-    prepare();
-  }, [specifier, defaultWorkspace, checkWorkspace]);
+    void prepare();
+    return () => { cancelled = true; };
+  }, [specifier, t]);
 
   const handleLaunch = useCallback(async () => {
+    if (!canLaunch) return;
     setLoading(true);
     setError(null);
     try {
@@ -2902,7 +2932,7 @@ function LaunchDialog({
           sessionName: sessionNameValue.trim() || undefined,
           initParams: {
             ...(defaultInitParams || {}),
-            ...(Object.keys(paramValues).length > 0 ? paramValues : {}),
+            ...effectiveParamValues,
           },
         }),
       });
@@ -2930,7 +2960,7 @@ function LaunchDialog({
       setError(err instanceof Error ? err.message : t("launch_dialog.launch_failed"));
       setLoading(false);
     }
-  }, [specifier, workspace, selectedBackendType, existingSession, paramValues, onClose, forkSource]);
+  }, [canLaunch, specifier, workspace, selectedBackendType, existingSession, sessionNameValue, defaultInitParams, effectiveParamValues, onClose, forkSource, t]);
 
   const [activeHighlight, setActiveHighlight] = useState(0);
   const highlights = showcase?.highlights;
@@ -2953,7 +2983,7 @@ function LaunchDialog({
           <input
             type="text"
             value={workspace}
-            onChange={(e) => { setWorkspace(e.target.value); setExistingSession(null); }}
+            onChange={(e) => setWorkspace(e.target.value)}
             className="flex-1 min-w-0 px-3 py-2 bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg text-sm focus:outline-none focus:border-cc-primary/50"
           />
           <button
@@ -2966,7 +2996,7 @@ function LaunchDialog({
                   defaultPath: workspace || undefined,
                 });
                 if (selected) {
-                  checkWorkspace(selected);
+                  setWorkspace(selected);
                 }
               } else {
                 setBrowsing(!browsing);
@@ -2988,7 +3018,7 @@ function LaunchDialog({
           <DirBrowser
             startPath={workspace || homeDir}
             apiBase={getApiBase()}
-            onSelect={checkWorkspace}
+            onSelect={setWorkspace}
             onClose={() => setBrowsing(false)}
           />
         )}
@@ -3007,7 +3037,7 @@ function LaunchDialog({
         </>
       )}
 
-      {preparing && (
+      {(preparing || checkingWorkspace) && (
         <p className="text-sm text-cc-muted mb-4">{t("launch_dialog.loading_config")}</p>
       )}
 
@@ -3078,15 +3108,15 @@ function LaunchDialog({
           </p>
           <InitParamForm
             params={initParams as InitParamWithAutoFill[]}
-            values={paramValues}
+            values={effectiveParamValues}
             onChange={setParamValues}
             disabled={!!existingSession}
           />
         </div>
       )}
 
-      {error && (
-        <p className="text-sm text-cc-error mb-4">{error}</p>
+      {launchError && (
+        <p className="text-sm text-cc-error mb-4">{launchError}</p>
       )}
     </>
   );
@@ -3099,7 +3129,7 @@ function LaunchDialog({
       >
         {t("launch_dialog.cancel")}
       </button>
-      <PrimaryButton onClick={handleLaunch} disabled={loading || preparing}>
+      <PrimaryButton onClick={handleLaunch} disabled={!canLaunch}>
         {loading ? t("launch_dialog.launching") : t("launch_dialog.launch")}
       </PrimaryButton>
     </div>
