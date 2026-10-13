@@ -2284,6 +2284,7 @@ export async function startServer(options: ServerOptions) {
     // so a launcher-issued emit and a per-session confirm can't race.
     mountHandoffRoutes(app, {
       wsBridge,
+      isBackendRegistered: (type): type is AgentBackendType => getBackendDescriptors().some((backend) => backend.type === type),
       killSession: killActiveSession,
       launchSession: async (params) => {
         const result = await launchPneumaChild({
@@ -3092,6 +3093,7 @@ export async function startServer(options: ServerOptions) {
   // until they close it).
   const handoffRoutesContext = mountHandoffRoutes(app, {
     wsBridge,
+    isBackendRegistered: (type): type is AgentBackendType => getBackendDescriptors().some((backend) => backend.type === type),
     killSession: killActiveSession,
     launchSession: async (params) => {
       const result = await launchPneumaChild({

@@ -3,6 +3,7 @@
 // backend identity and capability flags so the UI does not depend on Claude-only assumptions.
 
 import type { AgentBackendType } from "../core/types/agent-backend.js";
+import type { HandoffProposalPayload } from "../core/types/handoff.js";
 import type { AgentCapabilities, ModelOption } from "../core/types/agent-backend.js";
 
 // ─── CLI Message Types (NDJSON from Claude Code CLI) ──────────────────────────
@@ -486,18 +487,7 @@ export type BrowserIncomingMessageBase =
   | {
     type: "handoff_proposed";
     handoff_id: string;
-    payload: {
-      source_session_id?: string;
-      source_mode?: string;
-      source_display_name?: string;
-      target_mode: string;
-      target_session?: string;
-      intent: string;
-      summary?: string;
-      suggested_files?: string[];
-      key_decisions?: string[];
-      open_questions?: string[];
-    };
+    payload: HandoffProposalPayload;
     proposed_at: number;
   }
   | {

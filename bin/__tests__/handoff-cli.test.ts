@@ -79,6 +79,23 @@ describe("parseHandoffArgs", () => {
 });
 
 describe("validateHandoffPayload", () => {
+  test("preserves a request correlation id without accepting an agent backend override", () => {
+    const input = validateHandoffPayload({
+      request_id: "ui-request",
+      target_mode: "webcraft",
+      intent: "Build a site",
+      target_backend: "claude-code",
+    }, "source");
+    expect(input.request_id).toBe("ui-request");
+    expect("target_backend" in input).toBe(false);
+  });
+
+  test.each(["", "  ", null, 42])("rejects an invalid request_id: %p", (request_id) => {
+    expect(() => validateHandoffPayload({
+      request_id, target_mode: "webcraft", intent: "Build a site",
+    }, "source")).toThrow(/request_id/);
+  });
+
   test("returns the typed input when valid", () => {
     const input = validateHandoffPayload(
       {

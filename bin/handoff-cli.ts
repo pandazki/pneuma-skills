@@ -17,6 +17,7 @@ import { t } from "./i18n.js";
  */
 
 export interface HandoffJsonPayload {
+  request_id?: unknown;
   target_mode?: unknown;
   target_session?: unknown;
   intent?: unknown;
@@ -29,6 +30,7 @@ export interface HandoffJsonPayload {
 }
 
 export interface HandoffEmitInput {
+  request_id?: string;
   source_session_id: string;
   target_mode: string;
   target_session?: string;
@@ -135,6 +137,7 @@ export function validateHandoffPayload(
 
   const target_mode = requireString("target_mode");
   const intent = requireString("intent");
+  const request_id = obj.request_id === undefined ? undefined : requireString("request_id");
   const target_session = optionalString("target_session");
   const summary = optionalString("summary");
   const suggested_files = optionalStringArray("suggested_files");
@@ -143,6 +146,7 @@ export function validateHandoffPayload(
 
   return {
     source_session_id: sourceSessionId,
+    ...(request_id !== undefined ? { request_id } : {}),
     target_mode,
     intent,
     ...(target_session !== undefined ? { target_session } : {}),

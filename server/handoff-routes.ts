@@ -1,12 +1,13 @@
 /**
  * Handoff routes — implements the v2 tool-call handoff protocol.
  *
+ *   POST /api/handoffs/request        — user captures settings before the agent prepares a brief
  *   POST /api/handoffs/emit           — agent CLI submits a structured payload
  *   POST /api/handoffs/:id/confirm    — user clicked Confirm on the HandoffCard
  *   POST /api/handoffs/:id/cancel     — user clicked Cancel on the HandoffCard
  *
  * State is held in an in-memory `Map<handoff_id, HandoffProposal>` per server
- * instance. Pending proposals expire after 30 minutes via a janitor timer.
+ * instance. Preparing and pending proposals expire after 30 minutes.
  *
  * The endpoints are mounted on BOTH the launcher and the per-session servers
  * so the source agent's `pneuma handoff` invocation reaches the same server
@@ -21,27 +22,22 @@ import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import type { AgentBackendType } from "../core/types/agent-backend.js";
+import type { HandoffProposalPayload, HandoffRequestInput } from "../core/types/handoff.js";
 
-/** Single handoff proposal — what the agent submitted, plus its lifecycle state. */
-export interface HandoffProposal {
+/** User settings and agent brief share one proposal and one lifecycle. */
+export interface HandoffProposal extends Omit<HandoffProposalPayload, "source_kind"> {
   handoff_id: string;
+  /** Present only for a UI-owned request; equals handoff_id for correlation. */
+  request_id?: string;
   source_session_id: string;
-  source_mode?: string;
-  source_display_name?: string;
-  target_mode: string;
-  target_session?: string;
-  intent: string;
-  summary?: string;
-  suggested_files?: string[];
-  key_decisions?: string[];
-  open_questions?: string[];
   /**
    * Where the target session will be minted, resolved from the source
    * session. Absent means the source was not recognised, and confirm refuses.
    */
   location?: HandoffSourceLocation;
   proposed_at: number;
-  state: "pending" | "confirmed" | "cancelled" | "timed_out";
+  state: "preparing" | "pending" | "confirmed" | "cancelled" | "timed_out";
 }
 
 /**
@@ -81,6 +77,8 @@ export interface HandoffWsBridgeLike {
 export interface HandoffRoutesOptions {
   /** Bridge for chat-tag dispatch + browser broadcast. */
   wsBridge: HandoffWsBridgeLike;
+  /** Registry-owned validation; route code has no backend name list. */
+  isBackendRegistered: (backendType: string) => backendType is AgentBackendType;
   /**
    * Best-effort kill of a session's backend. The new protocol still terminates
    * the source on confirm so the user isn't billed for a session they left.
@@ -98,7 +96,7 @@ export interface HandoffRoutesOptions {
     project?: string;
     /** Set only for a project target, whose id names its directory. */
     sessionId?: string;
-    /** Inherited from the source for a quick target; backends are locked per workspace. */
+    /** Captured user choice for a new project target, or inherited quick workspace lock. */
     backendType?: string;
   }) => Promise<string>;
   /**
@@ -130,7 +128,7 @@ const DEFAULT_PENDING_TTL_MS = 30 * 60_000; // 30 min
 
 /**
  * Pure helper exported for tests — given a proposal map, mark anything that's
- * been pending past the TTL as `timed_out` and return the ids that flipped.
+ * been preparing or pending past the TTL as `timed_out` and return the ids that flipped.
  */
 export function pruneExpiredProposals(
   proposals: Map<string, HandoffProposal>,
@@ -139,7 +137,7 @@ export function pruneExpiredProposals(
 ): string[] {
   const flipped: string[] = [];
   for (const [id, proposal] of proposals.entries()) {
-    if (proposal.state !== "pending") continue;
+    if (proposal.state !== "preparing" && proposal.state !== "pending") continue;
     if (now - proposal.proposed_at > ttlMs) {
       proposal.state = "timed_out";
       flipped.push(id);
@@ -169,28 +167,155 @@ export function mountHandoffRoutes(
   const ttlMs = options.pendingTtlMs ?? DEFAULT_PENDING_TTL_MS;
   const pruneInterval = options.pruneIntervalMs ?? DEFAULT_PRUNE_INTERVAL_MS;
 
-  const pruneTimer = setInterval(() => {
-    pruneExpiredProposals(proposals, Date.now(), ttlMs);
-  }, pruneInterval);
+  const broadcastCancelled = (proposal: HandoffProposal, reason: string): void => {
+    try {
+      options.wsBridge.broadcastToSession(proposal.source_session_id, {
+        type: "handoff_cancelled",
+        handoff_id: proposal.handoff_id,
+        reason,
+      });
+    } catch (err) {
+      console.warn(`[handoff-routes] failed to broadcast cancellation: ${err}`);
+    }
+  };
+  const pruneExpired = (): void => {
+    for (const id of pruneExpiredProposals(proposals, Date.now(), ttlMs)) {
+      broadcastCancelled(proposals.get(id)!, "timed_out");
+    }
+  };
+  const activeRequest = (sourceSessionId: string): HandoffProposal | undefined =>
+    [...proposals.values()].find((proposal) =>
+      proposal.request_id !== undefined &&
+      proposal.source_session_id === sourceSessionId &&
+      (proposal.state === "preparing" || proposal.state === "pending"),
+    );
+  const supersedeActive = (sourceSessionId: string): void => {
+    for (const proposal of proposals.values()) {
+      if (proposal.source_session_id === sourceSessionId &&
+          (proposal.state === "preparing" || proposal.state === "pending")) {
+        proposal.state = "cancelled";
+        broadcastCancelled(proposal, "superseded");
+      }
+    }
+  };
+  const broadcastProposal = (proposal: HandoffProposal): void => {
+    const payload: HandoffProposalPayload = {
+      source_session_id: proposal.source_session_id,
+      source_mode: proposal.source_mode,
+      source_display_name: proposal.source_display_name,
+      target_mode: proposal.target_mode,
+      target_session: proposal.target_session,
+      target_backend: proposal.target_backend,
+      intent: proposal.intent,
+      summary: proposal.summary,
+      suggested_files: proposal.suggested_files,
+      key_decisions: proposal.key_decisions,
+      open_questions: proposal.open_questions,
+      source_kind: proposal.location?.kind,
+    };
+    try {
+      options.wsBridge.broadcastToSession(proposal.source_session_id, {
+        type: "handoff_proposed",
+        handoff_id: proposal.handoff_id,
+        payload,
+        proposed_at: proposal.proposed_at,
+      });
+    } catch (err) {
+      console.warn(`[handoff-routes] broadcast failed for ${proposal.handoff_id}: ${err}`);
+    }
+  };
+  const missingRequestIdError = (proposal: HandoffProposal): string =>
+    `request_id is required for the active handoff request; include request_id="${proposal.request_id}" from the request-handoff message`;
+
+  const pruneTimer = setInterval(pruneExpired, pruneInterval);
   // Don't keep the process alive on this timer.
   if (typeof pruneTimer.unref === "function") pruneTimer.unref();
 
+  // POST /api/handoffs/request ──────────────────────────────────────────
+  app.post("/api/handoffs/request", async (c) => {
+    pruneExpired();
+    const raw: unknown = await c.req.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return c.json({ error: "handoff request must be a JSON object" }, 400);
+    }
+    const body = raw as Record<string, unknown>;
+    for (const field of ["source_session_id", "target_mode", "intent"] as const) {
+      if (typeof body[field] !== "string" || !body[field].trim()) {
+        return c.json({ error: `${field} is required and must be a non-empty string` }, 400);
+      }
+    }
+    if (typeof body.target_backend !== "string" || !options.isBackendRegistered(body.target_backend)) {
+      return c.json({ error: "target_backend must name a registered backend" }, 400);
+    }
+    if (body.target_session !== undefined && body.target_session !== "auto") {
+      return c.json({ error: "a handoff request creates a new target session; target_session must be auto or omitted" }, 400);
+    }
+    const request: HandoffRequestInput = {
+      source_session_id: body.source_session_id as string,
+      target_mode: body.target_mode as string,
+      intent: body.intent as string,
+      target_backend: body.target_backend,
+    };
+    let location: HandoffSourceLocation | null | undefined;
+    try {
+      location = await options.resolveSource?.(request.source_session_id);
+    } catch (err) {
+      console.warn(`[handoff-routes] resolveSource failed for ${request.source_session_id}: ${err}`);
+      return c.json({ error: "the source session could not be resolved" }, 500);
+    }
+    if (location?.kind !== "project") {
+      return c.json({ error: "a handoff request requires a known project source session" }, 400);
+    }
+
+    // Commit settings only after validation. No await may separate superseding
+    // the previous request, storing this one, and dispatching its correlation id.
+    pruneExpired();
+    supersedeActive(request.source_session_id);
+    const requestId = randomUUID();
+    const proposal: HandoffProposal = {
+      ...request,
+      handoff_id: requestId,
+      request_id: requestId,
+      source_mode: location.mode,
+      source_display_name: location.displayName,
+      target_session: "auto",
+      location,
+      proposed_at: Date.now(),
+      state: "preparing",
+    };
+    proposals.set(requestId, proposal);
+    const tag = `<pneuma:request-handoff request_id="${requestId}" target="${escapeXmlAttr(request.target_mode)}" target_session="auto" intent="${escapeXmlAttr(request.intent)}" />`;
+    try {
+      // The bridge records/broadcasts the user message. It does not acknowledge
+      // agent delivery, so this response only reports the stored request state.
+      options.wsBridge.sendUserMessage(request.source_session_id, tag);
+    } catch (err) {
+      // Retain the id so a late response cannot turn into a legacy proposal.
+      proposal.state = "cancelled";
+      broadcastCancelled(proposal, "dispatch_failed");
+      console.error(`[handoff-routes] request dispatch failed for ${requestId}: ${err}`);
+      return c.json({ error: "failed to dispatch the handoff request", request_id: requestId }, 500);
+    }
+    return c.json({ request_id: requestId, status: "preparing" });
+  });
+
   // POST /api/handoffs/emit ─────────────────────────────────────────────
   app.post("/api/handoffs/emit", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
-
+    pruneExpired();
+    const raw: unknown = await c.req.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return c.json({ error: "handoff payload must be a JSON object" }, 400);
+    }
+    const body = raw as Record<string, unknown>;
     const sourceSessionId = typeof body.source_session_id === "string" ? body.source_session_id : "";
     const targetMode = typeof body.target_mode === "string" ? body.target_mode : "";
     const intent = typeof body.intent === "string" ? body.intent : "";
-
-    if (!sourceSessionId) {
-      return c.json({ error: "source_session_id missing" }, 400);
-    }
-    if (!targetMode) {
-      return c.json({ error: "target_mode is required" }, 400);
-    }
-    if (!intent) {
-      return c.json({ error: "intent is required" }, 400);
+    if (!sourceSessionId.trim()) return c.json({ error: "source_session_id missing" }, 400);
+    if (!targetMode.trim()) return c.json({ error: "target_mode is required" }, 400);
+    if (!intent.trim()) return c.json({ error: "intent is required" }, 400);
+    if (body.request_id !== undefined &&
+        (typeof body.request_id !== "string" || !body.request_id.trim())) {
+      return c.json({ error: "request_id must be a non-empty string when provided" }, 400);
     }
 
     const targetSession = typeof body.target_session === "string" ? body.target_session : undefined;
@@ -205,31 +330,40 @@ export function mountHandoffRoutes(
       ? (body.open_questions as unknown[]).filter((v): v is string => typeof v === "string")
       : undefined;
 
-    // Single-flight per source — supersede any prior pending proposal from the
-    // same source session. The user reasonably revises their intent; the new
-    // emission silently replaces the old one (no chat tag, no UI churn).
-    for (const [oldId, oldProposal] of proposals.entries()) {
-      if (
-        oldProposal.state === "pending" &&
-        oldProposal.source_session_id === sourceSessionId
-      ) {
-        oldProposal.state = "cancelled";
-        // Tell any browsers viewing the old proposal to clear it.
-        try {
-          options.wsBridge.broadcastToSession(sourceSessionId, {
-            type: "handoff_cancelled",
-            handoff_id: oldId,
-            reason: "superseded",
-          });
-        } catch {
-          // Broadcast failures aren't fatal for proposal flow.
-        }
+    pruneExpired();
+    if (typeof body.request_id === "string") {
+      const proposal = proposals.get(body.request_id);
+      if (!proposal || proposal.request_id !== body.request_id) {
+        return c.json({ error: "request_id does not identify a handoff request; request a new handoff from the project UI" }, 400);
       }
+      if (proposal.source_session_id !== sourceSessionId || proposal.target_mode !== targetMode) {
+        return c.json({ error: "request_id must match the source session and target mode in the handoff request" }, 400);
+      }
+      if (body.target_session !== undefined && body.target_session !== "auto") {
+        return c.json({ error: "the requested target_session is auto and cannot be changed by the agent" }, 400);
+      }
+      if (proposal.state !== "preparing") {
+        return c.json({ error: `handoff request already ${proposal.state}` }, 409);
+      }
+      // The agent owns only the brief. Backend, target and original intent
+      // stay exactly as recorded by the user, even if extra JSON fields differ.
+      Object.assign(proposal, {
+        summary,
+        suggested_files: suggestedFiles,
+        key_decisions: keyDecisions,
+        open_questions: openQuestions,
+        state: "pending",
+      });
+      broadcastProposal(proposal);
+      return c.json({ handoff_id: proposal.handoff_id, status: "proposed" });
     }
 
-    // Resolve the source up front — the proposal carries the location so
-    // confirm doesn't have to look it up again, and the inbound-handoff.json
-    // can include source identity attributes for the target's env-tag dispatch.
+    const preparing = activeRequest(sourceSessionId);
+    if (preparing) return c.json({ error: missingRequestIdError(preparing) }, 400);
+
+    // Uncorrelated agent proposals retain the legacy quick/existing-session
+    // flow. Source lookup is asynchronous: recheck UI ownership after it, so a
+    // delayed legacy emit cannot replace settings the user just selected.
     let location: HandoffSourceLocation | undefined;
     if (options.resolveSource) {
       try {
@@ -238,15 +372,17 @@ export function mountHandoffRoutes(
         console.warn(`[handoff-routes] resolveSource failed for ${sourceSessionId}: ${err}`);
       }
     }
-    const sourceMode = location?.mode;
-    const sourceDisplayName = location?.displayName;
+    pruneExpired();
+    const newerRequest = activeRequest(sourceSessionId);
+    if (newerRequest) return c.json({ error: missingRequestIdError(newerRequest) }, 400);
+    supersedeActive(sourceSessionId);
 
     const handoffId = randomUUID();
     const proposal: HandoffProposal = {
       handoff_id: handoffId,
       source_session_id: sourceSessionId,
-      source_mode: sourceMode,
-      source_display_name: sourceDisplayName,
+      source_mode: location?.mode,
+      source_display_name: location?.displayName,
       target_mode: targetMode,
       ...(targetSession !== undefined ? { target_session: targetSession } : {}),
       intent,
@@ -259,43 +395,13 @@ export function mountHandoffRoutes(
       state: "pending",
     };
     proposals.set(handoffId, proposal);
-
-    // Broadcast the proposal — the source session's HandoffCard subscribes
-    // to this event. The payload mirrors what the agent submitted plus the
-    // server-assigned id; the browser doesn't need to know about source/
-    // project plumbing.
-    try {
-      options.wsBridge.broadcastToSession(sourceSessionId, {
-        type: "handoff_proposed",
-        handoff_id: handoffId,
-        payload: {
-          source_session_id: sourceSessionId,
-          source_mode: sourceMode,
-          source_display_name: sourceDisplayName,
-          target_mode: targetMode,
-          target_session: targetSession,
-          intent,
-          summary,
-          suggested_files: suggestedFiles,
-          key_decisions: keyDecisions,
-          open_questions: openQuestions,
-          // The one piece of plumbing the card does need: what confirming
-          // will do to this workspace. A project source gains a sibling
-          // session; a quick source hands its workspace over, and the card
-          // has to say so before the user presses the button.
-          source_kind: location?.kind,
-        },
-        proposed_at: proposal.proposed_at,
-      });
-    } catch (err) {
-      console.warn(`[handoff-routes] broadcast failed for ${handoffId}: ${err}`);
-    }
-
+    broadcastProposal(proposal);
     return c.json({ handoff_id: handoffId, status: "proposed" });
   });
 
   // POST /api/handoffs/:id/confirm ──────────────────────────────────────
   app.post("/api/handoffs/:id/confirm", async (c) => {
+    pruneExpired();
     const id = c.req.param("id");
     const proposal = proposals.get(id);
     if (!proposal) return c.json({ error: "handoff not found" }, 404);
@@ -306,16 +412,21 @@ export function mountHandoffRoutes(
       return c.json({ error: "launch not configured" }, 500);
     }
 
-    // Atomic state swap — flip to confirmed up front so a duplicate confirm
-    // (double-click, network retry) hits the 409 above. We only reach this
-    // point once per id.
-    proposal.state = "confirmed";
-
     const location = proposal.location;
     if (!location) {
-      proposal.state = "pending"; // Allow another confirm attempt.
       return c.json({ error: "the source session could not be resolved" }, 500);
     }
+    const targetBackend = proposal.request_id
+      ? proposal.target_backend
+      : location.kind === "quick" ? location.backendType : undefined;
+    if ((proposal.request_id && !targetBackend) ||
+        (targetBackend !== undefined && !options.isBackendRegistered(targetBackend))) {
+      return c.json({ error: "the selected target backend is not registered; request a new handoff" }, 400);
+    }
+
+    // Claim confirmation after validation and before the first filesystem
+    // await. Concurrent confirms/cancels cannot both perform launch effects.
+    proposal.state = "confirmed";
 
     // Resolve target session id. `auto` and undefined mean "fresh UUID".
     //
@@ -371,7 +482,13 @@ export function mountHandoffRoutes(
       await writeFile(inboundTmp, JSON.stringify(inboundPayload, null, 2), "utf-8");
       await rename(inboundTmp, inboundFile);
     } catch (err) {
-      proposal.state = "pending";
+      // A newer request may have arrived during the write. Do not revive an
+      // old card alongside it when the failed write permits a retry.
+      const superseded = [...proposals.values()].some((other) =>
+        other !== proposal && other.source_session_id === proposal.source_session_id &&
+        (other.state === "preparing" || other.state === "pending"),
+      );
+      proposal.state = superseded ? "cancelled" : "pending";
       console.error(`[handoff-routes] failed to write inbound-handoff.json: ${err}`);
       return c.json({ error: "failed to write inbound-handoff payload" }, 500);
     }
@@ -427,7 +544,12 @@ export function mountHandoffRoutes(
         // plain workspace launch, with the source's backend carried over
         // because a workspace's backend is fixed once chosen.
         ...(location.kind === "project"
-          ? { workspace: location.projectRoot, project: location.projectRoot, sessionId: targetSessionId }
+          ? {
+              workspace: location.projectRoot,
+              project: location.projectRoot,
+              sessionId: targetSessionId,
+              ...(targetBackend ? { backendType: targetBackend } : {}),
+            }
           : {
               workspace: location.workspace,
               ...(location.backendType ? { backendType: location.backendType } : {}),
@@ -454,15 +576,23 @@ export function mountHandoffRoutes(
 
   // POST /api/handoffs/:id/cancel ────────────────────────────────────────
   app.post("/api/handoffs/:id/cancel", async (c) => {
+    pruneExpired();
     const id = c.req.param("id");
     const proposal = proposals.get(id);
     if (!proposal) return c.json({ error: "handoff not found" }, 404);
-    if (proposal.state !== "pending") {
+    if (proposal.state !== "preparing" && proposal.state !== "pending") {
       return c.json({ error: `handoff already ${proposal.state}` }, 409);
     }
 
-    const body = (await c.req.json().catch(() => ({}))) as { reason?: unknown };
-    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    const body = (await c.req.json().catch(() => null)) as { reason?: unknown } | null;
+    const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+
+    // Parsing a streamed body yields. Confirmation, supersession or expiry
+    // may have claimed the proposal while this request was waiting.
+    pruneExpired();
+    if (proposal.state !== "preparing" && proposal.state !== "pending") {
+      return c.json({ error: `handoff already ${proposal.state}` }, 409);
+    }
 
     proposal.state = "cancelled";
 
