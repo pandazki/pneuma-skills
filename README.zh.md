@@ -52,14 +52,13 @@
 
 > **"pneuma"** —— 希腊语，意为灵魂、呼吸、生命之气。
 
-人和代码 agent 一起做内容这件事，光有一个聊天窗远远不够 —— 双方需要一层共享的基础设施。Pneuma 的判断很简单：**真正干活的工具其实早就有了（agent 已经能在你的目录里动文件），缺的是一种让人能够看到 agent 在做什么、并且在合适的时机参与进来的方式**。Agent 的母语就是磁盘上的文件，我们不试图在它和文件之间塞一层抽象。我们做的是给每一类任务配一个"现场播放器"（live player），让 agent 的产出按它本来的样子被渲染出来 —— 一份幻灯片、一块仪表盘、一个项目 —— 让你既能看着它工作，也能直接在 UI 里改、或者用结构化的指令推它一把。这是 Pneuma 的四根柱子，搭在主流的 code agent 之上。今天的主路是 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)；运行时支持启动期选择后端，新 agent 可以接进来而不用重写整个 UI 壳。
+人和代码 agent 一起做内容这件事，光有一个聊天窗远远不够 —— 双方需要一层共享的基础设施。Pneuma 的判断很简单：**真正干活的工具其实早就有了（agent 已经能在你的目录里动文件），缺的是一种让人能够看到 agent 在做什么、并且在合适的时机参与进来的方式**。Agent 的母语就是磁盘上的文件，我们不试图在它和文件之间塞一层抽象。我们做的是给每一类任务配一个"现场播放器"（live player），让 agent 的产出按它本来的样子被渲染出来 —— 一份幻灯片、一块仪表盘、一个项目 —— 让你既能看着它工作，也能直接在 UI 里改、或者用结构化的指令推它一把。这是 Pneuma 的四根柱子，搭在主流的 code agent 之上。启动会话时可选择 Claude Code、Codex 或 Kimi Code；各后端通过共享运行时提供其支持的能力。
 
 | 支柱 | 它做什么 |
 |------|------|
 | **视觉环境** | Agent 直接在磁盘上的文件里干活 —— 那是它的本土。Viewer 是它产出的现场播放器，按领域语言渲染，必要时人可以直接在 UI 里改 |
 | **技能** | 每个 mode 注入对应领域的知识 + 种子模板。会话跨次持久化 —— agent 接着上次的进度继续 |
-| **用户偏好** | Agent 持续维护一份关于你的画像（审美、合作方式、各 mode 的具体习惯），跨会话、跨工作区、跨 mode 留存 |
-| **持续学习** | Evolution Agent 分析历史会话，提出有证据支持的技能指引增补与删减，由用户评审后应用 |
+| **持续学习** | 持久化偏好让审美、合作方式和各 mode 的习惯跨会话留存；Evolution Agent 提出有证据支持的技能指引增补与删减，由用户评审后应用 |
 | **分发** | Mode Maker 让你和 AI 一起做新 mode，发布到市场，用 `pneuma mode add` 一键安装别人的 |
 
 ## 内置 Modes
@@ -302,7 +301,7 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 任何带 `<root>/.pneuma/project.json` 标记的目录就是一个项目。在项目内你可以：
 
 - **在不同 mode 里跑多个 session**（doc + webcraft + kami + …），都指向同一个项目根，共享同一份 atlas 和 preferences
-- **跨 mode 的 Smart Handoff** —— 源 agent 发出结构化的 `<pneuma:request-handoff>` 标签，Pneuma 弹出 Handoff 卡片（intent + 建议文件 + 关键决定），你确认，目标 session 启动时这份 brief 已经写进了它的 CLAUDE.md
+- **跨 mode 的 Smart Handoff** —— 选择目标 mode 和 agent 后端，由源 agent 准备交接简报；卡片展示意图、建议文件、关键决定和所选后端。确认后，新 session 使用该后端启动，并在启动指令中收到简报
 - **项目级偏好**位于 `<root>/.pneuma/preferences/`，与全局 `~/.pneuma/preferences/` 正交 —— 两套都会注入到每个会话的启动 prompt
 - **首次进入自动 onboarding**（见上方"[第一次进项目时](#第一次进项目时pneuma-会带着你走一遍)"）
 

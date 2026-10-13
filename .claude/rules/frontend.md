@@ -10,7 +10,7 @@ paths:
 
 ## Baseline
 
-- **Zustand** sliced store (`src/store/`, 10 protocol-aligned slices); mode viewers live in `modes/<mode>/viewer/`.
+- **Zustand** sliced store (`src/store/`, protocol-aligned slices); mode viewers live in `modes/<mode>/viewer/`.
 - **Design tokens**: "Ethereal Tech" theme via `cc-*` CSS custom properties (deep zinc bg `#09090b`, neon orange primary `#f97316`, glassmorphism surfaces with `backdrop-blur`). New UI must use the tokens, not ad-hoc colors.
 - **Visual verification is mandatory**: after modifying viewer components, CSS, or any UI-facing code, use an available browser tool (such as `chrome-devtools-mcp`) to screenshot the running dev server and verify before reporting completion. Do not judge visual correctness by reading code alone.
 - **No emoji in UI elements** — use SVG icons or text labels.

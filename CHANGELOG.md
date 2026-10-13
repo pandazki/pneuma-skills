@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.57.3] - 2026-10-13
+
+### Fixed
+- **Smart Handoff backend selection** — New project sessions now start with the backend you selected, including Codex, instead of falling back to Claude Code. The confirmation card shows that choice, and retries preserve it while the source agent prepares the brief.
+
 ## [3.57.2] - 2026-10-13
 
 ### Fixed

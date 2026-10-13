@@ -52,14 +52,13 @@
 
 > **"pneuma"** — Greek *pneuma*, meaning soul, breath, life force.
 
-When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma's bet is simple: **coding agents already do the work; what's missing is a way for people to watch them and participate at the right moments**. Agents live in files on disk — that's their native habitat and we don't try to abstract it away. Instead, we give each task a live player that renders the work in domain terms (a deck of slides, a board of tiles, a project) and let humans drop in direct edits or structured suggestions without breaking the agent's flow. Four pillars for **isomorphic collaboration**, built atop mainstream code agents. Today the production path is [Claude Code](https://docs.anthropic.com/en/docs/claude-code); the runtime now exposes a startup-selectable backend layer so additional agents can be integrated without rewriting the UI shell.
+When humans and code agents co-create content, they need more than a chat window — they need shared infrastructure. Pneuma's bet is simple: **coding agents already do the work; what's missing is a way for people to watch them and participate at the right moments**. Agents live in files on disk — that's their native habitat and we don't try to abstract it away. Instead, we give each task a live player that renders the work in domain terms (a deck of slides, a board of tiles, a project) and let humans drop in direct edits or structured suggestions without breaking the agent's flow. Four pillars for **isomorphic collaboration**, built atop mainstream code agents. Choose Claude Code, Codex or Kimi Code when starting a session; each backend provides its supported capabilities through the shared runtime.
 
 | Pillar | What it does |
 |--------|-------------|
 | **Visual Environment** | Agent works directly in files on disk — its native surface. Viewers are live players for agent output rendered in domain terms, with optional human participation directly in the UI. |
 | **Skills** | Domain-specific knowledge and seed templates injected per mode. Sessions persist across runs — the agent picks up where it left off |
-| **User Preferences** | The agent builds and maintains a persistent portrait of your aesthetics, collaboration style, and per-mode habits — preferences survive across sessions, workspaces, and modes |
-| **Continuous Learning** | Evolution Agent analyzes conversation history and proposes evidence-backed additions and removals to skill guidance for user review |
+| **Continuous Learning** | Persistent preferences carry your aesthetics, collaboration style and mode habits across sessions. Evolution Agent proposes evidence-backed additions and removals to skill guidance for your review |
 | **Distribution** | Build custom modes with AI via Mode Maker, publish to the marketplace, share with `pneuma mode add` |
 
 ## Built-in Modes
@@ -305,7 +304,7 @@ Pneuma supports an optional Project layer above sessions — a way to anchor *on
 A project is any user directory marked by `<root>/.pneuma/project.json`. Inside one you can:
 
 - **Run multiple sessions in different modes** (doc + webcraft + kami + …) — all targeting the same project root, all sharing the same atlas and preferences
-- **Smart Handoff between modes** — the source agent emits a structured `<pneuma:request-handoff>` tag, Pneuma surfaces a Handoff Card with intent + suggested files + key decisions, you confirm, and the target session spawns with the brief pre-staged in its CLAUDE.md
+- **Smart Handoff between modes** — choose a target mode and agent backend, let the source agent prepare a brief, then review its intent, suggested files, key decisions and selected backend. Confirm to launch the new session with that backend and the brief in its startup instructions
 - **Project-scoped preferences** at `<root>/.pneuma/preferences/`, orthogonal to your global `~/.pneuma/preferences/` — both inject into every session's startup prompt
 - **Auto-onboarding** the first time you enter a fresh project (see [First Run](#first-run--pneuma-walks-you-through-it) above)
 

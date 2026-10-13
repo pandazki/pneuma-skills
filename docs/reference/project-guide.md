@@ -146,7 +146,7 @@ pneuma-skills/
 │   └── shadow-git.ts          # Shadow git, per-turn checkpoint capture, bundle export
 ├── src/                       # React frontend (Vite)
 │   ├── App.tsx                # Root layout, dynamic viewer loading
-│   ├── store/                 # Zustand store (10 protocol-aligned slices)
+│   ├── store/                 # Zustand store (protocol-aligned slices)
 │   ├── hooks/                 # Reusable hooks (useFavorites, useThumbnailCapture, …)
 │   ├── ws.ts                  # WebSocket client
 │   └── components/            # Chat, permissions, launcher, replay, context panels
