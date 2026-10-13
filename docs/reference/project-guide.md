@@ -361,7 +361,7 @@ Agent 维护的持久偏好。两个 scope 同一 schema:
 
 每个 session 在 Recent Sessions 有一行;默认是 `"<Mode> session"` + 首条用户消息预览。`pneuma session refine --json '{...}'` 让 agent 在内容沉淀后重写 displayName + description;`pneuma-session` skill 教它 topic 维度而非 work-done 维度的措辞、并用 Task subagent 做异步非阻塞 refine。Route `POST /api/session/refine` 原子重写 session.json、同步 registry、广播 `session_meta_updated`。
 
-`GET /api/session` resolves `title` from current metadata on every request, so refinement reaches open windows without a server restart. Manual registry renames take precedence over persisted names and agent refinements. `session_meta_updated` may name a sibling session, and launcher renames do not broadcast it; consumers refresh this response instead of assigning every event's `displayName` to the active window.
+`GET /api/session` resolves `title` from current metadata on every request, so refinement reaches open windows without a server restart. Manual registry renames take precedence over persisted names and agent refinements. `session_meta_updated` may name a sibling session, and launcher renames do not broadcast it; consumers refresh this response instead of assigning every event's `displayName` to the active window. `src/hooks/useWindowTitle.ts` refreshes on metadata updates, window focus and a 30-second interval. It includes project context and a chat-window marker, falling back to the workspace name before a session has a title.
 
 ### Skill Installation & Update Detection
 

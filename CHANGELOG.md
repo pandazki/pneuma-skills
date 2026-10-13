@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.57.2] - 2026-10-13
+
+### Fixed
+- **Recognizable session windows** — Windows, Dock entries and browser tabs show the current session title and project name, with detached chat windows marked “Chat”. Titles follow refinements and renames while preserving manually chosen names.
+
+### Improved
+- **Media checks follow media changes** — Shared application changes retain all module and backend checks without reprocessing unrelated video pipelines. Dependency, test-environment and unknown changes still receive full coverage.
+
 ## [3.57.1] - 2026-10-12
 
 ### Fixed

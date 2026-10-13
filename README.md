@@ -111,6 +111,8 @@ Prefer to set things up by hand? The Create Project dialog's chevron menu offers
 
 ### Desktop App (recommended)
 
+Session windows and browser tabs display the current session title and project name; detached chat windows are marked “Chat”. Titles refresh after refinements or renames, preserving manually chosen names.
+
 Download the latest release for your platform:
 
 | Platform | Download |
