@@ -154,6 +154,7 @@ test("reference storage failure preserves public Stop controls while reference a
   await act(async () => context.setOpen(true));
   expect(context.status?.internetAccess?.status).toBe("active");
   expect(context.referenceRecoveryError).toContain("recovered safely");
+  await act(async () => win.document.querySelector('[aria-label="Collaboration settings"]')!.dispatchEvent(new win.MouseEvent("click", { bubbles: true })));
   expect([...win.document.querySelectorAll("button")].find((button) => button.textContent === "Stop public access")!.disabled).toBe(false);
   await act(async () => context.setTab("references"));
   expect(win.document.body.textContent).toContain("recovered safely");
@@ -185,7 +186,7 @@ test("Project Pin waits during pending reconnect without discarding its recovery
   await mount();
   const scope = { authorityBaseUrl: service.oldOrigin, authorityScope: "lan-key:stable-authority", projectId: "project", workspaceId: "workspace", targetId: "source", action: "pin" };
   saveReferenceOperation(referenceOperationKey(scope), { opId: "original-pin-request" });
-  await act(async () => { context.setOpen(true); context.setTab("project"); });
+  await act(async () => { context.setOpen(true); context.setTab("settings"); });
   const pin = () => [...win.document.querySelectorAll("button")].find((button) => button.textContent === "Retry pin");
   expect(pin()?.disabled).toBe(false);
   let command!: Promise<void>;
