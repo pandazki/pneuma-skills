@@ -2,6 +2,12 @@
 
 > Pneuma 的核心通信模型——三个角色（User / Viewer / Agent）、六个方向、四类契约（ViewerContract、Action space、Source、AgentBackend）。本篇是契约文档，每节都给出**类型形状**与**设计→实现链路**，让开发者能从这里出发顺着源码追下去。
 
+For the Webcraft-first collaboration implementation, see the [authority
+contract](project-collaboration-authority.md), the [implementation
+brief](../proposals/2026-10-14-project-collaboration-architecture.md), and
+[user stories](../proposals/2026-10-14-project-collaboration-user-stories.md).
+They describe the Webcraft collaboration implementation built on the contracts below.
+
 ## 基本立场
 
 **Coding agent 直接在 workspace 文件上干活——这是它的母语，不被中介也不被替代。** Viewer 不是文件预览器，是给一个具体任务做的实时 **player**——人通过它观察 agent 工作、在需要时直接介入（拖、删、重排）或通过结构化命令提建议。
@@ -317,6 +323,116 @@ export type ViewerAddress = Record<string, unknown>;
 | **context injection** | `src/ws.ts` + `server/ws-bridge.ts::prepareIncomingUserMessage` | Browser adds viewer context and user actions; server adds queued environment tags; bare slash commands bypass both prefixes |
 
 ---
+
+## Collaboration viewer boundary
+
+`core/types/viewer-collaboration.ts` extends the mounted viewer contract without
+changing the meaning of Sources, FileChannel, or `ViewerAddress`. The pure
+manifest declaration enables viewing and names supported pointer, follow, and
+address-anchor capabilities plus a mode-owned publication adapter/schema.
+Webcraft is the only mode enabled in this implementation.
+
+The shell creates one `ViewerCollaborationBinding` per mounted preview. A mode
+registers its semantic adapter and disposes that registration on unmount. It
+reports a view as `{ address, detail? }`, with the cause `local-input`, `follow`,
+or `content-refresh`; pointer payloads are bounded mode-owned JSON. The runtime
+supplies identity, room, accepted revision, ordering, transport, and lifecycle.
+Adapters apply views with an abort signal and an acknowledged action result.
+Pointer and anchor projection returns viewer-overlay CSS coordinates or an
+explicit `offscreen`/`unresolved` result. Mutable adapter state never belongs on
+the singleton `ModeDefinition.viewer`.
+
+The mounted runtime coalesces view, pointer, and follow reports into the latest
+complete presence state, publishing at most 30 updates per second. A final
+queued update is delivered when input stops. Local input interrupts following
+immediately; disconnect, revision changes, adapter replacement, and disposal
+cancel queued sends. Transport scheduling belongs to this shared runtime so
+ordinary wheel, scroll, and pointer events stay within the authority's socket
+rate limit across modes.
+
+The shell may provide `ViewerPreviewProps.commenting` with `enabled`, `active`,
+and a dedicated selection callback. This capability is separate from Agent
+selection and content editing. Webcraft derives a temporary comment picker while
+Control is held, preserving the underlying viewer tool; a click opens a comment
+draft and never submits it. Explicit comment selection uses the same callback.
+Editable targets and ordinary keyboard shortcuts retain their native behavior.
+Release, Escape, focus loss, document replacement, and permission loss clear the
+temporary gesture. Opaque frames retain the current-document checks for every
+selection, including comment selections. Ordinary picks also retain the tool
+that initiated them, so delayed image capture cannot turn a Select pick into an
+Annotate action after the user changes tools.
+
+Comment anchors retain their `ViewerAddress` and publication revision as the
+navigation authority. Optional preview metadata is a bounded display snapshot
+of the existing viewer selection, including its thumbnail when available. Both
+draft and saved references use the same display and navigation behavior; a missing
+preview does not prevent location lookup. Navigation acknowledges failure and
+does not silently reinterpret a stale revision as the current one.
+
+The viewer and publication adapter do not know whether authority runs on LAN or
+in the cloud. `resolveResourceUrl` supplies resource locations; the same mode
+bundle receives the same typed Sources and collaboration binding in both cases.
+`resolveResourceUrl` accepts a raw workspace-relative file path. The host encodes
+each path segment and preserves a trailing directory slash. Literal `?`, `#`,
+and `%` remain filename characters; the mode appends semantic URL query parameters
+or fragments separately. The resolver never guesses URL suffixes.
+The private browser host resolves local page URLs on its own origin (including
+the Vite `/content` proxy), preserving DOM access. The public host supplies
+authorized revision URLs and Webcraft's opaque-frame message bridge. This is a
+host/resource distinction, not a transport branch inside the mode.
+
+Webcraft separates the native iframe load from an addressable document. A
+same-origin page can establish its document identity during instrumentation;
+an opaque publication must complete its current-document bridge handshake.
+Until then, selection remains unavailable and the iframe stays busy. A visible
+heading alone does not establish readiness. Native load permits the handshake;
+the verified document installs its address identity before selection is enabled.
+Reload, navigation and page departure invalidate the previous identity.
+A missing bridge has a bounded acknowledgement deadline; a verified URL outside
+the current site is rejected immediately. Both outcomes keep selection disabled
+and show an unavailable state with a return-to-site action instead of leaving
+the viewer indefinitely busy.
+
+Selection commands and replies carry the current document identity. Webcraft
+rejects replies from another document even when their `event.source` is the same
+iframe WindowProxy. The private edit-document mapping remains separate from the
+opaque bridge nonce. Other generic selection-script consumers can omit this
+optional identity field. Runtime adapter readiness still means that the mode
+adapter is registered; initial reference navigation waits through the existing
+document-arrival acknowledgement rather than changing that shared meaning.
+
+`ViewerPermissions` is separate from `readonly` (replay) and `editing` (private
+Agent lifecycle). Public viewers receive denied write, export, and Agent
+capabilities; their Source updates and FileChannel writes also reject. Their
+host ABI supplies React and i18n, with a denied private store. A cached mode
+bundle does not grant access to publication data.
+
+Follow uses only the current compatible publication and the shared content-set
+scope. Local input ends following. Superseded applications and projections are
+cancelled, and late results cannot certify the next operation. Presence never
+changes document data, undo state, or private Agent selection, and never calls
+`onNotifyAgent`. Comments use the same `ViewerAddress`; a missing location is
+reported as unresolved rather than silently moved to a nearby object.
+
+Private Agent actions use `core/types/private-viewer.ts`. Every preview mount
+registers a UUID on its private Session socket. An explicit HTTP
+`viewerInstanceId`, or the accepted user turn's originating instance, selects
+the target. With neither, the first registered private view is the primary.
+Requests are serialized per socket; a response must match request, socket, and
+mount identity. Missing targets, disconnection and timeout are explicit failures;
+no peer response substitutes for the intended view. A timeout retires that mount
+and requires a fresh mount identity before new work can run. It does not prove an
+already dispatched browser effect was undone. Published viewers do not register
+on private Session sockets.
+
+Local `capture` verifies mount ownership and navigation outcome, then captures
+the current rendered local content. It does not certify immutable publication
+bytes. The reserved `params.publicationReference` is a complete
+`CollaborationReferenceSource` (`projectId`, `workspaceId`, `roomId`,
+`publicationRevision`, `address`). Private capture rejects that scope without
+dispatching; it never substitutes the latest room head or local file contents
+for a pinned revision. Immutable shared preview and an explicitly attributed
+local copy remain separate operations.
 
 ## Editing 状态
 

@@ -1,0 +1,75 @@
+{
+  "title": "협업 설정",
+  "intro": "Webcraft 작업 공간을 공유해 실시간 보기, 댓글, 채팅에 초대하세요. Agent와의 대화는 비공개로 유지됩니다.",
+  "path_label": "방문자는 어떻게 접속하나요?",
+  "paths": {
+    "lan": "같은 네트워크",
+    "temporary": "임시 인터넷 공개",
+    "named": "자체 도메인"
+  },
+  "descriptions": {
+    "lan": "모두 같은 Wi-Fi나 로컬 네트워크를 사용한다면 여기서 시작하세요. cloudflared를 설치할 필요가 없습니다.",
+    "temporary": "도메인이나 Cloudflare 계정 없이 무료 임시 인터넷 주소를 사용합니다. 공개 접속을 다시 시작하면 주소가 바뀝니다.",
+    "named": "Cloudflare에서 관리하는 도메인으로 고정 HTTPS 주소를 사용합니다. Cloudflare 계정과 이름이 지정된 Tunnel이 필요합니다."
+  },
+  "hostname_label": "호스트 이름 (선택 사항)",
+  "hostname_placeholder": "collaboration.example.com",
+  "hostname_error": "포트, 경로, 인증 정보, 쿼리, 초대 정보를 제외한 호스트 이름이나 HTTPS 원본 주소를 입력하세요.",
+  "steps": {
+    "lan": [
+      "Project를 열고 그 안의 Webcraft Session을 여세요.",
+      "Collaborate → Project를 선택하고 이름을 입력한 뒤, Local network를 선택한 상태로 Create collaboration을 선택하세요.",
+      "방문자에게 보여 줄 사이트나 콘텐츠 모음에서 Share this workspace를 선택하세요.",
+      "Links를 열고 Comment & chat 초대를 만든 뒤 Local network 링크를 복사하세요.",
+      "방문자에게 같은 네트워크의 브라우저에서 초대를 열고 이름을 입력하도록 요청한 뒤, 댓글과 채팅을 시도하세요."
+    ],
+    "temporary": [
+      "Project와 그 안의 Webcraft Session을 열고, Collaborate → Project에서 Local network를 선택한 상태로 협업을 만드세요.",
+      "cloudflared를 확인하세요. 없으면 설정 요청으로 설치한 뒤, 공개 접속을 켜기 전에 ‘다시 확인’을 선택하세요.",
+      "Share this workspace를 선택하고 Public access → Free temporary address → Enable public access로 이동하세요.",
+      "공개 접속이 Active가 되면 Links를 열고 Comment & chat 초대를 만든 뒤 Internet 항목을 선택하세요.",
+      "방문자에게 다른 네트워크의 브라우저에서 초대를 열도록 요청한 뒤, 댓글과 채팅을 시도하세요."
+    ],
+    "named": [
+      "Project와 그 안의 Webcraft Session을 열고, Collaborate → Project에서 Local network를 선택한 상태로 협업을 만드세요.",
+      "설정 요청으로 cloudflared를 설치하고 이름이 지정된 Tunnel을 만든 뒤, Cloudflare에서 해당 Tunnel로 연결되는 호스트 이름의 DNS 경로를 만드세요.",
+      "Share this workspace를 선택한 뒤 Public access → Your own Tunnel로 이동하세요.",
+      "HTTPS 공개 URL, Tunnel UUID, 로컬 인증 정보 JSON 파일의 절대 경로를 모두 입력한 뒤 Enable public access를 선택하세요.",
+      "Active가 되면 Links를 열고 Comment & chat 초대를 만든 뒤 Internet 항목을 선택해 방문자에게 보내세요.",
+      "방문자에게 다른 네트워크의 브라우저에서 초대를 열도록 요청한 뒤, 댓글과 채팅을 시도하세요."
+    ]
+  },
+  "keep_online": "방문자가 작업 공간을 사용하는 동안 호스트 컴퓨터, Pneuma, 공유 중인 Session 탭을 온라인으로 유지하세요.",
+  "public_lifecycle": "인증된 외부 방문자가 10분 동안 없으면 공개 접속이 중지되며, 재시작 후에는 꺼진 상태가 됩니다. 필요할 때 다시 켜세요.",
+  "checking": "이 컴퓨터 확인 중…",
+  "check_error": "설정 상태를 읽지 못했습니다. 다시 확인하여 설정 요청을 준비하세요.",
+  "cloudflared_found": "이 컴퓨터에서 cloudflared 감지됨",
+  "cloudflared_missing": "이 컴퓨터에서 cloudflared를 찾지 못함",
+  "check_again": "다시 확인",
+  "install_hint": "설정 요청으로 이 컴퓨터에 cloudflared를 설치할 수 있습니다. 확인 작업은 설정을 변경하지 않습니다.",
+  "copy_request": "설정 요청 복사",
+  "copied": "설정 요청 복사됨",
+  "copying": "복사 중…",
+  "paste_hint": "이 한 문장의 요청을 이 컴퓨터의 Claude Code나 Codex에 붙여 넣어 설정과 검증을 실행하세요.",
+  "copy_error": "복사하지 못했습니다. 아래에서 선택된 요청을 직접 복사하세요.",
+  "show_request": "설정 요청 보기",
+  "hide_request": "설정 요청 숨기기",
+  "request_label": "Claude Code 또는 Codex용 설정 요청",
+  "advanced_title": "고급: 직접 호스팅하는 클라우드 협업 서비스 사용",
+  "advanced_body": "Cloud host는 저장소의 cloud/collaboration 배포 지침에 따라 직접 배포하고 관리하는 협업 서비스에 연결합니다. 해당 서비스의 HTTPS URL과 프로비저닝 키가 필요하며, 호스팅 서비스 계정을 만들지는 않습니다. 작업 공간 콘텐츠를 사용하려면 호스트와 Session이 온라인 상태여야 합니다.",
+  "entry": "도움이 필요하신가요? 협업 설정 가이드",
+  "request_paths": {
+    "lan": "같은 네트워크 내 협업",
+    "temporary": "무료 Cloudflare Quick Tunnel을 사용하는 임시 인터넷 협업",
+    "named": "자체 도메인과 이름이 지정된 Cloudflare Tunnel을 사용하는 인터넷 협업"
+  },
+  "request_hostname": " (https://{{hostname}})",
+  "request_missing": {
+    "lan": "Project 정보",
+    "temporary": "Project 정보",
+    "named": "Project, 도메인 또는 Cloudflare 계정 정보"
+  },
+  "request": "{{platform}}의 Pneuma Skills {{appVersion}}에서 {{scenario}}{{hostnameClause}}을 설정하고 검증하기 위해 로컬의 전체 설정 가이드 {{guidePath}}를 먼저 읽고(읽을 수 없으면 현재 실행 중인 비공개 Pneuma 앱에서 {{guideUrl}}를 가져오기), 누락된 {{missing}}를 나에게 물어본 뒤 실제 설정을 실행하고, 내 Agent 대화를 비공개로 유지하면서 방문자가 브라우저에서 공유된 Webcraft 작업 공간을 열고 Comment & chat을 사용할 수 있는지 검증해 주세요.",
+  "lan_ready": "같은 네트워크 내 협업에는 터널이 필요하지 않습니다.",
+  "public_recovery": "공개 접속에 실패하면 표시된 원인을 해결하고 Retry stopping public access를 선택해 실패한 시도를 정리한 뒤 Enable public access를 다시 선택하세요. ‘다시 확인’은 설치 여부만 확인합니다."
+}

@@ -1,0 +1,85 @@
+.session-collaboration { position: fixed; inset: 72px 16px 16px auto; z-index: 250; width: min(420px, calc(100vw - 32px)); display: flex; flex-direction: column; overflow: auto; color: var(--color-cc-fg); background: var(--color-cc-surface); border: 1px solid var(--color-cc-border); border-radius: 14px; box-shadow: 0 20px 60px rgb(0 0 0 / .35); font: 13px/1.55 var(--font-sans, sans-serif); }
+.session-collaboration > header { padding: 18px 20px 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.session-collaboration h2 { font-size: 16px; font-weight: 600; margin: 0; }
+.session-collaboration h3 { font-size: 13px; font-weight: 600; margin: 24px 0 10px; }
+.session-collaboration p { margin: 0 0 14px; }
+.session-collaboration header button, .session-collaboration .text-button { font-size: 12px; color: var(--color-cc-muted); }
+.session-collaboration-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 16px 12px; border-bottom: 1px solid var(--color-cc-border); }
+.session-collaboration-tabs button { padding: 6px 9px; border-radius: 6px; font-size: 12px; color: var(--color-cc-muted); }
+.session-collaboration-tabs button[aria-pressed="true"] { color: var(--color-cc-primary); background: var(--color-cc-primary-muted); }
+.session-collaboration .panel-content, .session-collaboration .discussion-content { padding: 18px 20px; }
+.session-collaboration .button { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 34px; padding: 7px 12px; background: var(--color-cc-hover); border: 1px solid var(--color-cc-border); border-radius: 7px; font-size: 12px; }
+.session-collaboration .button.primary { color: var(--color-cc-bg); background: var(--color-cc-primary); border-color: var(--color-cc-primary); font-weight: 600; }
+.session-collaboration button:hover:not(:disabled) { background: var(--color-cc-hover); }
+.session-collaboration .button.primary:hover:not(:disabled) { background: var(--color-cc-primary-hover); }
+.session-collaboration button:disabled { opacity: .45; cursor: not-allowed; }
+.session-collaboration :is(button,input,textarea):focus-visible { outline: 2px solid var(--color-cc-primary); outline-offset: 3px; }
+.session-collaboration .field-label { display: grid; gap: 6px; margin-bottom: 14px; color: var(--color-cc-muted); font-size: 12px; }
+.session-collaboration :is(input,textarea) { appearance: none; border: 1px solid var(--color-cc-border); border-radius: 7px; padding: 9px 10px; color: var(--color-cc-fg); background: var(--color-cc-bg); width: 100%; font: inherit; caret-color: var(--color-cc-primary); }
+.session-collaboration textarea { min-height: 85px; resize: vertical; }
+.session-collaboration ::placeholder { color: var(--color-cc-muted); }
+.session-collaboration .duration-picker, .session-collaboration .role-picker { display: flex; gap: 5px; margin-bottom: 14px; }
+.session-collaboration .duration-picker button, .session-collaboration .role-picker button { padding: 7px 9px; border: 1px solid var(--color-cc-border); border-radius: 6px; font-size: 11px; }
+.session-collaboration .selected { color: var(--color-cc-primary); background: var(--color-cc-primary-muted); }
+.session-collaboration .connect-member { border-top: 1px solid var(--color-cc-border); padding-top: 20px; margin-top: 24px; }
+.session-collaboration .inline-error { padding: 12px 20px; color: var(--color-cc-error); font-size: 12px; overflow-wrap: anywhere; }
+.session-collaboration .muted, .session-collaboration .role-description, .session-collaboration .readonly-footnote { color: var(--color-cc-muted); font-size: 12px; }
+.session-collaboration .session-sharing .muted { margin-left: 10px; }
+.session-collaboration .room-list { display: grid; gap: 5px; }
+.session-collaboration .room-item { display: grid; text-align: left; padding: 9px 0; border-bottom: 1px solid var(--color-cc-border); }
+.session-collaboration .room-item small { color: var(--color-cc-muted); font-size: 11px; margin-top: 3px; }
+.session-collaboration .participant-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.session-collaboration .thread-list, .session-collaboration .chat-messages { display: grid; gap: 16px; }
+.session-collaboration .thread-message { display: flex; gap: 9px; align-items: flex-start; }
+.session-collaboration .thread-message > div { min-width: 0; flex: 1; }
+.session-collaboration .comment-thread { min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--color-cc-border); }
+.session-collaboration .comment-thread.resolved { opacity: .7; }
+.session-collaboration .message-byline { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; }
+.session-collaboration time { color: var(--color-cc-muted); }
+.session-collaboration .thread-message p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 5px; }
+.session-collaboration .avatar { width: 24px; height: 24px; display: grid; flex-shrink: 0; place-items: center; background: var(--color-cc-primary-muted); color: var(--color-cc-primary); border-radius: 50%; font-size: 10px; }
+.session-collaboration .comment-reference.thread-anchor { margin-bottom: 10px; }
+.session-collaboration .thread-actions, .session-collaboration .composer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 12px; margin-top: 10px; font-size: 11px; }
+.session-collaboration .thread-actions button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; padding: 4px 0; color: var(--color-cc-muted); }
+.session-collaboration .thread-actions button svg { flex-shrink: 0; }
+.session-collaboration .discussion-filter { display: flex; justify-content: space-between; gap: 10px; color: var(--color-cc-muted); font-size: 11px; margin-bottom: 16px; }
+.session-collaboration .composer, .session-collaboration .new-thread { margin: 14px 0; }
+.session-collaboration .anchor-label { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px; color: var(--color-cc-primary); font-size: 11px; }
+.session-collaboration .anchor-label svg { flex-shrink: 0; }
+.session-collaboration .empty-discussion { padding: 26px 0; text-align: center; color: var(--color-cc-muted); }
+.session-collaboration .empty-discussion svg { margin: auto; }
+.session-collaboration .stale-anchor { display: block; color: var(--color-cc-warning); font-size: 11px; margin-bottom: 10px; }
+.session-collaboration .copy-link, .session-collaboration .member-row { margin: 12px 0; }
+.session-collaboration .member-name { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.session-collaboration .member-name .text-button { margin-left: auto; }
+.session-collaboration .danger-zone { border-top: 1px solid var(--color-cc-border); margin-top: 24px; }
+.session-collaboration .danger, .session-collaboration .danger-text { color: var(--color-cc-error); }
+@media (max-width: 600px) { .session-collaboration { inset: 56px 8px 8px; width: auto; } }
+.session-collaboration .shared-room-card { display: grid; gap: 5px; padding-bottom: 10px; border-bottom: 1px solid var(--color-cc-border); }
+.session-collaboration .shared-room-card .room-item { border: 0; }
+.session-collaboration .shared-room-card > .text-button { text-align: left; color: var(--color-cc-primary); }
+.session-collaboration .reference-list { display: grid; gap: 18px; }
+.session-collaboration .reference-item { padding-bottom: 18px; border-bottom: 1px solid var(--color-cc-border); }
+.session-collaboration .reference-item h3 { margin-top: 4px; }
+.session-collaboration .reference-location { overflow-wrap: anywhere; margin-bottom: 14px; color: var(--color-cc-muted); font-size: 12px; }
+.session-collaboration .reference-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+.reference-viewer { position: fixed; inset: 5vh 3vw; z-index: 300; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--color-cc-border); border-radius: 12px; background: var(--color-cc-bg); color: var(--color-cc-fg); box-shadow: 0 0 0 100vmax rgb(0 0 0 / .65); }
+.reference-viewer > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--color-cc-border); }
+.reference-viewer > header div { display: grid; gap: 3px; }
+.reference-viewer > header span { font-size: 11px; color: var(--color-cc-muted); }
+.reference-viewer .button { padding: 7px 12px; border: 1px solid var(--color-cc-border); border-radius: 7px; font-size: 12px; }
+.reference-preview { position: relative; flex: 1; min-height: 0; }
+.reference-viewer > footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--color-cc-border); font-size: 12px; }
+.reference-viewer > footer span { max-width: 45vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-cc-muted); }
+.reference-viewer > footer [role="alert"] { color: var(--color-cc-error); }
+
+.session-collaboration .internet-access { border-top: 1px solid var(--color-cc-border); padding-top: 18px; margin-top: 24px; }
+.session-collaboration .internet-access-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.session-collaboration .internet-access-heading h3 { margin: 0; }
+.session-collaboration .internet-access-status { color: var(--color-cc-muted); font-size: 11px; }
+.session-collaboration .internet-access-status.state-active { color: var(--color-cc-success); }
+.session-collaboration .internet-access-status.state-failed { color: var(--color-cc-error); }
+.session-collaboration .internet-access .inline-error { padding: 0; }
+.session-collaboration .internet-access-footnote { margin: 14px 0 0; }
+.session-collaboration .named-tunnel-settings { margin-top: 16px; }
+.session-collaboration .entry-picker { margin: 12px 0; }

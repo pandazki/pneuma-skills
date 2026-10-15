@@ -8,7 +8,7 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.8.1",
+  version: "1.9.0",
   displayName: {
     en: "WebCraft",
     "zh-CN": "WebCraft",
@@ -28,6 +28,7 @@ const webcraftManifest: ModeManifest = {
     de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
   },
   changelog: {
+    "1.9.0": ["Support public Webcraft viewing, semantic pointers, following and address anchors through per-mounted collaboration adapters"],
     "1.8.1": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "1.8.0": [
       "Synced Impeccable.style guidance to upstream skill v4.3.1",
@@ -179,6 +180,13 @@ const webcraftManifest: ModeManifest = {
   },
 
   viewerApi: {
+    collaboration: {
+      viewing: true,
+      pointers: true,
+      follow: true,
+      addressAnchors: true,
+      publication: { module: "publication.ts", schema: "webcraft-public-v1" },
+    },
     workspace: {
       type: "manifest",
       multiFile: true,

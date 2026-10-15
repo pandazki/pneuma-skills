@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pneuma-collaboration-prototype",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+  "vars": { "PROJECT_ID": "pneuma-cloud-prototype" },
+  "secrets": { "required": ["BOOTSTRAP_SECRET"] },
+  "durable_objects": {
+    "bindings": [{ "name": "PROJECTS", "class_name": "ProjectCollaboration" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectCollaboration"] }],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "pneuma-collaboration-prototype" }],
+  "observability": { "enabled": true, "head_sampling_rate": 1, "logs": { "enabled": true, "invocation_logs": false } }
+}

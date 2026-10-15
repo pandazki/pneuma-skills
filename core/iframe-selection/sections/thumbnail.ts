@@ -1,12 +1,69 @@
+import { COMMENT_PREVIEW_LIMITS } from "../../collaboration/comment-preview.js";
+
 /**
  * Thumbnail section — captureElementThumbnail.
- * Captures an SVG thumbnail of a selected element using foreignObject.
+ * Captures image pixels directly; other selections retain their SVG foreignObject preview.
  * ES5-compatible JavaScript injected into slide iframes.
  */
 export const SECTION_THUMBNAIL = `
-  /** Capture an SVG thumbnail of an element using foreignObject */
-  function captureElementThumbnail(el) {
+  /** A small raster contains its own pixels, unlike an img URL inside an SVG. */
+  function rasterImageThumbnail(image) {
+    if (!image.complete || !image.naturalWidth || !image.naturalHeight) return null;
     try {
+      var scale = Math.min(1, 320 / image.naturalWidth, 192 / image.naturalHeight);
+      var canvas = document.createElement('canvas');
+      for (var attempt = 0; attempt < 3; attempt++) {
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        var context = canvas.getContext('2d');
+        if (!context) return null;
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        var png = canvas.toDataURL('image/png');
+        if (png.indexOf('data:image/png;base64,') === 0 && png.length <= ${COMMENT_PREVIEW_LIMITS.thumbnail}) return png;
+        var webp = canvas.toDataURL('image/webp', 0.8);
+        if (webp.indexOf('data:image/webp;base64,') === 0 && webp.length <= ${COMMENT_PREVIEW_LIMITS.thumbnail}) return webp;
+        scale *= 0.5;
+      }
+    } catch (ignore) { /* An opaque/non-CORS image taints its canvas. */ }
+    return null;
+  }
+
+  function captureImageThumbnail(image, signal) {
+    if (!image || !image.complete || !image.naturalWidth || !image.naturalHeight || signal && signal.aborted) return null;
+    var immediate = rasterImageThumbnail(image);
+    if (immediate) return immediate;
+    // Published pages have opaque origins. Reload only the already displayed
+    // URL with anonymous CORS; the existing asset grant must permit readback.
+    var source = image.currentSrc || image.src;
+    if (!source) return null;
+    return new Promise(function(resolve) {
+      var cleanImage = new Image();
+      var settled = false;
+      var timer = setTimeout(function() { finish(null); }, 2500);
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cleanImage.onload = null;
+        cleanImage.onerror = null;
+        if (signal) signal.removeEventListener('abort', abort);
+        if (!value) cleanImage.src = '';
+        resolve(value);
+      }
+      function abort() { finish(null); }
+      cleanImage.onload = function() { finish(rasterImageThumbnail(cleanImage)); };
+      cleanImage.onerror = function() { finish(null); };
+      cleanImage.crossOrigin = 'anonymous';
+      if (signal) signal.addEventListener('abort', abort, { once: true });
+      cleanImage.src = source;
+    });
+  }
+
+  /** String/null normally; only an image needing clean CORS readback is async. */
+  function captureElementThumbnail(el, signal) {
+    try {
+      var tag = el.tagName.toLowerCase();
+      if (tag === 'img' || tag === 'picture') return captureImageThumbnail(tag === 'img' ? el : el.querySelector('img'), signal);
       var elRect = el.getBoundingClientRect();
       var elW = Math.ceil(elRect.width);
       var elH = Math.ceil(elRect.height);

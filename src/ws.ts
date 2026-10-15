@@ -961,11 +961,18 @@ export function handleParsedMessage(
     }
 
     case "viewer_action_request": {
+      if (!store.viewerInstanceId || data.viewer_instance_id !== store.viewerInstanceId) break;
       store.setActionRequest({
         requestId: data.request_id,
         actionId: data.action_id,
         params: data.params,
       });
+      break;
+    }
+
+    case "viewer_instance_registered": {
+      if (data.viewer_instance_id !== store.viewerInstanceId) break;
+      if (!data.success) store.setViewerInstance(null, data.message ?? "Private viewer registration failed");
       break;
     }
 
@@ -1251,6 +1258,8 @@ export function connect(sessionId: string) {
   socket = ws;
 
   ws.onopen = () => {
+    const instanceId = useStore.getState().viewerInstanceId;
+    if (instanceId) ws.send(JSON.stringify({ type: "viewer_instance_register", viewer_instance_id: instanceId }));
     ws.send(JSON.stringify({ type: "session_subscribe", last_seq: lastSeq }));
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -1291,6 +1300,7 @@ export function connect(sessionId: string) {
 
   ws.onclose = () => {
     socket = null;
+    useStore.getState().setActionRequest(null);
     useStore.getState().setConnectionStatus("disconnected");
     scheduleReconnect(sessionId);
   };
@@ -1361,25 +1371,7 @@ async function sendPreparedUserMessage(
   steerClientMsgId?: string,
 ) {
   const isSteer = Boolean(steerClientMsgId);
-  if (!isSteer) currentTurnUserInitiated = true;
   const store = useStore.getState();
-  store.clearPromptSuggestions();
-  // Normal turns are optimistic. Steer-in waits for `steer_result` before
-  // moving the selected queue item into the transcript, so a rejected steer
-  // stays retryable without creating a duplicate user bubble.
-  const msgId = isSteer ? null : nextId();
-  if (msgId) {
-    store.appendMessage({
-      id: msgId,
-      role: "user",
-      content,
-      timestamp: Date.now(),
-      ...(selection ? { selectionContext: selection } : {}),
-      ...(images?.length ? { images } : {}),
-      ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
-      ...(annotations?.length ? { annotations } : {}),
-    });
-  }
 
   // Enrich with selection context — delegate to mode's viewer if available.
   // A slash command is exempt: backends resolve commands by the first
@@ -1489,9 +1481,9 @@ async function sendPreparedUserMessage(
   }
 
   // Inject user action events between viewer-context and user text
-  const drainedActions = verbatimCommand ? [] : useStore.getState().drainUserActions();
-  if (drainedActions.length > 0) {
-    const lines = drainedActions.map((a) => {
+  const pendingActions = verbatimCommand ? [] : useStore.getState().userActions;
+  if (pendingActions.length > 0) {
+    const lines = pendingActions.map((a) => {
       const agoMs = Date.now() - a.timestamp;
       const ago = agoMs < 60_000
         ? `${Math.round(agoMs / 1000)}s ago`
@@ -1533,23 +1525,11 @@ async function sendPreparedUserMessage(
     }
   }
 
-  // In debug mode, attach the enriched payload to the user message for inspection
+  // Prepare debug metadata alongside the payload, but publish neither a user
+  // bubble nor consumed context until the transport accepts the message.
   const debugPayload = store.debugMode
     ? { enrichedContent, images: allImages.length > 0 ? allImages : undefined, files: files?.length ? files.map((f) => ({ name: f.name, media_type: f.media_type, size: f.size })) : undefined }
     : null;
-  if (debugPayload && msgId) {
-    store.appendMessage({
-      id: msgId,
-      role: "user",
-      content,
-      timestamp: Date.now(),
-      ...(selection ? { selectionContext: selection } : {}),
-      ...(images?.length ? { images } : {}),
-      ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
-      ...(annotations?.length ? { annotations } : {}),
-      debugPayload,
-    });
-  }
 
   const msg: BrowserOutgoingMessage = steerClientMsgId
     ? { type: "steer_message", content: enrichedContent, client_msg_id: steerClientMsgId }
@@ -1561,6 +1541,26 @@ async function sendPreparedUserMessage(
     msg.files = files;
   }
   const delivered = send(msg);
+  if (delivered) {
+    // Preparation and send are synchronous, so no user action can arrive
+    // between the snapshot above and this successful-delivery drain.
+    if (pendingActions.length) store.drainUserActions();
+    store.clearPromptSuggestions();
+    // Steer-in keeps its existing acknowledgement-owned transcript behavior.
+    if (!isSteer) {
+      store.appendMessage({
+        id: nextId(),
+        role: "user",
+        content,
+        timestamp: Date.now(),
+        ...(selection ? { selectionContext: selection } : {}),
+        ...(images?.length ? { images } : {}),
+        ...(files?.length ? { files: files.map((f) => ({ name: f.name, size: f.size })) } : {}),
+        ...(annotations?.length ? { annotations } : {}),
+        ...(debugPayload ? { debugPayload } : {}),
+      });
+    }
+  }
 
   // A steer has no optimistic bubble to decorate — its bubble is minted when
   // `steer_result` confirms delivery. Park the payload until then so debug
@@ -1661,8 +1661,19 @@ export function sendInterrupt() {
 export function sendViewerActionResponse(
   requestId: string,
   result: { success: boolean; message?: string; data?: Record<string, unknown> },
+  viewerInstanceId: string | null = useStore.getState().viewerInstanceId,
 ) {
-  send({ type: "viewer_action_response", request_id: requestId, result });
+  if (viewerInstanceId) send({ type: "viewer_action_response", viewer_instance_id: viewerInstanceId, request_id: requestId, result });
+}
+
+/** Registration changes stay on the private Session transport. */
+export function mountPrivateViewer(viewerInstanceId: string): () => void {
+  useStore.getState().setViewerInstance(viewerInstanceId);
+  send({ type: "viewer_instance_register", viewer_instance_id: viewerInstanceId });
+  return () => {
+    send({ type: "viewer_instance_unregister", viewer_instance_id: viewerInstanceId });
+    if (useStore.getState().viewerInstanceId === viewerInstanceId) useStore.getState().setViewerInstance(null);
+  };
 }
 
 /**

@@ -5,6 +5,7 @@
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import type { HandoffProposalPayload } from "../core/types/handoff.js";
 import type { AgentCapabilities, ModelOption } from "../core/types/agent-backend.js";
+import type { PrivateViewerIncomingMessage, PrivateViewerOutgoingMessage } from "../core/types/private-viewer.js";
 
 // ─── CLI Message Types (NDJSON from Claude Code CLI) ──────────────────────────
 
@@ -367,6 +368,7 @@ export type SteerFailureReason = "unsupported" | "no-active-turn" | "transport-e
 
 /** Messages the browser sends to the bridge */
 export type BrowserOutgoingMessage =
+  | PrivateViewerOutgoingMessage
   | { type: "user_message"; content: string; session_id?: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[]; client_msg_id?: string }
   | { type: "steer_message"; content: string; images?: { media_type: string; data: string }[]; files?: { name: string; media_type: string; data: string; size: number }[]; client_msg_id: string }
   | { type: "permission_response"; request_id: string; behavior: "allow" | "deny"; updated_input?: Record<string, unknown>; updated_permissions?: PermissionUpdate[]; message?: string; client_msg_id?: string }
@@ -374,7 +376,6 @@ export type BrowserOutgoingMessage =
   | { type: "session_ack"; last_seq: number }
   | { type: "interrupt"; client_msg_id?: string }
   | { type: "set_model"; model: string }
-  | { type: "viewer_action_response"; request_id: string; result: { success: boolean; message?: string; data?: Record<string, unknown> } }
   | { type: "viewer_notification"; notification: { type: string; message: string; severity: "info" | "warning" } }
   | { type: "end_session" }
   | { type: "stop_task" }
@@ -475,7 +476,7 @@ export type BrowserIncomingMessageBase =
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "event_replay"; events: BufferedBrowserEvent[] }
   | { type: "content_update"; files: { path: string; content: string }[] }
-  | { type: "viewer_action_request"; request_id: string; action_id: string; params?: Record<string, unknown> }
+  | PrivateViewerIncomingMessage
   | { type: "prompt_suggestion"; suggestions: string[] }
   | {
     type: "streamlined_text";

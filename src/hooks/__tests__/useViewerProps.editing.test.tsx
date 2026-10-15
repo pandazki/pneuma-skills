@@ -103,4 +103,41 @@ describe("useViewerProps", () => {
     const probe = await propsWith({ editing: true, replayMode: true });
     expect(probe.latest().readonly).toBe(true);
   });
+
+  test("native preview resources stay on the browser origin and encode raw filenames and directory paths", async () => {
+    const probe = await propsWith({ editing: true });
+    expect(probe.latest().resolveResourceUrl!("/site/pages/report#2026?draft%.html")).toBe("/content/site/pages/report%232026%3Fdraft%25.html");
+    expect(probe.latest().resolveResourceUrl!("site/image assets/")).toBe("/content/site/image%20assets/");
+  });
+
+  test("selection preserves its ViewerAddress through the shell roundtrip", async () => {
+    const { act } = await import("react");
+    const probe = await propsWith({ editing: true });
+    const selection = {
+      type: "element" as const,
+      content: "Headline",
+      file: "index.html",
+      address: { contentSet: "website", page: "index.html", selector: "#headline" },
+    };
+    await act(async () => probe.latest().onSelect(selection));
+    expect(probe.latest().selection?.address).toEqual(selection.address);
+  });
+
+  test("an old mount's action result cannot clear the replacement mount's request", async () => {
+    const { act } = await import("react");
+    const { useStore } = await import("../../store.js");
+    const probe = await propsWith({ editing: true });
+    await act(async () => {
+      useStore.getState().setViewerInstance(crypto.randomUUID());
+      useStore.getState().setActionRequest({ requestId: "old", actionId: "navigate" });
+    });
+    const oldResponse = probe.latest().onActionResult!;
+    await act(async () => {
+      useStore.getState().setViewerInstance(crypto.randomUUID());
+      useStore.getState().setActionRequest({ requestId: "new", actionId: "navigate" });
+    });
+    oldResponse("old", { success: true });
+    expect(useStore.getState().actionRequest?.requestId).toBe("new");
+    await act(async () => useStore.getState().setViewerInstance(null));
+  });
 });

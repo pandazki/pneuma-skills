@@ -1,0 +1,75 @@
+{
+  "title": "協作設定",
+  "intro": "分享 Webcraft 工作區，邀請他人即時檢視、留言和聊天；你的 Agent 對話保持私密。",
+  "path_label": "訪客如何連線？",
+  "paths": {
+    "lan": "同一網路",
+    "temporary": "臨時網際網路連線",
+    "named": "自有網域"
+  },
+  "descriptions": {
+    "lan": "大家使用同一個 Wi-Fi 或區域網路時，從這裡開始；不需安裝 cloudflared。",
+    "temporary": "使用免費的臨時公開網址，不需網域或 Cloudflare 帳號；每次重新啟用公開存取時，網址都會變更。",
+    "named": "使用你在 Cloudflare 管理的網域提供固定 HTTPS 網址；需要 Cloudflare 帳號和具名 Tunnel。"
+  },
+  "hostname_label": "你的主機名稱（選填）",
+  "hostname_placeholder": "collaboration.example.com",
+  "hostname_error": "請輸入主機名稱或 HTTPS 來源網址，不含連接埠、路徑、認證資訊、查詢參數或邀請資訊。",
+  "steps": {
+    "lan": [
+      "開啟一個 Project，再開啟其中的 Webcraft Session。",
+      "選取 Collaborate → Project，輸入你的姓名，保留 Local network，然後選取 Create collaboration。",
+      "針對要讓訪客檢視的網站或內容集，選取 Share this workspace。",
+      "開啟 Links，建立 Comment & chat 邀請，並複製其 Local network 連結。",
+      "請訪客使用同一網路的瀏覽器開啟邀請、輸入姓名，並嘗試留言和聊天。"
+    ],
+    "temporary": [
+      "開啟 Project 和其中的 Webcraft Session，再選取 Collaborate → Project，保留 Local network 並建立協作。",
+      "檢查 cloudflared；若未偵測到，使用設定請求安裝，再選取「重新檢查」，之後才啟用公開存取。",
+      "選取 Share this workspace，再選取 Public access → Free temporary address → Enable public access。",
+      "等待公開存取顯示 Active，再開啟 Links，建立 Comment & chat 邀請並選取 Internet 連結。",
+      "請訪客使用其他網路的瀏覽器開啟邀請，並嘗試留言和聊天。"
+    ],
+    "named": [
+      "開啟 Project 和其中的 Webcraft Session，再選取 Collaborate → Project，保留 Local network 並建立協作。",
+      "使用設定請求安裝 cloudflared、建立具名 Tunnel，並在 Cloudflare 建立指向該 Tunnel 的主機名稱 DNS 路由。",
+      "選取 Share this workspace，再選取 Public access → Your own Tunnel。",
+      "填寫全部三個欄位：HTTPS 公開網址、Tunnel UUID，以及本機認證 JSON 檔案的絕對路徑；再選取 Enable public access。",
+      "顯示 Active 後，開啟 Links，建立 Comment & chat 邀請，選取 Internet 連結並傳送給訪客。",
+      "請訪客使用其他網路的瀏覽器開啟邀請，並嘗試留言和聊天。"
+    ]
+  },
+  "keep_online": "訪客使用工作區期間，請讓主機、Pneuma 和正在分享的 Session 分頁保持上線。",
+  "public_lifecycle": "連續 10 分鐘沒有已驗證的公開訪客時，公開存取會停止；重新啟動後預設關閉，需要時請再次啟用。",
+  "checking": "正在檢查這台電腦…",
+  "check_error": "無法讀取設定狀態，請重新檢查以準備設定請求。",
+  "cloudflared_found": "這台電腦已偵測到 cloudflared",
+  "cloudflared_missing": "這台電腦未偵測到 cloudflared",
+  "check_again": "重新檢查",
+  "install_hint": "設定請求可為這台電腦安裝 cloudflared；檢查本身不會變更設定。",
+  "copy_request": "複製設定請求",
+  "copied": "已複製設定請求",
+  "copying": "正在複製…",
+  "paste_hint": "將這一句請求貼到這台電腦上的 Claude Code 或 Codex，讓它執行並驗證設定。",
+  "copy_error": "複製失敗，下方已選取請求文字，請手動複製。",
+  "show_request": "檢視設定請求",
+  "hide_request": "收合設定請求",
+  "request_label": "給 Claude Code 或 Codex 的設定請求",
+  "advanced_title": "進階：使用自行託管的雲端協作服務",
+  "advanced_body": "Cloud host 可連線至你依照儲存庫 cloud/collaboration 部署說明自行部署和管理的協作服務；需要其 HTTPS 網址和佈建金鑰，不會建立託管服務帳號；工作區內容仍需要主機和 Session 保持上線。",
+  "entry": "需要協助？協作設定指南",
+  "request_paths": {
+    "lan": "同一網路內的協作",
+    "temporary": "透過免費 Cloudflare Quick Tunnel 的臨時網際網路協作",
+    "named": "透過自有網域和具名 Cloudflare Tunnel 的網際網路協作"
+  },
+  "request_hostname": "（https://{{hostname}}）",
+  "request_missing": {
+    "lan": "Project 資訊",
+    "temporary": "Project 資訊",
+    "named": "Project、網域或 Cloudflare 帳號資訊"
+  },
+  "request": "請為 {{platform}} 上的 Pneuma Skills {{appVersion}} 設定並驗證{{scenario}}{{hostnameClause}}，先閱讀本機完整設定指南 {{guidePath}}（若無法讀取，則從目前執行中的私有 Pneuma 應用程式取得 {{guideUrl}}），詢問我缺少的{{missing}}後實際執行設定，並驗證訪客可在瀏覽器中開啟分享的 Webcraft 工作區並使用 Comment & chat，同時保持我的 Agent 對話私密。",
+  "lan_ready": "同一網路內的協作不需要隧道。",
+  "public_recovery": "若公開存取失敗，請排除顯示的原因，選取 Retry stopping public access 清理失敗的嘗試，再次選取 Enable public access；「重新檢查」只會檢查安裝狀態。"
+}

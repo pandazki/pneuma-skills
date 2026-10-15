@@ -14,11 +14,14 @@ import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
   ViewerFileContent,
+  ViewerAddress,
+  ViewerActionResult,
 } from "../../../core/types/viewer-contract.js";
 import type { Source } from "../../../core/types/source.js";
 import { useSource } from "../../../src/hooks/useSource.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
-import { useStore } from "../../../src/store.js";
+import { WebcraftCollaborationController } from "./collaboration.js";
+import { buildWebcraftPageRuntimeScript } from "./page-runtime.js";
 import type { Site } from "../domain.js";
 import {
   LEAVE_SCRIPT,
@@ -26,7 +29,6 @@ import {
   instrumentPage,
   contentRequests,
   pageFromUrl,
-  pagePath,
   referencedContentPaths,
   staleAfterLoad,
 } from "./page-document.js";
@@ -55,12 +57,20 @@ const EDIT_MODE_EXTENSION = `
     toggleEditable(editActive);
   });
 
+  function authoredEditor(element) {
+    for (var node = element; node; node = node.parentElement) {
+      if (node.matches('input,textarea,select,[role="textbox"]') || node.hasAttribute('contenteditable') && !node.hasAttribute(INLINE_EDIT_MARK)) return true;
+    }
+    return false;
+  }
+
   function toggleEditable(enable) {
     if (enable) {
       var els = document.querySelectorAll(EDITABLE);
       for (var i = 0; i < els.length; i++) {
-        if (els[i].closest('[data-pneuma-preview],[data-pneuma-overlay]')) continue;
+        if (els[i].closest('[data-pneuma-preview],[data-pneuma-overlay]') || authoredEditor(els[i])) continue;
         editSaved.set(els[i], els[i].getAttribute('style'));
+        els[i].setAttribute(INLINE_EDIT_MARK, '');
         els[i].contentEditable = 'true';
         els[i].style.cursor = 'text';
       }
@@ -77,6 +87,7 @@ const EDIT_MODE_EXTENSION = `
   function restore(orig, target) {
     if (!editSaved.has(orig)) return;
     target.removeAttribute('contenteditable');
+    target.removeAttribute(INLINE_EDIT_MARK);
     var style = editSaved.get(orig);
     if (style === null) target.removeAttribute('style'); else target.setAttribute('style', style);
   }
@@ -400,7 +411,7 @@ const SCROLLBAR_CSS = `
 
 /** What the viewer adds to every page the preview loads (see `instrumentPage`). */
 const PAGE_INSTRUMENTS = {
-  scripts: [LEAVE_SCRIPT, elementBody(SELECTION_SCRIPT)],
+  scripts: [LEAVE_SCRIPT, elementBody(SELECTION_SCRIPT), buildWebcraftPageRuntimeScript()],
   styles: [SCROLLBAR_CSS],
 };
 
@@ -703,13 +714,15 @@ function ViewportToolbar({
   onSetPreviewMode,
   onExport,
   readonly,
+  permissions,
 }: {
   activePreset: string;
   onPresetChange: (presetId: string) => void;
   previewMode: PreviewMode;
   onSetPreviewMode: (mode: PreviewMode) => void;
-  onExport: () => void;
+  onExport?: () => void;
   readonly?: boolean;
+  permissions?: ViewerPreviewProps["permissions"];
 }) {
   const currentPreset = VIEWPORT_PRESETS.find((p) => p.id === activePreset);
   const showDimensions = currentPreset && currentPreset.width > 0;
@@ -785,7 +798,7 @@ function ViewportToolbar({
           padding: "2px",
         }}
       >
-        {MODE_BUTTONS.map((m) => (
+        {MODE_BUTTONS.filter((m) => m.value !== "edit" || permissions?.editContent !== false).filter((m) => m.value !== "annotate" || permissions?.notifyAgent !== false).map((m) => (
           <button
             key={m.value}
             onClick={() => onSetPreviewMode(m.value)}
@@ -821,7 +834,7 @@ function ViewportToolbar({
       </div>}
 
       {/* Right: Export — hidden in readonly (replay / hosted player) mode */}
-      {!readonly && <button
+      {!readonly && onExport && permissions?.export !== false && <button
         onClick={onExport}
         title="Export &amp; Download"
         style={{
@@ -942,13 +955,37 @@ export default function WebPreview({
   onNavigateComplete,
   commands: manifestCommands,
   readonly,
+  permissions,
+  collaboration,
+  commenting,
+  resolveResourceUrl,
+  activeContentSet: activeContentSetProp,
+  onActiveContentSetChange,
+  imageChangedPaths = [],
+  onPreviewModeChange,
+  onAnnotate,
+  onUserAction,
+  onExport,
 }: ViewerPreviewProps) {
   // Readonly mode: force view, suppress selection and agent notifications
-  const previewMode = readonly ? "view" : rawPreviewMode;
+  const previewMode = readonly || permissions?.editContent === false && rawPreviewMode === "edit" || permissions?.notifyAgent === false && rawPreviewMode === "annotate" ? "view" : rawPreviewMode;
   const onSelect = readonly ? (() => {}) : rawOnSelect;
-  const onNotifyAgent = readonly ? undefined : rawOnNotifyAgent;
+  const onNotifyAgent = readonly || permissions?.notifyAgent === false ? undefined : rawOnNotifyAgent;
+  const canWriteRef = useRef(!readonly && permissions?.editContent !== false);
+  canWriteRef.current = !readonly && permissions?.editContent !== false;
+  const [commentControlHeld, setCommentControlHeld] = useState(false);
+  const commentControlRef = useRef(false);
+  const commentInhibitedRef = useRef(false);
+  const commentBindingRef = useRef(commenting);
+  commentBindingRef.current = readonly ? undefined : commenting;
+  const commentPicking = !readonly && !!commenting?.enabled && (commenting.active || commentControlHeld);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const controllerRef = useRef<WebcraftCollaborationController | null>(null);
+  const loadedFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const [documentReady, setDocumentReady] = useState(false);
+  const [interactionError, setInteractionError] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [commandBarCollapsed, setCommandBarCollapsed] = useState(false);
@@ -960,11 +997,10 @@ export default function WebPreview({
   );
   const [viewport, setViewport] = useState<string>("full");
 
-  // Access store for activeContentSet, preview mode, and annotations
-  const activeContentSet = useStore((s) => s.activeContentSet);
-  const setPreviewMode = useStore((s) => s.setPreviewMode);
-  const addAnnotation = useStore((s) => s.addAnnotation);
-  const annotations = useStore((s) => s.annotations);
+  const [followContentSet, setFollowContentSet] = useState<string | null | undefined>(undefined);
+  const activeContentSet = followContentSet === undefined ? activeContentSetProp ?? null : followContentSet;
+  const setPreviewMode = onPreviewModeChange ?? (() => {});
+  useEffect(() => { setFollowContentSet(undefined); }, [activeContentSetProp]);
 
   // Pending annotation popover state (annotate mode: click → popover → confirm → add)
   const [pendingAnnotation, setPendingAnnotation] = useState<{
@@ -1023,15 +1059,11 @@ export default function WebPreview({
   }, [activeFile, selectedFile, htmlFiles, reachableHtmlFiles]);
 
   // Compute base href for correct relative asset resolution
-  const baseHref = useMemo(() => {
-    const apiBase = import.meta.env.DEV
-      ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
-      : "";
-    if (activeContentSet) {
-      return `${apiBase}/content/${activeContentSet}/`;
-    }
-    return `${apiBase}/content/`;
-  }, [activeContentSet]);
+  const resourceUrl = useCallback((path: string) => {
+    const value = resolveResourceUrl?.(path);
+    return value ? new URL(value, window.location.href).href : "";
+  }, [resolveResourceUrl]);
+  const baseHref = resourceUrl(activeContentSet ? `${activeContentSet}/` : "");
 
   // The current page's source in `files`. `currentFile` is manifest-relative
   // ("index.html"); `files` paths carry the content-set prefix
@@ -1044,19 +1076,21 @@ export default function WebPreview({
   // ── Selection & edit mode handling ──────────────────────────────────────────
 
   const isSelectMode = previewMode === "select" || previewMode === "annotate";
-  const isEditMode = previewMode === "edit";
+  const isEditMode = previewMode === "edit" && !commentPicking;
 
-  // Send selectMode postMessage to iframe when mode changes
-  useEffect(() => {
+  // Keep the ordinary tool identity separate from whether picking is enabled.
+  const selectionToolRef = useRef(previewMode);
+  selectionToolRef.current = previewMode;
+  // Selection is enabled only after this document has an addressable identity.
+  const sendSelectionMode = useCallback((enabled: boolean) => {
     const iframe = iframeRef.current;
+    const doc = currentDocRef.current;
     if (!iframe?.contentWindow) return;
-    try {
-      iframe.contentWindow.postMessage(
-        { type: "pneuma:selectMode", enabled: isSelectMode },
-        "*",
-      );
-    } catch {}
-  }, [isSelectMode]);
+    const ready = !!doc && iframe.getAttribute("aria-busy") !== "true";
+    const binding = commentBindingRef.current;
+    iframe.contentWindow.postMessage({ type: "pneuma:selectMode", tool: selectionToolRef.current, enabled: enabled && ready, ...(doc ? { doc: doc.id } : {}), ...(binding ? { commenting: { enabled: ready && binding.enabled, active: ready && binding.enabled && binding.active } } : {}) }, "*");
+  }, []);
+  useEffect(() => { sendSelectionMode(isSelectMode); }, [isSelectMode, previewMode, documentReady, commenting?.enabled, commenting?.active, readonly, sendSelectionMode]);
 
   // Send editMode postMessage to iframe when mode changes
   useEffect(() => {
@@ -1091,6 +1125,41 @@ export default function WebPreview({
   const docsRef = useRef(new Map<string, LoadedDoc>());
   const currentDocRef = useRef<LoadedDoc | null>(null);
   const docSeqRef = useRef(0);
+
+  // The held gesture overlays the current tool; it never changes the shell's mode.
+  useEffect(() => {
+    const send = (pressed: boolean, inhibited = false) => {
+      commentControlRef.current = pressed;
+      commentInhibitedRef.current = inhibited;
+      setCommentControlHeld(pressed);
+      const doc = currentDocRef.current;
+      if (doc) iframeRef.current?.contentWindow?.postMessage({ type: "pneuma:commentControl", doc: doc.id, pressed, inhibited }, "*");
+    };
+    const editable = (event: KeyboardEvent) => event.composedPath().some((target) => target instanceof Element && (target.matches("input,textarea,select,[role=textbox]") || !!target.closest('[contenteditable]:not([contenteditable="false"])')));
+    const keydown = (event: KeyboardEvent) => {
+      if (!commentBindingRef.current?.enabled || !currentDocRef.current) return;
+      if (event.key === "Escape" && commentControlRef.current) { send(false, true); event.preventDefault(); event.stopImmediatePropagation(); return; }
+      if (event.key === "Control") {
+        if (!commentInhibitedRef.current && !event.isComposing && !editable(event) && !event.altKey && !event.metaKey && !event.shiftKey) send(true);
+      } else if (event.ctrlKey && commentControlRef.current) send(false, true);
+    };
+    const keyup = (event: KeyboardEvent) => { if (event.key === "Control" || !event.ctrlKey) send(false); };
+    const reset = () => send(false);
+    const blur = () => {
+      // Entering this frame blurs the parent Window without leaving the tab.
+      // A queued reset could otherwise arrive after the child's newer press.
+      if (document.hasFocus() && document.activeElement === iframeRef.current) return;
+      reset();
+    };
+    const visibility = () => { if (document.hidden) reset(); };
+    window.addEventListener("keydown", keydown, true); window.addEventListener("keyup", keyup, true);
+    window.addEventListener("blur", blur); document.addEventListener("visibilitychange", visibility);
+    return () => { window.removeEventListener("keydown", keydown, true); window.removeEventListener("keyup", keyup, true); window.removeEventListener("blur", blur); document.removeEventListener("visibilitychange", visibility); };
+  }, []);
+  useEffect(() => {
+    if (!documentReady || readonly || !commenting?.enabled) { commentControlRef.current = false; commentInhibitedRef.current = false; setCommentControlHeld(false); }
+  }, [documentReady, readonly, commenting?.enabled]);
+
 
   // ── Text edit handling ────────────────────────────────────────────────────
   // Edits arrive per element (see EDIT_MODE_EXTENSION) and are applied to the
@@ -1144,7 +1213,7 @@ export default function WebPreview({
     const { doc, edits } = queued;
     const path = doc.sourcePath;
     const log = (actionId: string, description: string) =>
-      useStore.getState().pushUserAction({ timestamp: Date.now(), actionId, description });
+      onUserAction?.({ actionId, description });
     const report = (kind: EditProblem["kind"], reason: string, unsaved: readonly TextEdit[], retry?: () => void) => {
       console.warn(`[webcraft] text edit not saved: ${reason}`);
       const count = unsaved.length;
@@ -1161,6 +1230,7 @@ export default function WebPreview({
         retry,
       });
     };
+    if (!canWriteRef.current) return report("refused", "content editing is unavailable in this view", edits);
     const source = currentSource(path);
     if (source === null) return report("refused", "the page's file is no longer in the workspace", edits);
     // Source-version precondition: the edit was made on a document showing
@@ -1180,6 +1250,7 @@ export default function WebPreview({
       doc.expected = result.html;
       lastSaveRef.current.set(path, { from: content, to: result.html });
       const save = () => {
+        if (!canWriteRef.current) return report("refused", "content editing is unavailable in this view", applied);
         fileChannel.write(path, result.html).then(
           () => {
             const lines = applied.map((c) => `  <${c.tag}>: "${c.beforeText ?? ""}" → "${c.afterText ?? ""}"`);
@@ -1214,13 +1285,14 @@ export default function WebPreview({
     if (result.failure) {
       report("refused", result.failure.reason, edits.slice(result.applied));
     }
-  }, [currentSource, fileChannel]);
+  }, [currentSource, fileChannel, onUserAction]);
 
   const flushAllEdits = useCallback(() => {
     for (const id of Array.from(pendingEditsRef.current.keys())) flushEdits(id);
   }, [flushEdits]);
 
   const queueEdits = useCallback((docId: string, changes: TextEdit[]) => {
+    if (!canWriteRef.current) return;
     const doc = docsRef.current.get(docId);
     if (!doc || !changes.length) return;
     const queued = pendingEditsRef.current.get(docId);
@@ -1238,6 +1310,7 @@ export default function WebPreview({
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (e.data?.type === "pneuma:textEdit") {
+        if (readonly || permissions?.editContent === false) return;
         // Identified by the document id the viewer gave the page, not by
         // `e.source`: an edit finished by the blur of a page switch arrives
         // after the iframe has started loading the next page, and no longer
@@ -1246,12 +1319,22 @@ export default function WebPreview({
         queueEdits(String(e.data.doc ?? ""), Array.isArray(e.data.changes) ? e.data.changes : []);
         return;
       }
-      if (e.data?.type !== "pneuma:select") return;
+      if (e.data?.type !== "pneuma:select" && e.data?.type !== "pneuma:commentShortcut") return;
       if (e.source !== iframeRef.current?.contentWindow) return;
       // Selections name the page of the document on screen.
       const doc = currentDocRef.current;
+      if (!doc || e.data.doc !== doc.id) return;
+      if (e.data.type === "pneuma:commentShortcut") {
+        const pressed = !!e.data.pressed && !!commentBindingRef.current?.enabled;
+        commentControlRef.current = pressed; setCommentControlHeld(pressed); return;
+      }
+      const forComment = e.data.intent === "comment";
+      // A capture can finish before the page receives our latest tool update.
+      if (!forComment && e.data.tool !== undefined && e.data.tool !== selectionToolRef.current) return;
+      if (forComment && !commentBindingRef.current?.enabled) return;
       const sel = e.data.selection;
-      if (!sel || !doc) {
+      if (!sel) {
+        if (forComment) return;
         if (previewMode === "annotate") {
           setPendingAnnotation(null);
         } else {
@@ -1259,7 +1342,7 @@ export default function WebPreview({
         }
         return;
       }
-      if (previewMode === "annotate") {
+      if (!forComment && previewMode === "annotate") {
         // In annotate mode: show popover instead of selecting
         if (!sel.rect) return;
         setPendingAnnotation({
@@ -1268,7 +1351,10 @@ export default function WebPreview({
           rect: sel.rect,
         });
       } else {
-        onSelect({
+        const frame = iframeRef.current;
+        const href = frame ? frameHref(frame) ?? controllerRef.current?.pageHref : null;
+        const pageLocation = href ? new URL(href) : null;
+        const selected: ViewerSelectionContext = {
           type: sel.type,
           content: sel.content,
           level: sel.level,
@@ -1283,31 +1369,32 @@ export default function WebPreview({
             ...(doc.contentSet ? { contentSet: doc.contentSet } : {}),
             page: doc.file,
             ...(sel.selector ? { selector: sel.selector } : {}),
+            ...(pageLocation ? { query: pageLocation.search, hash: pageLocation.hash } : {}),
           },
           thumbnail: sel.thumbnail,
           label: sel.label,
           nearbyText: sel.nearbyText,
           accessibility: sel.accessibility,
-        });
+        };
+        if (forComment) commentBindingRef.current?.onSelect(selected);
+        else onSelect(selected);
       }
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onSelect, queueEdits, previewMode, activeContentSet]);
+  }, [onSelect, queueEdits, previewMode, activeContentSet, readonly, permissions?.editContent]);
 
   // Confirm pending annotation with comment
   const confirmAnnotation = useCallback(
     (comment: string) => {
       if (!pendingAnnotation) return;
       const { selection: sel, pageFile } = pendingAnnotation;
-      addAnnotation({
-        id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      if (permissions?.notifyAgent === false) return;
+      onAnnotate?.({
         slideFile: pageFile,
         element: {
-          file: pageFile,
           type: sel.type as import("../../../src/types.js").SelectionType,
           content: sel.content,
-          level: sel.level,
           tag: sel.tag,
           classes: sel.classes,
           selector: sel.selector,
@@ -1320,7 +1407,7 @@ export default function WebPreview({
       });
       setPendingAnnotation(null);
     },
-    [pendingAnnotation, addAnnotation],
+    [pendingAnnotation, onAnnotate, permissions?.notifyAgent],
   );
 
   // Dismiss pending annotation on page navigation
@@ -1362,14 +1449,15 @@ export default function WebPreview({
   // it everywhere else: a link, a reload or a script-set `location` inside the
   // page moves the iframe, and its `load` tells the viewer where it now is.
 
-  const contentRootPath = pagePath(activeContentSet, "");
-  const desiredPath = currentFile ? pagePath(activeContentSet, currentFile) : "";
+  const contentRootPath = baseHref;
+  const desiredPath = currentFile ? resourceUrl(pageSourcePath) : "";
+  const collaborationLatest = useRef({ site, activeContentSet, currentFile, viewport, reachableHtmlFiles, resourceUrl, isSelectMode, onActiveContentSetChange, onActiveFileChange });
+  collaborationLatest.current = { site, activeContentSet, currentFile, viewport, reachableHtmlFiles, resourceUrl, isSelectMode, onActiveContentSetChange, onActiveFileChange };
   // The element the controller last drove, and the URL it holds or is loading.
   const frameRef = useRef<{ iframe: HTMLIFrameElement | null; url: string | null }>({ iframe: null, url: null });
   // An address navigation waiting for its page's `load`, with the verdict
-  // callback of THAT request (a later request replaces it, and its own verdict
-  // is then never given — the store reads that as superseded).
-  const awaitingRef = useRef<{ file: string; complete: typeof onNavigateComplete } | null>(null);
+  // callback of that request; a later request explicitly supersedes it.
+  const awaitingRef = useRef<{ file: string; contentSet: string | null; address: ViewerAddress; complete: typeof onNavigateComplete; signal?: AbortSignal; cause: "local-input" | "follow" } | null>(null);
   // The page whose document has finished loading and is not being replaced.
   const readyFileRef = useRef<string | null>(null);
   // Files that changed while the iframe was loading, with when the change was
@@ -1380,7 +1468,32 @@ export default function WebPreview({
   // — nothing on it can be selected, edited or addressed.
   const [foreignUrl, setForeignUrl] = useState<string | null>(null);
 
+  const completeNavigation = useCallback((address: ViewerAddress, complete: typeof onNavigateComplete, signal?: AbortSignal, cause: "local-input" | "follow" = "local-input") => {
+    if (signal?.aborted) { complete?.({ success: false, message: "Navigation was cancelled" }); return; }
+    if (typeof address.selector !== "string" && typeof address.anchor !== "string") { complete?.({ success: true }); return; }
+    const frame = iframeRef.current;
+    try {
+      const document = frame?.contentWindow?.document;
+      if (document) {
+        let target: Element | null = null;
+        try { target = typeof address.selector === "string" ? document.querySelector(address.selector) : document.getElementById(String(address.anchor).replace(/^#/, "")); } catch { /* Invalid selector. */ }
+        if (!target || target.closest("[data-pneuma-preview],[data-pneuma-overlay]")) {
+          complete?.({ success: false, message: "This page no longer contains the addressed element" }); return;
+        }
+        target.scrollIntoView({ block: "center", behavior: "instant" });
+        sendSelectionMode(collaborationLatest.current.isSelectMode);
+        frame?.contentWindow?.postMessage({ type: "pneuma:navigationHighlight", doc: currentDocRef.current?.id, selector: address.selector, anchor: address.anchor }, "*");
+        complete?.({ success: true }); return;
+      }
+    } catch { /* An opaque page resolves its own address through the mode bridge. */ }
+    const controller = controllerRef.current;
+    if (!controller) { complete?.({ success: false, message: "The addressed page is unavailable" }); return; }
+    void controller.navigateAnchor(address, signal, cause).then((result) => complete?.(result));
+  }, [sendSelectionMode]);
+
   const openInFrame = useCallback((iframe: HTMLIFrameElement, url: string, fresh: boolean) => {
+    controllerRef.current?.frameLeaving();
+    loadedFrameRef.current = null; currentDocRef.current = null; setDocumentReady(false); setForeignUrl(null); setInteractionError("");
     frameRef.current = { iframe, url };
     readyFileRef.current = null;
     iframe.setAttribute("aria-busy", "true");
@@ -1392,16 +1505,59 @@ export default function WebPreview({
     try { iframe.contentWindow!.location.replace(url); } catch { iframe.src = url; }
   }, []);
 
+  /** One resolver for ordinary locators/capture and collaboration comment addresses. */
+  const navigateAddress = useCallback((address: ViewerAddress, signal?: AbortSignal, cause: "local-input" | "follow" = "local-input"): Promise<ViewerActionResult> => new Promise((resolve) => {
+    const state = collaborationLatest.current;
+    const prefix = address.contentSet === undefined ? state.activeContentSet : address.contentSet;
+    const target = typeof address.page === "string" ? address.page : typeof address.file === "string" ? address.file : state.currentFile;
+    if (prefix !== null && typeof prefix !== "string" || ["selector", "anchor", "query", "hash"].some((key) => address[key] !== undefined && typeof address[key] !== "string")
+      || !state.site?.byContentSet[prefix as string ?? ""] || !target || !filesRef.current.some((file) => file.path === (prefix ? `${prefix}/` : "") + target)) {
+      resolve({ success: false, message: `This site has no addressed page "${target}"` }); return;
+    }
+    if (signal?.aborted) { resolve({ success: false, message: "Navigation was cancelled" }); return; }
+    const frame = iframeRef.current;
+    if (!frame) { resolve({ success: false, message: "The addressed page is unavailable" }); return; }
+    const here = frameHref(frame) ?? controllerRef.current?.pageHref ?? frameRef.current.url;
+    const samePage = prefix === state.activeContentSet && target === state.currentFile;
+    const resource = state.resourceUrl((prefix ? `${prefix}/` : "") + target);
+    if (!resource) { resolve({ success: false, message: "The addressed page is unavailable" }); return; }
+    const href = new URL(samePage && here ? here : resource);
+    if (typeof address.query === "string") href.search = address.query;
+    if (typeof address.hash === "string") href.hash = address.hash;
+    else if (typeof address.anchor === "string") href.hash = address.anchor;
+    let settled = false;
+    let pending: typeof awaitingRef.current = null;
+    const finish = (result: ViewerActionResult = { success: true }) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer); signal?.removeEventListener("abort", abort);
+      if (pending && awaitingRef.current === pending) awaitingRef.current = null;
+      resolve(result);
+    };
+    const abort = () => finish({ success: false, message: "Navigation was cancelled" });
+    const timer = setTimeout(() => finish({ success: false, message: "The addressed page did not become ready" }), 5000);
+    signal?.addEventListener("abort", abort, { once: true });
+    awaitingRef.current?.complete?.({ success: false, message: "Navigation was superseded" });
+    const normalizedAddress = { ...address, ...(prefix ? { contentSet: prefix } : { contentSet: null }), page: target };
+    if (samePage && here === href.href && readyFileRef.current === target) {
+      completeNavigation(normalizedAddress, finish, signal, cause); return;
+    }
+    pending = { file: target, contentSet: prefix as string | null, address: normalizedAddress, complete: finish, signal, cause };
+    awaitingRef.current = pending;
+    if (prefix !== state.activeContentSet) { setFollowContentSet(prefix as string | null); state.onActiveContentSetChange?.(prefix as string | null); }
+    setSelectedFile(target); state.onActiveFileChange?.(target);
+    if (frame.getAttribute("aria-busy") !== "true" || frameRef.current.url !== href.href) openInFrame(frame, href.href, false);
+  }), [completeNavigation, openInFrame]);
+  useEffect(() => () => { awaitingRef.current?.complete?.({ success: false, message: "The preview was closed" }); }, []);
+
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe || !pageExists || !desiredPath) return;
-    const origin = window.location.origin;
-    const root = origin + contentRootPath;
+    const root = contentRootPath;
     const st = frameRef.current;
     if (st.iframe !== iframe) {
       // First mount, or a Full ↔ Device switch mounted a new element: open the
       // page where the previous element was, query and fragment included.
-      openInFrame(iframe, st.url && pageFromUrl(st.url, root) === currentFile ? st.url : origin + desiredPath, true);
+      openInFrame(iframe, st.url && pageFromUrl(st.url, root) === currentFile ? st.url : desiredPath, true);
       return;
     }
     const busy = iframe.getAttribute("aria-busy") === "true";
@@ -1409,7 +1565,7 @@ export default function WebPreview({
     // Compare pages, not URLs: `sub/` and `sub/index.html` are the same page,
     // and the URL the page is at keeps its query and fragment.
     if (here && pageFromUrl(here, root) === currentFile) return;
-    openInFrame(iframe, origin + desiredPath, false);
+    openInFrame(iframe, desiredPath, false);
   }, [desiredPath, pageExists, viewport, openInFrame, contentRootPath, currentFile]);
 
   // Latest render values for the load handler, which the iframe calls.
@@ -1418,10 +1574,12 @@ export default function WebPreview({
   latestRef.current = latest;
 
   const reload = useCallback((iframe: HTMLIFrameElement) => {
+    controllerRef.current?.frameLeaving();
+    loadedFrameRef.current = null; currentDocRef.current = null; setDocumentReady(false); setForeignUrl(null); setInteractionError("");
     iframe.setAttribute("aria-busy", "true");
     readyFileRef.current = null;
-    try { iframe.contentWindow!.location.reload(); } catch { iframe.removeAttribute("aria-busy"); }
-  }, []);
+    try { iframe.contentWindow!.location.reload(); } catch { iframe.src = frameRef.current.url ?? desiredPath; }
+  }, [desiredPath]);
 
   const handleFrameLoad = useCallback(() => {
     const iframe = iframeRef.current;
@@ -1429,9 +1587,15 @@ export default function WebPreview({
     // The initial about:blank of a new iframe element, not a page.
     if (frameRef.current.iframe !== iframe) return;
     try { if (iframe.contentWindow?.location.href === "about:blank") return; } catch { /* another origin */ }
+    loadedFrameRef.current = iframe;
+    currentDocRef.current = null; readyFileRef.current = null; setDocumentReady(false); setForeignUrl(null); setInteractionError("");
     const href = frameHref(iframe);
     const L = latestRef.current;
-    const file = href ? pageFromUrl(href, window.location.origin + L.contentRootPath) : null;
+    if (!href && permissions?.editContent === false) {
+      controllerRef.current?.frameLoaded(true);
+      return;
+    }
+    const file = href ? pageFromUrl(href, L.contentRootPath) : null;
     if (!href || !file || !L.reachableHtmlFiles.includes(file)) {
       // Not a page of this site: leave it alone, and say so.
       frameRef.current = { iframe, url: href };
@@ -1464,7 +1628,6 @@ export default function WebPreview({
     setForeignUrl(null);
     instrumentPage(win.document, PAGE_INSTRUMENTS, doc.id);
     try {
-      win.postMessage({ type: "pneuma:selectMode", enabled: L.isSelectMode }, "*");
       win.postMessage({ type: "pneuma:editMode", enabled: L.isEditMode }, "*");
     } catch { /* gone again */ }
     // Edits made on the previous document go to ITS file now.
@@ -1473,7 +1636,7 @@ export default function WebPreview({
     // Files that changed while this document loaded: if it requested one of
     // them before the change was seen, it may show the old version — reload.
     if (dirtyRef.current.size) {
-      const setPrefix = decodeURIComponent(L.contentRootPath).replace(/^\/content\//, "");
+      const setPrefix = L.activeContentSet ? `${L.activeContentSet}/` : "";
       const stale = staleAfterLoad(dirtyRef.current, contentRequests(win), setPrefix);
       dirtyRef.current.clear();
       if (stale.length) {
@@ -1484,16 +1647,16 @@ export default function WebPreview({
     }
 
     readyFileRef.current = file;
-    iframe.removeAttribute("aria-busy");
+    controllerRef.current?.frameLoaded(true);
     // The page moved itself (a link, a reload, a script): follow it, so the
     // page tabs, selections and addresses name the page on screen.
     if (file !== L.currentFile) L.handlePageChange(file);
     const awaiting = awaitingRef.current;
-    if (awaiting && awaiting.file === file) {
+    if (awaiting && awaiting.file === file && awaiting.contentSet === L.activeContentSet) {
       awaitingRef.current = null;
-      awaiting.complete?.();
+      completeNavigation(awaiting.address, awaiting.complete, awaiting.signal, awaiting.cause);
     }
-  }, [currentSource, flushAllEdits, reload]);
+  }, [currentSource, flushAllEdits, reload, permissions?.editContent, completeNavigation]);
 
   // Reload the page when a file it shows changes: its own HTML, or any
   // stylesheet, script, image, font or data file it requested (read from the
@@ -1512,18 +1675,19 @@ export default function WebPreview({
       return;
     }
     const href = frameHref(iframe);
+    if (!href && permissions?.editContent === false) { reload(iframe); return; }
     if (!href || !currentDocRef.current) return;
     const win = iframe.contentWindow!;
     const own = currentDocRef.current.sourcePath;
     const refs = referencedContentPaths(win);
-    const setPrefix = decodeURIComponent(latestRef.current.contentRootPath).replace(/^\/content\//, "");
+    const setPrefix = latestRef.current.activeContentSet ? `${latestRef.current.activeContentSet}/` : "";
     const shown = (p: string) =>
       p === own || (refs === "all" ? p.startsWith(setPrefix) : refs.has(p));
     const hit = paths.filter(shown);
     if (!hit.length) return;
     if (selfWrite && hit.every((p) => p === own)) return;
     reload(iframe);
-  }, [reload]);
+  }, [reload, permissions?.editContent]);
   reloadIfShownRef.current = reloadIfShown;
 
   const prevFilesRef = useRef<Map<string, string> | null>(null);
@@ -1538,18 +1702,17 @@ export default function WebPreview({
     reloadIfShown(changed, filesStatus.lastOrigin === "self");
   }, [files, reloadIfShown]);
 
-  const imageTickPaths = useStore((s) => s.imageTickPaths);
   const prevImageVersionRef = useRef(imageVersion);
   useEffect(() => {
     if (prevImageVersionRef.current === imageVersion) return;
     prevImageVersionRef.current = imageVersion;
-    reloadIfShown(imageTickPaths, false);
-  }, [imageVersion, imageTickPaths, reloadIfShown]);
+    reloadIfShown(imageChangedPaths, false);
+  }, [imageVersion, imageChangedPaths, reloadIfShown]);
 
   /** Back from a page that is not part of this site to the current page. */
   const returnToSite = useCallback(() => {
     const iframe = iframeRef.current;
-    if (iframe && desiredPath) openInFrame(iframe, window.location.origin + desiredPath, false);
+    if (iframe && desiredPath) openInFrame(iframe, desiredPath, false);
   }, [desiredPath, openInFrame]);
 
   // ── Locator / address navigation from chat cards & the capture action ───────
@@ -1562,23 +1725,9 @@ export default function WebPreview({
   useEffect(() => {
     if (!navigateRequest) return;
     const complete = onNavigateComplete;
-    const { address } = navigateRequest;
-    const target = (address.page || address.file) as string | undefined;
-    awaitingRef.current = null;
-    if (!target) {
-      complete?.();
-      return;
-    }
-    if (!reachableHtmlFiles.includes(target)) {
-      complete?.({ success: false, message: `This site has no page "${target}"` });
-      return;
-    }
-    if (target === currentFile && readyFileRef.current === target) {
-      complete?.();
-      return;
-    }
-    awaitingRef.current = { file: target, complete };
-    if (target !== currentFile) handlePageChange(target);
+    const controller = new AbortController();
+    void navigateAddress(navigateRequest.address, controller.signal).then((result) => complete?.(result));
+    return () => controller.abort();
   }, [navigateRequest]);
 
   // ── Viewport preset handling ─────────────────────────────────────────────────
@@ -1630,16 +1779,51 @@ export default function WebPreview({
     return { width: `${pw}px`, height: `${ph}px`, scale, useTransform: true };
   }, [viewport, containerSize]);
 
-  // ── Export handlers ─────────────────────────────────────────────────────────
+  // ── Per-mounted semantic collaboration ──────────────────────────────────────
 
-  const handleExport = useCallback(() => {
-    const apiBase = import.meta.env.DEV
-      ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}`
-      : "";
-    const cs = useStore.getState().activeContentSet;
-    const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
-    window.open(`${apiBase}/export/webcraft${qs}`, "_blank");
-  }, []);
+  useEffect(() => {
+    const controller = new WebcraftCollaborationController({
+      frame: () => iframeRef.current,
+      overlay: () => viewerRef.current,
+      current: () => { const state = collaborationLatest.current; return { contentSet: state.activeContentSet, page: state.currentFile, viewport: state.viewport, pages: state.reachableHtmlFiles }; },
+      resourceUrl: (path) => collaborationLatest.current.resourceUrl(path),
+      navigate: (address, signal) => navigateAddress(address, signal, "follow"),
+      show: (address, nextViewport) => {
+        const state = collaborationLatest.current;
+        const prefix = typeof address.contentSet === "string" ? address.contentSet : null;
+        const page = String(address.page ?? "");
+        if (!state.site?.byContentSet[prefix ?? ""] || !filesRef.current.some((file) => file.path === (prefix ? `${prefix}/` : "") + page)) throw new Error(`This site has no page "${page}"`);
+        setFollowContentSet(prefix);
+        setSelectedFile(page);
+        setViewport(nextViewport);
+        if (prefix !== state.activeContentSet) state.onActiveContentSetChange?.(prefix);
+        state.onActiveFileChange?.(page);
+      },
+      navigating: (href) => { frameRef.current = { iframe: iframeRef.current, url: href }; readyFileRef.current = null; loadedFrameRef.current = null; currentDocRef.current = null; setDocumentReady(false); setForeignUrl(null); setInteractionError(""); },
+      leaving: () => { const iframe = iframeRef.current; iframe?.setAttribute("aria-busy", "true"); readyFileRef.current = null; loadedFrameRef.current = null; currentDocRef.current = null; setDocumentReady(false); setForeignUrl(null); setInteractionError(""); },
+      unavailable: (message) => { const iframe = iframeRef.current; iframe?.removeAttribute("aria-busy"); readyFileRef.current = null; currentDocRef.current = null; setDocumentReady(false); setInteractionError(message); sendSelectionMode(false); },
+      loaded: (page, href, nonce) => {
+        const iframe = iframeRef.current;
+        if (!iframe) return;
+        frameRef.current = { iframe, url: href };
+        readyFileRef.current = page;
+        if (!frameHref(iframe)) {
+          const state = collaborationLatest.current;
+          currentDocRef.current = { id: nonce, contentSet: state.activeContentSet, file: page, sourcePath: (state.activeContentSet ? `${state.activeContentSet}/` : "") + page, expected: null };
+          setForeignUrl(null);
+          if (page !== state.currentFile) { setSelectedFile(page); state.onActiveFileChange?.(page); }
+          const awaiting = awaitingRef.current;
+          if (awaiting?.file === page && awaiting.contentSet === state.activeContentSet) { awaitingRef.current = null; completeNavigation(awaiting.address, awaiting.complete, awaiting.signal, awaiting.cause); }
+        }
+        iframe.removeAttribute("aria-busy"); setDocumentReady(true); setInteractionError("");
+        sendSelectionMode(collaborationLatest.current.isSelectMode);
+      },
+    }, collaboration);
+    controllerRef.current = controller;
+    controller.frameLoaded(loadedFrameRef.current === iframeRef.current);
+    return () => { controller.dispose(); if (controllerRef.current === controller) controllerRef.current = null; };
+  }, [collaboration]);
+  useEffect(() => { controllerRef.current?.invalidate(); controllerRef.current?.frameLoaded(); }, [viewport, containerSize]);
 
   // ── Command handling ────────────────────────────────────────────────────────
 
@@ -1665,9 +1849,9 @@ export default function WebPreview({
   }, []);
 
   return (
-    <div style={{ display: "flex", height: "100%", width: "100%", overflow: "hidden" }}>
+    <div ref={viewerRef} onPointerDownCapture={() => controllerRef.current?.localInput()} onWheelCapture={() => controllerRef.current?.localInput()} onKeyDownCapture={() => controllerRef.current?.localInput()} style={{ display: "flex", height: "100%", width: "100%", overflow: "hidden" }}>
       {/* Command Bar — hidden in readonly (replay) mode */}
-      {!readonly && <div
+      {!readonly && onNotifyAgent && <div
         style={{
           width: commandBarCollapsed ? "36px" : "180px",
           minWidth: commandBarCollapsed ? "36px" : "180px",
@@ -1823,11 +2007,12 @@ export default function WebPreview({
         {/* Viewport Toolbar */}
         <ViewportToolbar
           activePreset={viewport}
-          onPresetChange={setViewport}
+          onPresetChange={(value) => { controllerRef.current?.localInput(); setViewport(value); }}
           previewMode={previewMode}
           onSetPreviewMode={setPreviewMode}
-          onExport={handleExport}
+          onExport={onExport}
           readonly={readonly}
+          permissions={permissions}
         />
 
         {/* Iframe Preview Container */}
@@ -1946,6 +2131,8 @@ export default function WebPreview({
               )}
             </div>
           )}
+          {currentFile && pageExists && interactionError && <div role="alert" style={{ position: "absolute", top: 12, left: 12, right: 12, zIndex: 6, padding: 16, borderRadius: 8, color: "var(--color-cc-fg)", background: "var(--color-cc-surface)", border: "1px solid var(--color-cc-border)" }}><strong>Page interactions unavailable</strong><p style={{ margin: "8px 0", color: "var(--color-cc-muted)", fontSize: 12 }}>{interactionError}</p><button type="button" onClick={returnToSite} style={{ padding: "6px 10px", border: "1px solid var(--color-cc-border)", borderRadius: 6, background: "var(--color-cc-hover)" }}>Back to {currentFile}</button></div>}
+          {currentFile && pageExists && !documentReady && !foreignUrl && !interactionError && <div role="status" style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-cc-muted)", background: "var(--color-cc-surface)" }}>Preparing page interactions…</div>}
           {currentFile && pageExists ? (
             iframeLayout.useTransform ? (
               /* Device viewport mode: centered, scaled iframe with device frame */
@@ -1969,7 +2156,9 @@ export default function WebPreview({
                     border: "none",
                     display: "block",
                     background: "#ffffff",
+                    pointerEvents: documentReady || (foreignUrl || interactionError) && !isSelectMode ? "auto" : "none",
                   }}
+                  aria-busy={!documentReady && !foreignUrl && !interactionError || undefined}
                   sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                   title="Web Preview"
                   onLoad={handleFrameLoad}
@@ -1985,7 +2174,9 @@ export default function WebPreview({
                   border: "none",
                   display: "block",
                   background: "#ffffff",
+                  pointerEvents: documentReady || (foreignUrl || interactionError) && !isSelectMode ? "auto" : "none",
                 }}
+                aria-busy={!documentReady && !foreignUrl && !interactionError || undefined}
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 title="Web Preview"
                 onLoad={handleFrameLoad}

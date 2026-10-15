@@ -1,0 +1,75 @@
+{
+  "title": "共同作業の設定",
+  "intro": "Webcraft ワークスペースを共有し、リアルタイムの閲覧、コメント、チャットに招待します。Agent との会話は非公開のままです。",
+  "path_label": "訪問者の接続方法",
+  "paths": {
+    "lan": "同じネットワーク",
+    "temporary": "一時的なインターネット公開",
+    "named": "独自ドメイン"
+  },
+  "descriptions": {
+    "lan": "全員が同じ Wi-Fi またはローカルネットワークを使う場合はこちらから始めます。cloudflared のインストールは不要です。",
+    "temporary": "ドメインや Cloudflare アカウントなしで、無料の一時的な公開アドレスを使えます。公開アクセスを再開するとアドレスが変わります。",
+    "named": "Cloudflare で管理するドメインで固定の HTTPS アドレスを使います。Cloudflare アカウントと名前付き Tunnel が必要です。"
+  },
+  "hostname_label": "ホスト名 (任意)",
+  "hostname_placeholder": "collaboration.example.com",
+  "hostname_error": "ホスト名または HTTPS オリジンを入力してください。ポート、パス、認証情報、クエリ、招待情報は含めないでください。",
+  "steps": {
+    "lan": [
+      "Project を開き、その中の Webcraft Session を開きます。",
+      "Collaborate → Project を選び、名前を入力し、Local network を選択したまま Create collaboration を選びます。",
+      "訪問者に見せるサイトまたはコンテンツセットで Share this workspace を選びます。",
+      "Links を開き、Comment & chat の招待を作成して、その Local network リンクをコピーします。",
+      "訪問者に同じネットワークのブラウザーで招待を開いて名前を入力してもらい、コメントとチャットを試します。"
+    ],
+    "temporary": [
+      "Project とその中の Webcraft Session を開き、Collaborate → Project で Local network を選択したまま共同作業を作成します。",
+      "cloudflared を確認し、ない場合は設定リクエストでインストールします。公開アクセスを有効にする前に「再確認」を選びます。",
+      "Share this workspace を選び、Public access → Free temporary address → Enable public access に進みます。",
+      "公開アクセスが Active になったら Links を開き、Comment & chat の招待を作成して Internet の項目を選びます。",
+      "訪問者に別のネットワークのブラウザーで招待を開いてもらい、コメントとチャットを試します。"
+    ],
+    "named": [
+      "Project とその中の Webcraft Session を開き、Collaborate → Project で Local network を選択したまま共同作業を作成します。",
+      "設定リクエストで cloudflared をインストールし、名前付き Tunnel と、その Tunnel に向けたホスト名の DNS ルートを Cloudflare に作成します。",
+      "Share this workspace を選び、Public access → Your own Tunnel に進みます。",
+      "HTTPS 公開 URL、Tunnel UUID、ローカルの認証情報 JSON ファイルの絶対パスの 3 項目をすべて入力し、Enable public access を選びます。",
+      "Active になったら Links を開き、Comment & chat の招待を作成し、Internet の項目を選んで訪問者に送ります。",
+      "訪問者に別のネットワークのブラウザーで招待を開いてもらい、コメントとチャットを試します。"
+    ]
+  },
+  "keep_online": "訪問者がワークスペースを使う間は、ホストコンピューター、Pneuma、共有中の Session タブをオンラインに保ってください。",
+  "public_lifecycle": "認証済みの公開訪問者が 10 分間いないと公開アクセスは停止し、再起動後は無効になります。必要に応じて再度有効にしてください。",
+  "checking": "このコンピューターを確認中…",
+  "check_error": "設定状態を読み取れませんでした。再確認して設定リクエストを準備してください。",
+  "cloudflared_found": "このコンピューターで cloudflared を検出しました",
+  "cloudflared_missing": "このコンピューターで cloudflared が見つかりません",
+  "check_again": "再確認",
+  "install_hint": "設定リクエストでこのコンピューターに cloudflared をインストールできます。確認操作で設定が変わることはありません。",
+  "copy_request": "設定リクエストをコピー",
+  "copied": "設定リクエストをコピーしました",
+  "copying": "コピー中…",
+  "paste_hint": "この 1 文のリクエストを、このコンピューターの Claude Code または Codex に貼り付けて、設定と検証を実行します。",
+  "copy_error": "コピーに失敗しました。下で選択されているリクエストを手動でコピーしてください。",
+  "show_request": "設定リクエストを表示",
+  "hide_request": "設定リクエストを隠す",
+  "request_label": "Claude Code または Codex 向けの設定リクエスト",
+  "advanced_title": "詳細：自分でホストするクラウド共同作業サービスを使う",
+  "advanced_body": "Cloud host は、リポジトリの cloud/collaboration の手順に従って自分でデプロイ・管理する共同作業サービスに接続します。HTTPS URL とプロビジョニングキーが必要で、ホスト型サービスのアカウントは作成しません。ワークスペースのコンテンツには、ホストと Session がオンラインである必要があります。",
+  "entry": "お困りですか？共同作業の設定ガイド",
+  "request_paths": {
+    "lan": "同じネットワーク内での共同作業",
+    "temporary": "無料の Cloudflare Quick Tunnel による一時的なインターネット上の共同作業",
+    "named": "独自ドメインと名前付き Cloudflare Tunnel によるインターネット上の共同作業"
+  },
+  "request_hostname": " (https://{{hostname}})",
+  "request_missing": {
+    "lan": "Project の情報",
+    "temporary": "Project の情報",
+    "named": "Project、ドメイン、Cloudflare アカウントの情報"
+  },
+  "request": "{{platform}} 上の Pneuma Skills {{appVersion}} で{{scenario}}{{hostnameClause}}を設定・検証するため、まずローカルの完全な設定ガイド {{guidePath}} を読み (読めない場合は実行中の非公開 Pneuma アプリから {{guideUrl}} を取得)、不足している{{missing}}を私に確認してから設定を実行し、Agent との会話を非公開に保ったまま、訪問者がブラウザーで共有 Webcraft ワークスペースを開き、Comment & chat を使えることを検証してください。",
+  "lan_ready": "同じネットワーク内での共同作業にトンネルは不要です。",
+  "public_recovery": "公開アクセスに失敗したら、表示された原因を解消し、Retry stopping public access で失敗した試行を整理してから、再度 Enable public access を選んでください。「再確認」はインストール状況のみを確認します。"
+}

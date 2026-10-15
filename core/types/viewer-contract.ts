@@ -11,6 +11,7 @@
 
 import type { ComponentType } from "react";
 import type { Source, FileChannel } from "./source.js";
+import type { ViewerCollaborationBinding, ViewerPermissions } from "./viewer-collaboration.js";
 
 /**
  * File content (kept in sync with FileContent in src/types.ts).
@@ -75,7 +76,7 @@ export interface ViewerSelectionContext {
    * agent-readable context; `address` is the part meant for machine routing.
    */
   address?: ViewerAddress;
-  /** SVG data URL thumbnail of the selected element (null if capture failed or element too large) */
+  /** Image data URL preview: selected images use PNG/WebP; other selections use SVG. Absent when capture fails or exceeds its size bound. */
   thumbnail?: string;
   /** Human-readable element name (e.g. 'button "Submit"', 'h2 "Our Solution"') */
   label?: string;
@@ -254,6 +255,33 @@ export interface ViewerLocator {
 
 /** Props for the preview component */
 export interface ViewerPreviewProps {
+  /** Optional per-mounted collaboration; modes never inspect authority placement. */
+  collaboration?: ViewerCollaborationBinding;
+  /** Discussion picking is independent of authoring/Agent selection. The host
+   * gates permissions; viewers may add a temporary Control-held affordance
+   * without changing mode. A pick opens a draft and never posts a comment. */
+  commenting?: {
+    enabled: boolean;
+    active: boolean;
+    onSelect(selection: ViewerSelectionContext): void;
+  };
+  /** Omission preserves the local Session's existing authoring capabilities. */
+  permissions?: ViewerPermissions;
+  /**
+   * The runtime resolves local/public resources; viewers never construct grants.
+   * Resolve a raw workspace-relative file path, encoding each segment while
+   * preserving directories and a trailing slash. Literal ?, # and % belong
+   * to the filename. The mode appends semantic URL query/fragment separately;
+   * this callback never receives or guesses a URL suffix.
+   */
+  resolveResourceUrl?: (path: string) => string;
+  activeContentSet?: string | null;
+  onActiveContentSetChange?: (prefix: string | null) => void;
+  imageChangedPaths?: readonly string[];
+  onPreviewModeChange?: (mode: "view" | "edit" | "select" | "annotate") => void;
+  onAnnotate?: (annotation: NonNullable<ViewerSelectionContext["annotations"]>[number]) => void;
+  onUserAction?: (action: { actionId: string; description: string }) => void;
+  onExport?: () => void;
   /**
    * Source map. Keys come from `manifest.sources` (or the synthesized
    * default `{ files: file-glob }` for unmigrated modes). Viewers

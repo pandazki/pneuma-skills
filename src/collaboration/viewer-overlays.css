@@ -1,0 +1,6 @@
+.collaboration-overlays { position: absolute; inset: 0; z-index: 90; pointer-events: none; overflow: hidden; }
+.collaboration-pointer { position: absolute; display: inline-flex; align-items: flex-start; gap: 2px; }
+.collaboration-pointer > span { background: var(--color-cc-surface); color: currentColor; font-size: 11px; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
+.collaboration-pin { position: absolute; pointer-events: auto; width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; transform: translate(-50%, -50%); background: var(--color-cc-primary); color: var(--color-cc-bg); border: 2px solid var(--color-cc-bg); font: 600 11px sans-serif; }
+.collaboration-view-error { position: absolute; bottom: 12px; left: 12px; max-width: min(460px, calc(100% - 24px)); background: var(--color-cc-surface); color: var(--color-cc-warning); padding: 8px 12px; border-radius: 7px; font-size: 12px; }
+.published-viewer { position: absolute; inset: 0; }

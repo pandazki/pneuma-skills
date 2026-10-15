@@ -370,6 +370,8 @@ export interface InitConfig {
 
 /** Viewer self-describing API — pure data declaration, readable by backend (pneuma.ts / skill-installer) */
 export interface ViewerApiConfig {
+  /** Explicit public viewing and per-mount collaboration capabilities. */
+  collaboration?: import("./viewer-collaboration.js").ViewerCollaborationDeclaration;
   workspace?: {
     type: "all" | "manifest" | "single";
     multiFile: boolean;

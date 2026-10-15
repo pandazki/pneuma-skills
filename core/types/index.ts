@@ -40,6 +40,16 @@ export type {
 export type { ModeDefinition } from "./mode-definition.js";
 export type { ModeInfo, ModeViewerBuildState } from "./mode-viewer.js";
 export { modeViewerAssetUrl } from "./mode-viewer.js";
+export type {
+  CollaborationJsonValue, CollaborationJsonObject, ViewerCollaborationDeclaration,
+  ViewerViewState, ViewerProjection, ViewerCollaborationAdapter,
+  ViewerCollaborationBinding, ViewerPermissions,
+} from "./viewer-collaboration.js";
+export { isCollaborationJson, isViewerViewState } from "./viewer-collaboration.js";
+export type {
+  CollaborationPublicationProjection, CollaborationViewerCompatibility,
+  ModePublicationInput, ModePublicationOutput, ModePublicationAdapter,
+} from "./collaboration-publication.js";
 
 export type {
   AgentBackend,
@@ -82,6 +92,20 @@ export type {
 
 export type { ProjectManifest, ProjectSummary } from "./project-manifest.js";
 export { isProjectManifest } from "./project-manifest.js";
+export type {
+  CollaborationWorkspace, CollaborationAuthority, LocalCollaborationBinding, LocalCollaborationRoom,
+} from "./collaboration-workspace.js";
+export { collaborationAuthorityBase } from "./collaboration-workspace.js";
+
+export type {
+  CollaborationRole, CollaborationMember, CollaborationIdentity,
+  CollaborationRoom, CollaborationProjectState, CollaborationView,
+  CollaborationPresence, CollaborationAnchor, CollaborationCommentPreview, CollaborationCommentMessage,
+  CollaborationComment, CollaborationChatMessage, CollaborationRoomState,
+  CollaborationClientMessage, CollaborationServerMessage,
+  CollaborationInvite, CollaborationGuestLink,
+} from "./collaboration.js";
+export { canWriteCollaboration, canDiscussCollaboration, canManageCollaborationRoom, isCollaborationHost } from "./collaboration.js";
 
 export type {
   BorrowDispatchPayload,
@@ -105,3 +129,21 @@ export type {
 
 export type { WatcherBackendKind, WatcherHealth } from "./workspace-watcher.js";
 export { WATCHER_BACKEND_KINDS, parseWatcherBackendKind } from "./workspace-watcher.js";
+
+export * from "./collaboration-publication.js";
+
+export type { CollaborationReference, CollaborationReferenceSource, CollaborationResolvedReference } from "./collaboration-reference.js";
+export type { ImportCollaborationReference, CollaborationReferenceImportReceipt } from "./collaboration-reference-import.js";
+
+export type { PrivateViewerCaptureParams, PrivateViewerInstanceId, PrivateViewerIncomingMessage, PrivateViewerOutgoingMessage } from "./private-viewer.js";
+
+export { isPrivateViewerInstanceId } from "./private-viewer.js";
+export type { CollaborationProjectRemovalReceipt } from "./collaboration.js";
+
+export type { CollaborationAuthorityIdentity } from "./collaboration-workspace.js";
+export { collaborationIdentityChallenge, collaborationReferenceOperationAuthority } from "./collaboration-workspace.js";
+
+export type { CollaborationTunnelProvider, CollaborationInternetAccessPhase, CollaborationInternetAccessState, CollaborationInternetAccessChange } from "./collaboration-access.js";
+export { COLLABORATION_PUBLIC_IDLE_MS, parseCollaborationTunnelProvider } from "./collaboration-access.js";
+
+export type { CollaborationSetupStatus } from "./collaboration-setup.js";

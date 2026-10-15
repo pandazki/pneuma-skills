@@ -24,6 +24,7 @@ import {
   shell,
 } from "electron";
 import { autoUpdater } from "electron-updater";
+import { desktopBuildPolicy } from "./build-policy.js";
 import { getLauncherWindow } from "./window-manager.js";
 import { setUpdateReady } from "./tray.js";
 import {
@@ -70,6 +71,7 @@ export function getUpdateState(): UpdateState {
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 export function initAutoUpdater(): void {
+  if (!desktopBuildPolicy.updatesEnabled) return;
   autoUpdater.logger = console;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -295,6 +297,7 @@ function updateDotIcon(): Electron.NativeImage {
  * notification click and the manual dialog's "Restart Now".
  */
 export function restartToInstall(): void {
+  if (!desktopBuildPolicy.updatesEnabled) return;
   if (state.kind !== "ready") {
     console.log(`[auto-updater] restart requested with no update ready (state: ${state.kind})`);
     return;
@@ -312,6 +315,7 @@ export function restartToInstall(): void {
  * downloaded and only needs a restart.
  */
 export function checkForUpdatesManual(): void {
+  if (!desktopBuildPolicy.updatesEnabled) return;
   if (state.kind === "ready") {
     void showReadyDialog(state.version);
     return;

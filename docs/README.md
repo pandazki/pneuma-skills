@@ -33,6 +33,16 @@ docs/
     └── legacy/          早期草稿、架构审查迭代、被替代的版本
 ```
 
+## Review drafts
+
+The following proposals await user review before formal implementation. They do
+not change the current runtime contracts or accept an architecture decision.
+
+| Proposal | Review focus |
+|---|---|
+| [Project collaboration architecture](proposals/2026-10-14-project-collaboration-architecture.md) | Project/room ownership, Viewer capability contracts, LAN/cloud authority, lifecycle and delivery gates |
+| [Collaboration user stories](proposals/2026-10-14-project-collaboration-user-stories.md) | Three-person journey, permissions and 13 stories with acceptance and failure cases |
+
 ## 活文档
 
 ### reference/ — 契约层参考

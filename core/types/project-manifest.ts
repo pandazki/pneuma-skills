@@ -16,7 +16,9 @@
 export interface ProjectManifest {
   /** Schema version for forward-compatible migrations */
   version: 1;
-  /** Unique identifier for the project (slug-like, used in paths/URIs) */
+  /** Portable identity, assigned when collaboration is connected; never a path. */
+  id?: string;
+  /** Local project slug, retained for existing paths and display conventions. */
   name: string;
   /** Human-readable display name */
   displayName: string;
@@ -72,6 +74,7 @@ export function isProjectManifest(value: unknown): value is ProjectManifest {
   const v = value as Record<string, unknown>;
   return (
     v.version === 1 &&
+    (v.id === undefined || typeof v.id === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(v.id)) &&
     typeof v.name === "string" &&
     typeof v.displayName === "string" &&
     typeof v.createdAt === "number"

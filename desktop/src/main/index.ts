@@ -19,9 +19,14 @@ import { initLogger } from "./logger.js";
 import { showLogWindow, revealLogFile } from "./log-window.js";
 import { initBackgroundSessions, startBackgroundSession, revealBackgroundSession } from "./background-sessions.js";
 import { initAutoUpdater, checkForUpdatesManual, restartToInstall } from "./updater.js";
+import { desktopBuildPolicy } from "./build-policy.js";
 
 // ── App name (fixes "Electron" in macOS menu bar) ────────────────────────────
-app.setName("Pneuma Skills");
+app.setName(desktopBuildPolicy.appName);
+if (desktopBuildPolicy.isolatedUserDataName) {
+  // Set the profile before logging or acquiring the single-instance lock.
+  app.setPath("userData", path.join(app.getPath("appData"), desktopBuildPolicy.isolatedUserDataName));
+}
 
 // Initialize the logger before anything else writes to console — this patches
 // console.{log,warn,error,info} so every subsequent log also lands in
@@ -36,11 +41,11 @@ if (!gotLock) {
 }
 
 // ── Custom protocol handler (pneuma://) ──────────────────────────────────────
-if (process.defaultApp) {
+if (desktopBuildPolicy.registerProtocol && process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient('pneuma', process.execPath, [path.resolve(process.argv[1])]);
   }
-} else {
+} else if (desktopBuildPolicy.registerProtocol) {
   app.setAsDefaultProtocolClient('pneuma');
 }
 
@@ -421,6 +426,7 @@ app.whenReady().then(async () => {
             { type: "separator" },
             {
               label: "Check for Updates…",
+              enabled: desktopBuildPolicy.updatesEnabled,
               click: () => checkForUpdatesManual(),
             },
             { type: "separator" },

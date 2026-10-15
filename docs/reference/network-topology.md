@@ -10,7 +10,38 @@
 | **17007** | Hono backend | dev mode | dev 模式下与 Vite 拆开的 REST + WebSocket + 文件监听 |
 | auto | 子进程 backend / Vite | launcher 派生 / Mode-Maker Play | 依次递增直到空闲；通过 stdout 回传给父进程 |
 
-所有 server 都 bind 到 `0.0.0.0`——这是为了规避 macOS 上 IPv4/IPv6 dual-stack 抢占同一端口的隐性碰撞，**不**是为了对局域网公开。
+Normal Project Session API/WS listeners bind to `127.0.0.1`. Their Vite
+frontend also binds to `127.0.0.1`, because its API proxy otherwise exposes the
+private backend through a second port. This startup choice applies whether or
+not room sharing is enabled. The CLI passes the path-free boolean environment
+flag `PNEUMA_PRIVATE_PROJECT_SESSION=1` to its Vite child; quick Sessions pass
+`0`. The backend uses the existing `ServerOptions.pneumaProjectRoot` context.
+
+Legacy quick Session and launcher listeners retain their `0.0.0.0` behavior.
+Project collaboration uses a separate LAN authority bound to `0.0.0.0` at its
+own advertised port. That public listener serves authorized publications and
+shared metadata, and never mounts private Session, Agent, terminal, or file
+routes. Binding only the private backend would be insufficient while a public
+Vite API proxy still reaches it.
+
+Port selection still probes both loopback families before binding, preserving
+the existing protection against another process shadowing `localhost` on the
+same port. A Project private viewer opens its loopback URL; peers use the
+separate authority URL.
+
+A LAN authority can additionally open a collaboration-only listener on
+`127.0.0.1` at an ephemeral port. Its owned `cloudflared` child forwards the
+public HTTPS entry to that listener; both collaboration listeners share one
+authority store. The public entry never forwards the private Session or Vite
+port. A second ephemeral loopback listener handles local administration using
+a private service credential plus current Project administrator authentication.
+Its address is not published through the collaboration API.
+
+The detached authority owns public-access cleanup independently of browser or
+Electron windows. It closes the provider on explicit stop or ten minutes with
+zero authenticated public participant connections. The provider supervisor also
+observes authority death through an OS pipe. Restart restores LAN state with
+public access off. See the [access lifecycle](project-collaboration-authority.md#lan-authority-with-optional-internet-access).
 
 ## Dev vs Prod 的拓扑差
 

@@ -23,6 +23,10 @@ export interface NavigateOutcome {
 }
 
 export interface ViewerSlice {
+  /** One private viewer mount in this browser; never persisted or shared. */
+  viewerInstanceId: string | null;
+  viewerInstanceError: string | null;
+  setViewerInstance: (id: string | null, error?: string | null) => void;
   selection: ElementSelection | null;
   /** Incremented every time setSelection is called with a non-null value — used to detect genuine selection changes */
   selectionStamp: number;
@@ -76,6 +80,9 @@ export interface ViewerSlice {
 }
 
 export const createViewerSlice: StateCreator<AppState, [], [], ViewerSlice> = (set, get) => ({
+  viewerInstanceId: null,
+  viewerInstanceError: null,
+  setViewerInstance: (viewerInstanceId, viewerInstanceError = null) => set({ viewerInstanceId, viewerInstanceError, actionRequest: null }),
   selection: null,
   selectionStamp: 0,
   previewMode: "view",

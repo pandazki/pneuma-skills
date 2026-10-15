@@ -13,6 +13,10 @@ import type { Source, FileChannel } from "../../core/types/source.js";
 import { SourceRegistry } from "../../core/source-registry.js";
 import { BUILT_IN_PROVIDERS } from "../../core/sources/index.js";
 import { BrowserFileChannel } from "../runtime/file-channel.js";
+import { mountPrivateViewer } from "../ws.js";
+import { getApiBase } from "../utils/api.js";
+import { useSessionCollaboration } from "../collaboration/SessionCollaboration.js";
+import { createPrivateViewerInstanceId } from "../../core/types/private-viewer.js";
 
 /**
  * Instantiate sources AND the FileChannel for the current mode. Rebuilds
@@ -69,7 +73,11 @@ export function useSourceInstances(): {
  *  shell's content-set auto-selection so we don't double-fetch locale/theme. */
 export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string }): ViewerPreviewProps {
   const { sources, channel: fileChannel } = useSourceInstances();
+  const collaboration = useSessionCollaboration();
   const selection = useStore((s) => s.selection);
+  const manifest = useStore((s) => s.modeManifest);
+  const staticPlayer = useStore((s) => s.staticPlayer);
+  const viewerInstanceId = useStore((s) => s.viewerInstanceId);
   const setSelection = useStore((s) => s.setSelection);
   const previewMode = useStore((s) => s.previewMode);
   const imageTick = useStore((s) => s.imageTick);
@@ -84,6 +92,10 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
   const resolveNavigate = useStore((s) => s.resolveNavigate);
   const navigateRequestSeq = useStore((s) => s.navigateRequestSeq);
   const replayMode = useStore((s) => s.replayMode);
+  useEffect(() => {
+    if (!manifest || staticPlayer || replayMode) return;
+    return mountPrivateViewer(createPrivateViewerInstanceId());
+  }, [manifest, staticPlayer, replayMode]);
   // Creating vs consuming (`--viewing` starts no agent). Passed in BOTH
   // layouts: the app layout's viewing branch used to be the only place the
   // viewer heard it, so in the editor layout a viewing-only session offered
@@ -93,10 +105,35 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
   // Backward-compat snapshot for pre-2.29 viewers (e.g. external modes that
   // still read `props.files.find(...)`). New viewers consume `sources`.
   const filesCompat = useStore((s) => s.files);
+  const activeContentSet = useStore((s) => s.activeContentSet);
+  const setActiveContentSet = useStore((s) => s.setActiveContentSet);
+  const imageChangedPaths = useStore((s) => s.imageTickPaths);
+  const setPreviewMode = useStore((s) => s.setPreviewMode);
+  const addAnnotation = useStore((s) => s.addAnnotation);
+  const pushUserAction = useStore((s) => s.pushUserAction);
 
   return {
     sources,
     fileChannel,
+    collaboration: collaboration?.runtime?.binding,
+    commenting: collaboration ? { enabled: collaboration.canComment && !replayMode, active: collaboration.commenting, onSelect: collaboration.selection } : undefined,
+    activeContentSet,
+    onActiveContentSetChange: setActiveContentSet,
+    imageChangedPaths,
+    onPreviewModeChange: setPreviewMode,
+    onAnnotate: (annotation) => addAnnotation({
+      ...annotation,
+      id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      element: { ...annotation.element, file: annotation.slideFile, type: annotation.element.type as SelectionType },
+    }),
+    onUserAction: (action) => pushUserAction({ ...action, timestamp: Date.now() }),
+    onExport: () => {
+      const modeName = useStore.getState().modeManifest?.name;
+      if (!modeName) return;
+      const qs = activeContentSet ? `?contentSet=${encodeURIComponent(activeContentSet)}` : "";
+      window.open(`${getApiBase()}/export/${modeName}${qs}`, "_blank");
+    },
+    resolveResourceUrl: (path) => `/content/${path.replace(/^\//, "").split("/").map(encodeURIComponent).join("/")}`,
     files: filesCompat,
     activeFile,
     selection: selection
@@ -108,6 +145,7 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
         tag: selection.tag,
         classes: selection.classes,
         selector: selection.selector,
+        address: selection.address,
         thumbnail: selection.thumbnail,
         label: selection.label,
         nearbyText: selection.nearbyText,
@@ -143,8 +181,10 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
     workspaceItems,
     actionRequest: actionRequest?.actionId === "capture" ? null : actionRequest,
     onActionResult: (requestId, result) => {
+      if (useStore.getState().viewerInstanceId !== viewerInstanceId
+        || useStore.getState().actionRequest?.requestId !== requestId) return;
       import("../ws.js").then(({ sendViewerActionResponse }) => {
-        sendViewerActionResponse(requestId, result);
+        sendViewerActionResponse(requestId, result, viewerInstanceId);
       });
       setActionRequest(null);
     },

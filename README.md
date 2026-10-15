@@ -334,6 +334,54 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 - Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules and backend-reported session cost tracking are hidden for non-Claude backends. Mode-specific asset costs, such as Lucid's OpenRouter image receipts, are tracked separately.
 - While an agent is working, a queued user message can join the active turn without interrupting it when the selected backend supports steering. Claude Code and Codex support this today; Kimi's ACP connection leaves the control disabled instead of emulating it with cancel-and-resend.
 
+## Project collaboration
+
+Open a Webcraft Session inside a Project and choose **Collaborate**. Create a LAN
+Project, connect to a configured cloud host, or paste a Project member link.
+Choose **Share this workspace** to publish the selected site. Members retain
+their own files and private Agent conversations; the shared viewer supports
+independent navigation, following, pointers, anchored comments, and room chat.
+Administrators manage members; readers cannot change shared state. Guest links
+grant access to one room with viewing or commenting permission.
+
+Hold **Control** and click a viewer element to start a comment, then release it
+to return to the current tool. Comment references show a captured preview when
+available; click one to locate and highlight its target. In the owning Session,
+**Send to AI** attaches a chat message or comment thread above the private Agent
+input. Add instructions or send the feedback directly; attaching it never sends
+it automatically.
+
+For a locally hosted Project, **Public access** adds an Internet link alongside
+its LAN link. The default uses a free temporary Cloudflare Tunnel; you can also
+configure your existing named Tunnel. `cloudflared` must be installed. Public
+access stops on request or after ten minutes with no connected public
+participants, even if the settings tab is closed, and stays off after a restart.
+LAN access continues. Temporary links change when reopened; Quick Tunnels have
+no uptime guarantee. Your host computer and the shared workspace must stay online.
+After a temporary address changes, existing members can paste the host's new
+Project URL into **Reconnect to Project** to retain their membership and workspace.
+
+**Settings → Collaboration** guides the host through each connection option,
+checks whether `cloudflared` is available, and offers a setup request to copy into
+Claude Code or Codex. The request points to instructions shipped with the app;
+copying it does not enable sharing or send an Agent message. The same guide is
+available inside the private collaboration panel.
+
+**References** pins another workspace's published address and revision. Opening
+a reference requires current source access and an online host. **Import a local
+copy** explicitly creates an attributed copy for your own Agent to work on.
+The host's Session tab and publisher must stay online; participants must rejoin
+after a host disconnects. Other rooms in the Project can remain online.
+
+Webcraft is the first supported mode. LAN and cloud use the same mode viewer and
+collaboration contract. Cloud hosting currently uses a separately configured
+Cloudflare deployment and provisioned member credentials; account login and a
+hosted SaaS service are not included. See the [authority contract](docs/reference/project-collaboration-authority.md)
+and [import behavior](docs/reference/collaboration-reference-import.md).
+The standalone `bun run dev:collab` and `dev:collab:cloud` harnesses remain available
+for experiments; their setup and measurements are in the
+[experiment guide](docs/reference/project-collaboration-experiment.md).
+
 ## Developing with Claude Code or Codex
 
 Open this repository in either harness and start with [AGENTS.md](AGENTS.md).

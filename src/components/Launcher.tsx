@@ -1,3 +1,4 @@
+import { CollaborationSetupGuide } from "../collaboration/CollaborationSetupGuide.js";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
@@ -4631,20 +4632,22 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-        style={{ animation: "overlayFadeIn 200ms ease" }}
+        className="fixed inset-0 z-[65] bg-black/40 backdrop-blur-sm"
+        style={{ animation: "overlayFadeIn 200ms ease", WebkitAppRegion: "no-drag" } as React.CSSProperties}
         onClick={onClose}
       />
       {/* Panel */}
       <div
-        className="fixed top-0 right-0 bottom-0 z-50 w-[400px] max-w-[90vw] bg-cc-bg border-l border-cc-border shadow-2xl overflow-y-auto"
-        style={{ animation: "slideInRight 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+        role="dialog"
+        aria-label={t("settings_panel.title")}
+        className="fixed top-0 right-0 bottom-0 z-[70] w-[400px] max-w-[90vw] bg-cc-bg border-l border-cc-border shadow-2xl overflow-y-auto"
+        style={{ animation: "slideInRight 250ms cubic-bezier(0.16, 1, 0.3, 1)", WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-cc-border sticky top-0 bg-cc-bg/95 backdrop-blur-md z-10">
           <h2 className="text-sm font-semibold text-cc-fg">{t("settings_panel.title")}</h2>
-          <button onClick={onClose} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+          <button type="button" aria-label={t("common:close")} onClick={onClose} className="text-cc-muted hover:text-cc-fg transition-colors cursor-pointer">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4" aria-hidden="true">
               <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
             </svg>
           </button>
@@ -4652,6 +4655,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
 
         {/* Sections */}
         <div className="p-6 space-y-8">
+          <CollaborationSetupGuide />
           <BackendsSection />
           <ApiKeysSection />
           <CloudStorageSection />

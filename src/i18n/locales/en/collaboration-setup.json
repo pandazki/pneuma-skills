@@ -1,0 +1,75 @@
+{
+  "title": "Collaboration setup",
+  "intro": "Share a Webcraft workspace for live viewing, comments, and chat; your Agent conversation stays private.",
+  "path_label": "How will visitors connect?",
+  "paths": {
+    "lan": "Same network",
+    "temporary": "Temporary internet",
+    "named": "Own domain"
+  },
+  "descriptions": {
+    "lan": "Start here when everyone is on the same Wi-Fi or local network; no cloudflared installation is needed.",
+    "temporary": "Use a free temporary internet address without a domain or Cloudflare account; the address changes when public access restarts.",
+    "named": "Use a stable HTTPS address on a domain you manage in Cloudflare; you need a Cloudflare account and a named Tunnel."
+  },
+  "hostname_label": "Your hostname (optional)",
+  "hostname_placeholder": "collaboration.example.com",
+  "hostname_error": "Enter a hostname or HTTPS origin without a port, path, credentials, query, or invitation.",
+  "steps": {
+    "lan": [
+      "Open a Project, then open a Webcraft Session in that Project.",
+      "Select Collaborate → Project, enter your name, and choose Create collaboration with Local network selected.",
+      "Select Share this workspace for the site or content set you want visitors to see.",
+      "Open Links, create a Comment & chat invitation, and copy its Local network link.",
+      "Ask your visitor to open the invitation in a browser on the same network and enter their name; try a comment and a chat message."
+    ],
+    "temporary": [
+      "Open a Project and a Webcraft Session, then select Collaborate → Project and create collaboration with Local network selected.",
+      "Check cloudflared; if missing, use the setup request to install it, then select Check again before enabling public access.",
+      "Share this workspace, then use Public access → Free temporary address → Enable public access.",
+      "Wait for public access to become Active, then open Links and create a Comment & chat invitation using its Internet entry.",
+      "Ask your visitor to open the invitation in a browser on another network and try a comment and a chat message."
+    ],
+    "named": [
+      "Open a Project and a Webcraft Session, then select Collaborate → Project and create collaboration with Local network selected.",
+      "Use the setup request to install cloudflared, create a named Tunnel, and create the hostname’s DNS route to that Tunnel in Cloudflare.",
+      "Share this workspace, then choose Public access → Your own Tunnel.",
+      "Fill in all three fields: your HTTPS public URL, the Tunnel UUID, and the absolute path to its local credentials JSON file; then Enable public access.",
+      "When Active, open Links, create a Comment & chat invitation, choose its Internet entry, and send it to your visitor.",
+      "Ask your visitor to open the invitation in a browser on another network and try a comment and a chat message."
+    ]
+  },
+  "keep_online": "Keep the host computer, Pneuma, and the sharing Session tab online while visitors use the workspace.",
+  "public_lifecycle": "Public access stops after 10 minutes without an authenticated public visitor and starts off after a restart; enable it again when needed.",
+  "checking": "Checking this computer…",
+  "check_error": "Could not read setup status. Check again to prepare the setup request.",
+  "cloudflared_found": "cloudflared detected on this computer",
+  "cloudflared_missing": "cloudflared not found on this computer",
+  "check_again": "Check again",
+  "install_hint": "The setup request can install cloudflared for this computer; checking never changes your configuration.",
+  "copy_request": "Copy setup request",
+  "copied": "Copied setup request",
+  "copying": "Copying…",
+  "paste_hint": "Paste this one-sentence request into Claude Code or Codex on this computer to perform and verify setup.",
+  "copy_error": "Copy failed. The request is selected below; copy it manually.",
+  "show_request": "Read the setup request",
+  "hide_request": "Hide the setup request",
+  "request_label": "Setup request for Claude Code or Codex",
+  "advanced_title": "Advanced: use a self-hosted cloud authority",
+  "advanced_body": "Cloud host connects to a collaboration authority you deploy and manage yourself using the repository’s cloud/collaboration deployment instructions; it requires its HTTPS URL and provisioning key and does not create a hosted service account. Workspace content still depends on its host and Session staying online.",
+  "entry": "Need help? Collaboration setup guide",
+  "request_paths": {
+    "lan": "same-network collaboration",
+    "temporary": "temporary internet collaboration using a free Cloudflare Quick Tunnel",
+    "named": "internet collaboration using my own domain and a named Cloudflare Tunnel"
+  },
+  "request_hostname": " at https://{{hostname}}",
+  "request_missing": {
+    "lan": "Project details",
+    "temporary": "Project details",
+    "named": "Project, domain, or Cloudflare account details"
+  },
+  "request": "Configure and verify {{scenario}}{{hostnameClause}} for Pneuma Skills {{appVersion}} on {{platform}} by reading the complete local setup guide at {{guidePath}} (if unavailable, fetch {{guideUrl}} from this running private Pneuma app), ask me for any missing {{missing}}, then execute the setup and verify the visitor browser can open the shared Webcraft workspace and use Comment & chat while keeping my Agent conversation private.",
+  "lan_ready": "No tunnel is needed for same-network collaboration.",
+  "public_recovery": "If public access fails, fix the reported cause, select Retry stopping public access to clear the failed attempt, then Enable public access again; Check again only checks installation."
+}

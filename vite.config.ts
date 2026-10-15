@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { watch } from "chokidar";
+import { hostAbiImportMap } from "./snapshot/host-abi.js";
 
 const require = createRequire(import.meta.url);
 
@@ -181,8 +182,20 @@ function pneumaProdUrlsExternal(): Plugin {
   };
 }
 
+/** Compiled published viewers use the same host singletons in dev and production. */
+function pneumaHostAbiImportMap(): Plugin {
+  return {
+    name: "pneuma-host-abi-importmap",
+    apply: "serve",
+    transformIndexHtml: {
+      order: "post",
+      handler: () => [{ tag: "script", attrs: { type: "importmap" }, children: JSON.stringify(hostAbiImportMap()), injectTo: "head-prepend" }],
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), pneumaWorkspaceResolve(), pneumaProdUrlsExternal()],
+  plugins: [react(), tailwindcss(), pneumaWorkspaceResolve(), pneumaProdUrlsExternal(), pneumaHostAbiImportMap()],
   resolve: {
     alias: {
       // Ensure external modes use the project's React (prevent duplicate instances).
@@ -213,7 +226,7 @@ export default defineConfig({
     },
   },
   server: {
-    host: "0.0.0.0",
+    host: process.env.PNEUMA_PRIVATE_PROJECT_SESSION === "1" ? "127.0.0.1" : "0.0.0.0",
     port: 17996,
     strictPort: false,
     watch: {

@@ -7,6 +7,8 @@ import ModelSwitcher from "./ModelSwitcher.js";
 import SlashMenu, { type SlashMenuItem } from "./SlashMenu.js";
 import { getPendingSteerAvailability, deliverPendingSteer } from "./pending-steer.js";
 import type { PendingMessage } from "../store/chat-slice.js";
+import { serializeCollaborationFeedback } from "../collaboration/forward-to-agent.js";
+import CollaborationFeedbackAttachments from "./CollaborationFeedbackAttachments.js";
 
 const EMPTY_STRINGS: string[] = [];
 
@@ -103,10 +105,14 @@ export default function ChatInput() {
   const { t } = useTranslation("chat-input");
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const sendingRef = useRef(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const insertedDraftId = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -118,6 +124,12 @@ export default function ChatInput() {
   const pendingSteerIds = useStore((s) => s.pendingSteerIds);
   const setPendingMessageSteering = useStore((s) => s.setPendingMessageSteering);
   const resolvePendingSteer = useStore((s) => s.resolvePendingSteer);
+  const retryPendingMessage = useStore((s) => s.retryPendingMessage);
+  const collaborationFeedback = useStore((s) => s.collaborationFeedback);
+  const collaborationFeedbackFocus = useStore((s) => s.collaborationFeedbackFocus);
+  const removeCollaborationFeedback = useStore((s) => s.removeCollaborationFeedback);
+  const consumeCollaborationFeedback = useStore((s) => s.consumeCollaborationFeedback);
+  const sessionId = useStore((s) => s.sessionId);
   const steerSupported = useStore((s) => s.session?.agent_capabilities?.steer === true);
   const selection = useStore((s) => s.selection);
   const setSelection = useStore((s) => s.setSelection);
@@ -128,10 +140,26 @@ export default function ChatInput() {
   const previewMode = useStore((s) => s.previewMode);
   const promptSuggestions = useStore((s) => s.promptSuggestions);
   const clearPromptSuggestions = useStore((s) => s.clearPromptSuggestions);
+  const composerInsertion = useStore((s) => s.composerInsertion);
+  const setComposerInsertion = useStore((s) => s.setComposerInsertion);
   const slashCommands = useStore((s) => s.session?.slash_commands ?? EMPTY_STRINGS);
   const skills = useStore((s) => s.session?.skills ?? EMPTY_STRINGS);
 
   const isBusy = turnInProgress;
+
+  useEffect(() => {
+    if (collaborationFeedbackFocus > 0) textareaRef.current?.focus();
+  }, [collaborationFeedbackFocus]);
+
+  useEffect(() => { setSendError(""); }, [sessionId]);
+
+  useEffect(() => {
+    if (!composerInsertion || insertedDraftId.current === composerInsertion.id) return;
+    insertedDraftId.current = composerInsertion.id;
+    setText((current) => current ? `${current}\n\n${composerInsertion.text}` : composerInsertion.text);
+    setComposerInsertion(null);
+    textareaRef.current?.focus();
+  }, [composerInsertion, setComposerInsertion]);
 
   // Build slash menu items — slash_commands is the superset, skills is a subset.
   // Use slash_commands as the source, mark skills accordingly to avoid duplicates.
@@ -166,10 +194,13 @@ export default function ChatInput() {
     setSlashIndex(0);
   }, [slashFilter]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
+    if (sendingRef.current) return;
     const trimmed = text.trim();
     const hasAnnotations = annotations.length > 0;
-    if (!trimmed && attachments.length === 0 && !hasAnnotations) return;
+    if (!trimmed && attachments.length === 0 && !hasAnnotations && !collaborationFeedback.length) return;
+    setSendError("");
+    const outgoingText = serializeCollaborationFeedback(trimmed, collaborationFeedback);
 
     const imageAtts = attachments.filter((a) => a.kind === "image");
     const fileAtts = attachments.filter((a) => a.kind === "file");
@@ -183,32 +214,54 @@ export default function ChatInput() {
 
     if (isBusy) {
       addPendingMessage({
-        text: trimmed,
+        text: outgoingText,
         selection,
         images: imgPayload,
         files: filePayload,
         annotations: annPayload,
+        ...(collaborationFeedback.length ? { collaborationFeedback } : {}),
       });
     } else {
       // `sendUserMessage` flips the turn to in-progress itself — but only when
       // the message actually goes out. Don't force `turnInProgress` here, or a
       // send dropped on a closed socket would freeze the composer on a phantom
       // turn that never produces a result.
-      void sendUserMessage(trimmed, selection, imgPayload, annPayload, filePayload);
+      sendingRef.current = true;
+      setSending(true);
+      try {
+        const delivered = await sendUserMessage(outgoingText, selection, imgPayload, annPayload, filePayload);
+        if (useStore.getState().sessionId !== sessionId) return;
+        if (!delivered) {
+          setSendError("Message was not sent. Your draft and attached feedback are still here.");
+          return;
+        }
+      } catch (failure) {
+        if (useStore.getState().sessionId === sessionId) setSendError(failure instanceof Error ? failure.message : "Message could not be sent. Your draft is still here.");
+        return;
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
+      }
     }
 
-    setText("");
-    setAttachments([]);
-    setSelection(null);
-    clearAnnotations();
+    // Only consume the submitted snapshots. Edits and newly staged feedback
+    // made while async context enrichment ran belong to the next draft.
+    setText((current) => current === text ? "" : current);
+    const submittedFiles = new Set(attachments.map((attachment) => attachment.id));
+    setAttachments((current) => current.filter((attachment) => !submittedFiles.has(attachment.id)));
+    if (useStore.getState().selection === selection) setSelection(null);
+    for (const annotation of annotations) {
+      if (useStore.getState().annotations.find((item) => item.id === annotation.id) === annotation) removeAnnotation(annotation.id);
+    }
+    consumeCollaborationFeedback(collaborationFeedback);
     setSlashOpen(false);
-    if (textareaRef.current) {
+    if (textareaRef.current && textareaRef.current.value === text) {
       textareaRef.current.style.height = "auto";
     }
     // Sending re-anchors the conversation view to the tail even if the
     // user had scrolled up — ChatPanel listens for this.
     window.dispatchEvent(new Event("pneuma:chat-jump-bottom"));
-  }, [text, attachments, selection, setSelection, annotations, clearAnnotations, isBusy, addPendingMessage]);
+  }, [text, attachments, selection, setSelection, annotations, removeAnnotation, isBusy, addPendingMessage, collaborationFeedback, consumeCollaborationFeedback, sessionId]);
 
   const handleSteerPendingMessage = useCallback(async (message: PendingMessage) => {
     if (message.kind !== "user") return;
@@ -360,6 +413,8 @@ export default function ChatInput() {
 
   return (
     <div className="chat-input-card p-3 bg-cc-surface/70 backdrop-blur-2xl border border-cc-primary/20 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
+      <CollaborationFeedbackAttachments attachments={collaborationFeedback} onRemove={removeCollaborationFeedback}/>
+      {sendError && <p role="alert" className="mb-2 px-1 text-xs text-cc-error">{sendError}</p>}
       {/* Annotations list (annotate mode) */}
       {hasAnnotations && (
         <div className="mb-2 rounded-lg border border-cc-border bg-cc-card/50 overflow-hidden">
@@ -462,8 +517,9 @@ export default function ChatInput() {
                   {msg.kind === "notification" ? t("queue_label_notification") : t("queue_label_user")}
                 </span>
                 <span className="text-xs text-cc-muted truncate flex-1">
-                  {msg.kind === "user" ? msg.text : msg.notification.summary || msg.notification.type}
+                  {msg.kind === "user" ? msg.deliveryError || msg.text : msg.notification.summary || msg.notification.type}
                 </span>
+                {msg.kind === "user" && msg.deliveryError && <button type="button" onClick={() => retryPendingMessage(msg.id)} className="shrink-0 rounded px-2 py-1 text-xs text-cc-primary hover:bg-cc-hover focus-visible:ring-2 focus-visible:ring-cc-primary/40">Retry</button>}
                 {msg.kind === "user" && (
                   <span className="shrink-0 inline-flex" title={tooltip}>
                     <button
@@ -537,7 +593,7 @@ export default function ChatInput() {
                 clearPromptSuggestions();
                 window.dispatchEvent(new Event("pneuma:chat-jump-bottom"));
               }}
-              disabled={!cliConnected || isBusy}
+              disabled={!cliConnected || isBusy || sending}
               className="px-3 py-1.5 text-xs bg-cc-surface/80 hover:bg-cc-surface text-cc-text border border-cc-border/50 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {suggestion}
@@ -547,7 +603,7 @@ export default function ChatInput() {
       )}
 
       {/* Form wraps textarea + action bar — form submit is IME-safe */}
-      <form ref={formRef} onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+      <form ref={formRef} onSubmit={(e) => { e.preventDefault(); void handleSubmit(); }}>
         {/* Textarea with slash menu */}
         <div
           className="relative"
@@ -623,7 +679,7 @@ export default function ChatInput() {
             )}
             <button
               type="submit"
-              disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations) || !cliConnected}
+              disabled={(!text.trim() && attachments.length === 0 && !hasAnnotations && !collaborationFeedback.length) || !cliConnected || sending}
               className="px-5 py-2 bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium text-xs rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(249,115,22,0.4)] disabled:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isBusy ? t("queue") : t("send")}

@@ -5,6 +5,13 @@ import { modeViewerAssetUrl, type ModeViewerBuildState } from "../core/types/mod
 import { buildModeViewer, prebuiltViewer, HOST_ABI_VENDOR_SHIMS } from "../snapshot/mode-build.js";
 import { isContained } from "./utils.js";
 
+/** Supply host singleton shims independently of this Session's viewer build. */
+export function registerHostAbiRoutes(app: Hono): void {
+  for (const [url, source] of Object.entries(HOST_ABI_VENDOR_SHIMS)) {
+    app.get(url, () => new Response(source, { headers: { "Content-Type": "application/javascript" } }));
+  }
+}
+
 /** One build per session at a time; requests can only rebuild this session's mode. */
 export function registerModeViewerRoutes(app: Hono, options: {
   modeDir?: string;
@@ -62,9 +69,7 @@ export function registerModeViewerRoutes(app: Hono, options: {
   });
 
   // These must exist even when the initial dependency installation failed.
-  for (const [url, source] of Object.entries(HOST_ABI_VENDOR_SHIMS)) {
-    app.get(url, () => new Response(source, { headers: { "Content-Type": "application/javascript" } }));
-  }
+  registerHostAbiRoutes(app);
   app.get("/mode-assets/*", async (c) => {
     c.header("Cache-Control", "no-store");
     if (state.status !== "ready" || !bundleDir) return c.json(state, 503);
