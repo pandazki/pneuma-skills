@@ -100,8 +100,7 @@
 .session-collaboration .collaboration-disclosure[open] > summary { color: var(--color-cc-fg); margin-bottom: 15px; }
 .session-collaboration .collaboration-disclosure .connect-member { border: 0; padding: 0; margin: 0; }
 .session-collaboration .collaboration-share-content > details:last-child, .session-collaboration .collaboration-settings-content > details:last-child { margin-top: 20px; margin-bottom: 0; border-top: 1px solid var(--color-cc-border); border-bottom: 0; padding-top: 14px; padding-bottom: 0; }
-.session-collaboration .collaboration-inline-share > .panel-content { padding: 0; }
-.session-collaboration .collaboration-share-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--color-cc-border); }
+.session-collaboration .collaboration-share-footer { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--color-cc-border); }
 .session-collaboration .collaboration-share-footer .text-button { padding: 4px 0; }
 .session-collaboration .collaboration-private-view { margin-bottom: 20px; }
 .session-collaboration .collaboration-private-view p { margin-bottom: 10px; }
@@ -114,3 +113,5 @@
 .session-collaboration .collaboration-settings-entry > svg { color: var(--color-cc-muted); flex-shrink: 0; }
 .session-collaboration .collaboration-secondary-heading { display: grid; justify-items: start; gap: 10px; padding: 18px 20px 0; }
 .session-collaboration .collaboration-advanced .danger-zone > h3 { margin-top: 18px; }
+
+.cc-theme-light .session-collaboration .button.primary, .session-collaboration.cc-theme-light .button.primary { color: var(--color-cc-fg); }

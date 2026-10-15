@@ -187,6 +187,10 @@ test("Project Pin waits during pending reconnect without discarding its recovery
   const scope = { authorityBaseUrl: service.oldOrigin, authorityScope: "lan-key:stable-authority", projectId: "project", workspaceId: "workspace", targetId: "source", action: "pin" };
   saveReferenceOperation(referenceOperationKey(scope), { opId: "original-pin-request" });
   await act(async () => { context.setOpen(true); context.setTab("settings"); });
+  const workspaces = [...win.document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent === "Shared workspaces")!;
+  expect(workspaces.open).toBe(false);
+  await act(async () => workspaces.querySelector("summary")!.click());
+  expect(workspaces.open).toBe(true);
   const pin = () => [...win.document.querySelectorAll("button")].find((button) => button.textContent === "Retry pin");
   expect(pin()?.disabled).toBe(false);
   let command!: Promise<void>;

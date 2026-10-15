@@ -15,12 +15,14 @@ let context: NonNullable<ReturnType<typeof useSessionCollaboration>>;
 let status: SessionCollaborationStatus;
 let project: CollaborationProjectState;
 let room: CollaborationRoomState;
+let sendRoom: boolean;
 let posts: { path: string; body: unknown }[];
 const sockets = new Set<Bun.ServerWebSocket<undefined>>();
 function Probe() { context = useSessionCollaboration()!; return null; }
 
 beforeEach(() => {
   posts = [];
+  sendRoom = true;
   room = { room: { id: "room", title: "Shared workspace", mode: "webcraft", ownerId: "owner", workspaceId: "workspace", modeInstanceId: "instance", enabled: true, hostOnline: true, revision: 1, page: "index.html", updatedAt: 1 }, participants: [], comments: [], messages: [], pageUrl: "http://host/revision/1/index.html" };
   project = { project: { id: "project", name: "Project" }, self: { kind: "member", id: "owner", name: "Owner", role: "admin" }, rooms: [room.room], members: [], workspaces: [] };
   server = Bun.serve<undefined>({ hostname: "127.0.0.1", port: 0, async fetch(request, instance) {
@@ -31,7 +33,7 @@ beforeEach(() => {
     if (path === "/api/references") return Response.json({ references: [] });
     if (path === "/ws" && instance.upgrade(request)) return;
     return new Response(null, { status: 404 });
-  }, websocket: { open(socket) { sockets.add(socket); socket.send(JSON.stringify({ type: "welcome", state: project, connectionId: "self" })); socket.send(JSON.stringify({ type: "room", state: room })); }, message() {}, close(socket) { sockets.delete(socket); } } });
+  }, websocket: { open(socket) { sockets.add(socket); socket.send(JSON.stringify({ type: "welcome", state: project, connectionId: "self" })); if (sendRoom) socket.send(JSON.stringify({ type: "room", state: room })); }, message() {}, close(socket) { sockets.delete(socket); } } });
   const origin = `http://127.0.0.1:${server.port}`;
   status = { projectAvailable: true, supported: true, sharing: true, roomId: "room", publisherStatus: "Sharing", connection: { projectId: "project", workspaceId: "workspace", ownerId: "owner", authorityBaseUrl: origin, authorityKind: "lan", token: "member" }, canManageInternetAccess: true, internetAccess: { status: "active", provider: { kind: "quick" }, publicOrigin: "https://public.example", publicClients: 1, idleDeadline: null, idleTimeoutMs: 600000 } };
   win = new Window({ url: `${origin}/?session=private` });
@@ -49,6 +51,7 @@ afterEach(async () => { await act(async () => root.unmount()); for (const socket
 async function until(check: () => boolean) { for (let attempt = 0; attempt < 100; attempt++) { if (check()) return; await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); }); } throw new Error("Panel fixture did not become ready"); }
 async function mount(connected = true) { await act(async () => root.render(<SessionCollaborationProvider><Probe/></SessionCollaborationProvider>)); await until(() => !!context.status && (!connected || context.client.status === "connected")); await act(async () => context.setOpen(true)); }
 function button(text: string) { return [...win.document.querySelectorAll("button")].find((item) => item.textContent === text); }
+function disclosure(name: string) { return [...win.document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent === name)!; }
 async function settings() { await act(async () => win.document.querySelector('[aria-label="Collaboration settings"]')!.dispatchEvent(new win.MouseEvent("click", { bubbles: true }))); }
 function input(label: string) { return [...win.document.querySelectorAll("label")].find((item) => item.textContent?.startsWith(label))!.querySelector("input")!; }
 async function fill(element: ReturnType<typeof input>, value: string) {
@@ -65,11 +68,19 @@ async function fill(element: ReturnType<typeof input>, value: string) {
 test("the shared workspace opens invite actions; settings and secondary views remain reachable without writes", async () => {
   await mount();
   expect([...win.document.querySelectorAll('nav[aria-label="Collaboration panels"] button')].map((item) => item.textContent)).toEqual(["Share", "Comments", "Chat"]);
-  expect(button("Create guest link")).toBeDefined();
+  expect(button("Create invitation")).toBeDefined();
   expect(button("Stop public access")).toBeUndefined();
   expect(button("Reconnect to Project")).toBeUndefined();
   await settings();
   expect(button("Stop public access")).toBeDefined();
+  expect(disclosure("Shared workspaces").open).toBe(false);
+  expect(disclosure("People in this workspace").open).toBe(false);
+  await act(async () => disclosure("Shared workspaces").querySelector("summary")!.click());
+  expect(disclosure("Shared workspaces").open).toBe(true);
+  expect(disclosure("Shared workspaces").querySelector(".room-item")).not.toBeNull();
+  await act(async () => disclosure("People in this workspace").querySelector("summary")!.click());
+  expect(disclosure("People in this workspace").open).toBe(true);
+  expect(button("Add comment to selection")).toBeDefined();
   await act(async () => button("Members & permissions")!.click());
   expect(button("Create invitation")).toBeDefined();
   await act(async () => button("Back to settings")!.click());
@@ -122,7 +133,7 @@ test("sharing an unshared workspace preserves its explicit scope", async () => {
   status.sharing = false;
   useStore.setState({ activeContentSet: "site", activeFile: "site/index.html" });
   await mount();
-  expect(button("Create guest link")).toBeUndefined();
+  expect(button("Create invitation")).toBeUndefined();
   await act(async () => button("Share this workspace")!.click());
   await until(() => posts.length === 1);
   expect(posts[0]).toEqual({ path: "/api/collaboration/share", body: { title: "site", contentSet: "site", activeFile: "site/index.html" } });
@@ -132,7 +143,7 @@ test("readers cannot reach member administration or create guest access", async 
   project.self = { kind: "member", id: "reader", name: "Reader", role: "reader" };
   status.canManageInternetAccess = false;
   await mount();
-  expect(button("Create guest link")).toBeUndefined();
+  expect(button("Create invitation")).toBeUndefined();
   await settings();
   expect(button("Members & permissions")).toBeUndefined();
   expect(button("Remove shared project")).toBeUndefined();
@@ -145,5 +156,30 @@ test("host offline remains visible even when sharing is enabled", async () => {
   await mount();
   expect(win.document.querySelector(".collaboration-status")?.textContent).toContain("Host offline");
   expect(win.document.querySelector(".collaboration-status")?.getAttribute("data-state")).toBe("inactive");
+  expect(posts).toHaveLength(0);
+});
+
+test("a connected welcome waits for its shared room before reporting successful sharing", async () => {
+  sendRoom = false;
+  await mount();
+  expect(context.client.room).toBeNull();
+  expect(win.document.querySelector(".collaboration-status")?.textContent).toContain("Opening shared workspace…");
+  expect(win.document.querySelector(".collaboration-status")?.getAttribute("data-state")).toBe("inactive");
+  expect(win.document.body.textContent).not.toContain("Your role can view shared work");
+  expect(button("Create invitation")).toBeUndefined();
+  await act(async () => { for (const socket of sockets) socket.send(JSON.stringify({ type: "room", state: room })); });
+  await until(() => !!context.client.room);
+  expect(win.document.querySelector(".collaboration-status")?.textContent).toContain("Workspace shared");
+  expect(win.document.querySelector(".collaboration-status")?.getAttribute("data-state")).toBe("connected");
+  expect(button("Create invitation")).toBeDefined();
+  expect(posts).toHaveLength(0);
+});
+
+test("a disabled shared room does not appear successfully shared or offer invitations", async () => {
+  room.room.enabled = false;
+  await mount();
+  expect(win.document.querySelector(".collaboration-status")?.textContent).toContain("Sharing off");
+  expect(win.document.querySelector(".collaboration-status")?.getAttribute("data-state")).toBe("inactive");
+  expect(button("Create invitation")).toBeUndefined();
   expect(posts).toHaveLength(0);
 });
