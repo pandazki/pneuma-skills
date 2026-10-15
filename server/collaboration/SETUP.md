@@ -30,7 +30,9 @@ restarted, copy a fresh request from Settings instead of guessing a port.
   and never print, copy, or share the entire response.
 
 The UI entry is **Collaborate**, renamed **Sharing** once sharing is active;
-both display a Beta badge.
+both display a Beta badge. The panel opens on **Share**, with **Comments** and
+**Chat** alongside it. The gear button opens **Collaboration settings**; the
+setup guide is available there as collapsed help.
 Webcraft is the first supported mode. A visitor following an invitation only
 needs a browser; the setup below belongs on the host computer.
 
@@ -41,8 +43,9 @@ present. Do not replace its identity, membership, room, or database. If it is
 connected to someone else's Project or to a cloud authority, explain that its
 host controls Internet access; do not create a competing local authority.
 
-For a new host, choose **Collaborate → Local network**, enter the user's display
-name, and create collaboration. The equivalent private Session request is:
+For a new host, open **Collaborate**, enter the user's display name, and choose
+**Start collaboration**. This starts a local-network collaboration space.
+The equivalent private Session request is:
 
 ```http
 POST /api/collaboration/create
@@ -51,7 +54,8 @@ Content-Type: application/json
 {"name":"The user's display name"}
 ```
 
-Select the intended site in the viewer and choose **Share this workspace**.
+Select the intended site in the viewer and choose **Share this workspace** in
+**Share**.
 While sharing, View, Select, and Annotate use the last complete published snapshot,
 including styles and images. **Edit locally** uses local files and pauses shared
 comment picking and presence until the host returns to a published view. This
@@ -96,7 +100,9 @@ Cloudflare service: Pneuma owns the connector's configuration and lifecycle.
 
 ### Temporary internet
 
-Choose **Public access → Free temporary address → Enable public access**, or:
+Use the gear button to open **Collaboration settings**, then find **Public access**.
+In **Connection options**, keep **Free temporary address** selected, then choose
+**Enable public access**. The equivalent private request is:
 
 ```http
 POST /api/collaboration/internet-access
@@ -130,8 +136,10 @@ certificate into chat. If the hostname already routes elsewhere, resolve the
 conflict with the user rather than overwriting its DNS. Do not follow the
 generic guide's manual tunnel-run or system-service steps for this integration.
 
-Choose **Public access → Your own Tunnel** and enter the HTTPS origin, Tunnel
-UUID, and absolute credentials JSON path. The equivalent private request is:
+Open **Collaboration settings → Public access → Connection options**, choose
+**Your own Tunnel**, and enter the HTTPS origin, Tunnel UUID, and absolute
+credentials JSON path. Then choose **Enable public access**. The equivalent
+private request is:
 
 ```http
 POST /api/collaboration/internet-access
@@ -157,11 +165,13 @@ separate collaboration listener.
    advertised hostname actually reaches this Project. Active connector status
    alone does not prove DNS works. An unauthenticated `GET /api/identity` on the
    public origin reports the Project ID without needing a member token.
-2. In **Sharing → Links**, create a guest link with **Comment & chat** when
+2. In **Share**, create a guest link with **Comment & chat** when
    feedback is wanted, or **View only** otherwise. Choose LAN or Internet as
    appropriate. An invitation is required for a new visitor; the credential-free
-   Public Project URL is for existing members reconnecting to the same Project.
-   Use **Members** to invite someone who will connect their own local Project.
+   Public Project URL is under **Collaboration settings → Public access →
+   Connection details**, for existing members reconnecting to the same Project.
+   Use **Collaboration settings → Members & permissions** to invite someone
+   who will connect their own local Project.
 3. Open the guest invitation in a separate browser profile or another device.
    Verify the selected site loads and the chosen permissions work. Create a
    test comment only if the user wants that test content; otherwise report that
@@ -179,7 +189,8 @@ closes after ten minutes without authenticated public participants and starts
 off after an authority restart. After a temporary address changes, resend links
 using the current origin; their existing invitation credentials remain valid
 until expiry or revocation. Preserve the Project path and invitation fragment
-when updating an existing link. Existing members can use **Reconnect to Project**.
+when updating an existing link. Existing members can use the gear button to open
+**Collaboration settings → Advanced → Reconnect to Project**.
 
 ## Troubleshooting and completion
 
@@ -194,7 +205,8 @@ when updating an existing link. Existing members can use **Reconnect to Project*
 - Upgrades must preserve the existing Project and collaboration state, including
   project files, comments, chat history, invitations, references, and membership.
   Do not hand-edit the collaboration database or reset it as a setup shortcut.
-- An independently hosted **Cloud host** is a different, advanced deployment
+- **Cloud host** setup is under **Collaboration settings → Advanced**.
+  An independently hosted Cloud host is a different, advanced deployment
   using a Worker, Durable Object, storage, and provisioning credentials. It is
   not required for these local-host options, and there is no built-in SaaS login.
   Preserve an existing cloud binding and follow its operator's deployment guide.
