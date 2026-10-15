@@ -9,7 +9,7 @@
  * - Bottom page navigator for multi-page sites
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type CSSProperties } from "react";
 import type {
   ViewerPreviewProps,
   ViewerSelectionContext,
@@ -17,7 +17,8 @@ import type {
   ViewerAddress,
   ViewerActionResult,
 } from "../../../core/types/viewer-contract.js";
-import type { Source } from "../../../core/types/source.js";
+import { createPrivateViewerInstanceId } from "../../../core/types/private-viewer.js";
+import type { Source, FileChannel } from "../../../core/types/source.js";
 import { useSource } from "../../../src/hooks/useSource.js";
 import { buildSelectionScript } from "../../../core/iframe-selection/index.js";
 import { WebcraftCollaborationController } from "./collaboration.js";
@@ -138,8 +139,20 @@ const EDIT_MODE_EXTENSION = `
     }, '*');
   }
 
-  // Leaving the page mid-edit (a link, a reload) still reports the edit.
-  window.addEventListener('pagehide', function() { if (editActive && editEl) finishEdit(editEl); });
+  // Retire the document only after its final blur/pagehide edit has been
+  // posted. The parent accepts those ordered messages on the original local
+  // write capability, then closes that capability at this marker.
+  function retireEdits() {
+    if (editActive && editEl) finishEdit(editEl);
+    editActive = false;
+    toggleEditable(false);
+    window.parent.postMessage({ type: 'pneuma:editsRetired', doc: document.documentElement.getAttribute('data-pneuma-instrumented') }, '*');
+  }
+  window.addEventListener('pagehide', retireEdits);
+  window.addEventListener('message', function(e) {
+    if (e.source === window.parent && e.data && e.data.type === 'pneuma:retireEdits'
+      && e.data.doc === document.documentElement.getAttribute('data-pneuma-instrumented')) retireEdits();
+  });
 
   var describeEdit = (${describeEditSource});
 `;
@@ -715,6 +728,7 @@ function ViewportToolbar({
   onExport,
   readonly,
   permissions,
+  requestLocalEdit,
 }: {
   activePreset: string;
   onPresetChange: (presetId: string) => void;
@@ -723,6 +737,7 @@ function ViewportToolbar({
   onExport?: () => void;
   readonly?: boolean;
   permissions?: ViewerPreviewProps["permissions"];
+  requestLocalEdit?: boolean;
 }) {
   const currentPreset = VIEWPORT_PRESETS.find((p) => p.id === activePreset);
   const showDimensions = currentPreset && currentPreset.width > 0;
@@ -798,7 +813,7 @@ function ViewportToolbar({
           padding: "2px",
         }}
       >
-        {MODE_BUTTONS.filter((m) => m.value !== "edit" || permissions?.editContent !== false).filter((m) => m.value !== "annotate" || permissions?.notifyAgent !== false).map((m) => (
+        {MODE_BUTTONS.filter((m) => m.value !== "edit" || permissions?.editContent !== false || requestLocalEdit).filter((m) => m.value !== "annotate" || permissions?.notifyAgent !== false).map((m) => (
           <button
             key={m.value}
             onClick={() => onSetPreviewMode(m.value)}
@@ -828,7 +843,7 @@ function ViewportToolbar({
             }}
           >
             {m.icon}
-            <span>{m.label}</span>
+            <span>{m.value === "edit" && permissions?.editContent === false ? "Edit locally" : m.label}</span>
           </button>
         ))}
       </div>}
@@ -1064,6 +1079,10 @@ export default function WebPreview({
     return value ? new URL(value, window.location.href).href : "";
   }, [resolveResourceUrl]);
   const baseHref = resourceUrl(activeContentSet ? `${activeContentSet}/` : "");
+  const resourceRootRef = useRef(baseHref);
+  const previousResourceRootRef = useRef(baseHref);
+  const committedResourceRootRef = useRef(baseHref);
+  resourceRootRef.current = baseHref;
 
   // The current page's source in `files`. `currentFile` is manifest-relative
   // ("index.html"); `files` paths carry the content-set prefix
@@ -1086,7 +1105,7 @@ export default function WebPreview({
     const iframe = iframeRef.current;
     const doc = currentDocRef.current;
     if (!iframe?.contentWindow) return;
-    const ready = !!doc && iframe.getAttribute("aria-busy") !== "true";
+    const ready = !!doc && doc.resourceRoot === resourceRootRef.current && iframe.getAttribute("aria-busy") !== "true";
     const binding = commentBindingRef.current;
     iframe.contentWindow.postMessage({ type: "pneuma:selectMode", tool: selectionToolRef.current, enabled: enabled && ready, ...(doc ? { doc: doc.id } : {}), ...(binding ? { commenting: { enabled: ready && binding.enabled, active: ready && binding.enabled && binding.active } } : {}) }, "*");
   }, []);
@@ -1113,6 +1132,9 @@ export default function WebPreview({
 
   interface LoadedDoc {
     id: string;
+    resourceRoot: string;
+    /** Only a trusted local document keeps the capability for its queued inline saves. */
+    localEdits?: { files: Source<ViewerFileContent[]>; channel: FileChannel; origin: string };
     /** The content set the page belongs to (null: a workspace without sets). */
     contentSet: string | null;
     /** Content-set-relative page ("index.html", "docs/guide.html"). */
@@ -1122,9 +1144,23 @@ export default function WebPreview({
     /** The source text this document shows, as far as the viewer can tell; null when unknown. */
     expected: string | null;
   }
+  const previousDocumentHrefRef = useRef<string | null>(null);
   const docsRef = useRef(new Map<string, LoadedDoc>());
   const currentDocRef = useRef<LoadedDoc | null>(null);
-  const docSeqRef = useRef(0);
+  useLayoutEffect(() => {
+    // A new grant is a different immutable resource generation even when all
+    // filenames are identical. Retire interaction before passive effects run.
+    previousResourceRootRef.current = committedResourceRootRef.current;
+    committedResourceRootRef.current = baseHref;
+    const iframe = iframeRef.current;
+    previousDocumentHrefRef.current = iframe ? frameHref(iframe) ?? controllerRef.current?.pageHref ?? null : null;
+    const previous = currentDocRef.current;
+    if (previous?.localEdits) iframeRef.current?.contentWindow?.postMessage({ type: "pneuma:retireEdits", doc: previous.id }, "*");
+    controllerRef.current?.frameLeaving();
+    currentDocRef.current = null; loadedFrameRef.current = null;
+    iframeRef.current?.setAttribute("aria-busy", "true");
+    setDocumentReady(false);
+  }, [baseHref]);
 
   // The held gesture overlays the current tool; it never changes the shell's mode.
   useEffect(() => {
@@ -1137,7 +1173,7 @@ export default function WebPreview({
     };
     const editable = (event: KeyboardEvent) => event.composedPath().some((target) => target instanceof Element && (target.matches("input,textarea,select,[role=textbox]") || !!target.closest('[contenteditable]:not([contenteditable="false"])')));
     const keydown = (event: KeyboardEvent) => {
-      if (!commentBindingRef.current?.enabled || !currentDocRef.current) return;
+      if (!commentBindingRef.current?.enabled || currentDocRef.current?.resourceRoot !== resourceRootRef.current) return;
       if (event.key === "Escape" && commentControlRef.current) { send(false, true); event.preventDefault(); event.stopImmediatePropagation(); return; }
       if (event.key === "Control") {
         if (!commentInhibitedRef.current && !event.isComposing && !editable(event) && !event.altKey && !event.metaKey && !event.shiftKey) send(true);
@@ -1230,8 +1266,12 @@ export default function WebPreview({
         retry,
       });
     };
-    if (!canWriteRef.current) return report("refused", "content editing is unavailable in this view", edits);
-    const source = currentSource(path);
+    if (!doc.localEdits) return report("refused", "content editing is unavailable in this document", edits);
+    const localEdits = doc.localEdits;
+    const sourceFiles = localEdits.files.current() ?? [];
+    const savedContent = sourceFiles.find((file) => file.path === path)?.content;
+    const saved = lastSaveRef.current.get(path);
+    const source = savedContent === undefined ? null : saved?.from === savedContent ? saved.to : savedContent;
     if (source === null) return report("refused", "the page's file is no longer in the workspace", edits);
     // Source-version precondition: the edit was made on a document showing
     // `expected`; if the file has changed since, positions and look-alikes
@@ -1239,7 +1279,7 @@ export default function WebPreview({
     if (doc.expected === null || doc.expected !== source) {
       return report("refused", "the file changed after this page was shown", edits);
     }
-    const content = filesRef.current.find((f) => f.path === path)!.content;
+    const content = savedContent!;
     const parser = new DOMParser();
     const result = applyTextEdits(source, edits, (html) => parser.parseFromString(html, "text/html"));
     const applied = edits.slice(0, result.applied);
@@ -1250,8 +1290,7 @@ export default function WebPreview({
       doc.expected = result.html;
       lastSaveRef.current.set(path, { from: content, to: result.html });
       const save = () => {
-        if (!canWriteRef.current) return report("refused", "content editing is unavailable in this view", applied);
-        fileChannel.write(path, result.html).then(
+        localEdits.channel.write(path, result.html).then(
           () => {
             const lines = applied.map((c) => `  <${c.tag}>: "${c.beforeText ?? ""}" → "${c.afterText ?? ""}"`);
             log("edit-text", `Edited text on "${doc.file}":\n${lines.join("\n")}`);
@@ -1268,7 +1307,7 @@ export default function WebPreview({
             const message = err instanceof Error ? err.message : String(err);
             report("write-failed", `the file could not be written (${message})`, applied, () => {
               // Retry only onto the version the edit was made on.
-              if (currentSource(path) !== source) {
+              if (localEdits.files.current()?.find((file) => file.path === path)?.content !== content) {
                 report("refused", "the file changed after this page was shown", applied);
                 return;
               }
@@ -1292,9 +1331,8 @@ export default function WebPreview({
   }, [flushEdits]);
 
   const queueEdits = useCallback((docId: string, changes: TextEdit[]) => {
-    if (!canWriteRef.current) return;
     const doc = docsRef.current.get(docId);
-    if (!doc || !changes.length) return;
+    if (!doc?.localEdits || !changes.length) return;
     const queued = pendingEditsRef.current.get(docId);
     if (queued) clearTimeout(queued.timer);
     const entry = queued ?? { doc, edits: [], timer: undefined as unknown as ReturnType<typeof setTimeout> };
@@ -1309,21 +1347,29 @@ export default function WebPreview({
   // Listen for selection and text edit messages from iframe
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
+      if (e.data?.type === "pneuma:editsRetired") {
+        const doc = docsRef.current.get(String(e.data.doc ?? ""));
+        if (!doc?.localEdits || e.origin !== doc.localEdits.origin) return;
+        flushEdits(doc.id);
+        delete doc.localEdits;
+        return;
+      }
       if (e.data?.type === "pneuma:textEdit") {
-        if (readonly || permissions?.editContent === false) return;
+        if (readonly) return;
         // Identified by the document id the viewer gave the page, not by
         // `e.source`: an edit finished by the blur of a page switch arrives
         // after the iframe has started loading the next page, and no longer
         // compares equal to its contentWindow (measured in Chrome).
-        if (e.origin !== window.location.origin) return;
-        queueEdits(String(e.data.doc ?? ""), Array.isArray(e.data.changes) ? e.data.changes : []);
+        const doc = docsRef.current.get(String(e.data.doc ?? ""));
+        if (!doc?.localEdits || e.origin !== doc.localEdits.origin) return;
+        queueEdits(doc.id, Array.isArray(e.data.changes) ? e.data.changes : []);
         return;
       }
       if (e.data?.type !== "pneuma:select" && e.data?.type !== "pneuma:commentShortcut") return;
       if (e.source !== iframeRef.current?.contentWindow) return;
       // Selections name the page of the document on screen.
       const doc = currentDocRef.current;
-      if (!doc || e.data.doc !== doc.id) return;
+      if (!doc || doc.resourceRoot !== resourceRootRef.current || e.data.doc !== doc.id) return;
       if (e.data.type === "pneuma:commentShortcut") {
         const pressed = !!e.data.pressed && !!commentBindingRef.current?.enabled;
         commentControlRef.current = pressed; setCommentControlHeld(pressed); return;
@@ -1382,7 +1428,7 @@ export default function WebPreview({
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onSelect, queueEdits, previewMode, activeContentSet, readonly, permissions?.editContent]);
+  }, [onSelect, queueEdits, flushEdits, previewMode, activeContentSet, readonly, permissions?.editContent]);
 
   // Confirm pending annotation with comment
   const confirmAnnotation = useCallback(
@@ -1565,7 +1611,13 @@ export default function WebPreview({
     // Compare pages, not URLs: `sub/` and `sub/index.html` are the same page,
     // and the URL the page is at keeps its query and fragment.
     if (here && pageFromUrl(here, root) === currentFile) return;
-    openInFrame(iframe, desiredPath, false);
+    let target = desiredPath;
+    const departing = previousDocumentHrefRef.current ?? here;
+    if (departing && pageFromUrl(departing, previousResourceRootRef.current) === currentFile) {
+      const previous = new URL(departing);
+      target += previous.search + previous.hash;
+    }
+    openInFrame(iframe, target, false);
   }, [desiredPath, pageExists, viewport, openInFrame, contentRootPath, currentFile]);
 
   // Latest render values for the load handler, which the iframe calls.
@@ -1611,7 +1663,9 @@ export default function WebPreview({
     frameRef.current = { iframe, url: href };
     const sourcePath = L.activeContentSet ? `${L.activeContentSet}/${file}` : file;
     const doc: LoadedDoc = {
-      id: String(++docSeqRef.current),
+      id: createPrivateViewerInstanceId(),
+      resourceRoot: L.contentRootPath,
+      ...(canWriteRef.current ? { localEdits: { files: filesSource, channel: fileChannel, origin: window.location.origin } } : {}),
       contentSet: L.activeContentSet ?? null,
       file,
       sourcePath,
@@ -1656,7 +1710,7 @@ export default function WebPreview({
       awaitingRef.current = null;
       completeNavigation(awaiting.address, awaiting.complete, awaiting.signal, awaiting.cause);
     }
-  }, [currentSource, flushAllEdits, reload, permissions?.editContent, completeNavigation]);
+  }, [currentSource, flushAllEdits, reload, permissions?.editContent, completeNavigation, filesSource, fileChannel]);
 
   // Reload the page when a file it shows changes: its own HTML, or any
   // stylesheet, script, image, font or data file it requested (read from the
@@ -1809,7 +1863,7 @@ export default function WebPreview({
         readyFileRef.current = page;
         if (!frameHref(iframe)) {
           const state = collaborationLatest.current;
-          currentDocRef.current = { id: nonce, contentSet: state.activeContentSet, file: page, sourcePath: (state.activeContentSet ? `${state.activeContentSet}/` : "") + page, expected: null };
+          currentDocRef.current = { id: nonce, resourceRoot: state.resourceUrl(state.activeContentSet ? `${state.activeContentSet}/` : ""), contentSet: state.activeContentSet, file: page, sourcePath: (state.activeContentSet ? `${state.activeContentSet}/` : "") + page, expected: null };
           setForeignUrl(null);
           if (page !== state.currentFile) { setSelectedFile(page); state.onActiveFileChange?.(page); }
           const awaiting = awaitingRef.current;
@@ -2013,6 +2067,7 @@ export default function WebPreview({
           onExport={onExport}
           readonly={readonly}
           permissions={permissions}
+          requestLocalEdit={!!onPreviewModeChange}
         />
 
         {/* Iframe Preview Container */}

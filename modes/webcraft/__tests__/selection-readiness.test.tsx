@@ -14,7 +14,7 @@ beforeEach(() => {
   page.document.write('<html><body><h1 id="heading">Selectable heading</h1></body></html>'); page.document.close();
   page.HTMLElement.prototype.scrollIntoView = () => {};
   const globals = globalThis as unknown as Record<string, unknown>; const saved = new Map<string, unknown>();
-  for (const key of ["window", "document", "navigator", "location", "HTMLElement", "HTMLIFrameElement", "Element", "Node", "Event", "MouseEvent", "ResizeObserver"]) { saved.set(key, globals[key]); globals[key] = key === "window" ? host : (host as unknown as Record<string, unknown>)[key]; }
+  for (const key of ["window", "document", "navigator", "location", "HTMLElement", "HTMLIFrameElement", "Element", "Node", "Event", "MouseEvent", "ResizeObserver", "DOMParser"]) { saved.set(key, globals[key]); globals[key] = key === "window" ? host : (host as unknown as Record<string, unknown>)[key]; }
   saved.set("IS_REACT_ACT_ENVIRONMENT", globals.IS_REACT_ACT_ENVIRONMENT); globals.IS_REACT_ACT_ENVIRONMENT = true;
   restore = () => { for (const [key, value] of saved) value === undefined ? delete globals[key] : globals[key] = value; };
   const element = host.document.createElement("div"); host.document.body.append(element); root = createRoot(element as unknown as HTMLElement);
@@ -26,22 +26,29 @@ async function mount(opaque: boolean, navigating = false, mode: "view" | "select
   const commands: Record<string, unknown>[] = [];
   const commentPicks: ViewerSelectionContext[] = [];
   const modeChanges: string[] = [];
-  const projection = { schema: "webcraft-public-v1", entryAddress: { contentSet: "site", page: "index.html" }, sources: { site: { byContentSet: { site: { pages: [{ file: "index.html", title: "Home" }, { file: "second.html", title: "Second" }] } } }, files: [{ path: "site/index.html", content: "<h1>Selectable heading</h1>" }, { path: "site/second.html", content: "<h1>Second page</h1>" }] } };
+  const writes: { path: string; content: string }[] = [];
+  let writeFailure = false;
+  let resourceRoot = "http://host/content/";
+  const projection = { schema: "webcraft-public-v1", entryAddress: { contentSet: "site", page: "index.html" }, sources: { site: { byContentSet: { site: { pages: [{ file: "index.html", title: "Home" }, { file: "second.html", title: "Second" }] } } }, files: [{ path: "site/index.html", content: '<h1 id="heading">Selectable heading</h1>' }, { path: "site/second.html", content: "<h1>Second page</h1>" }] } };
   const channels = publishedSources(projection);
-  const render = (currentMode: typeof mode) => <WebPreview selection={null} imageVersion={1} theme="dark" locale="en" sources={channels.sources} fileChannel={channels.fileChannel} permissions={{ editContent: currentMode === "edit", notifyAgent: currentMode === "annotate", export: false }} commenting={commentEnabled === undefined ? undefined : { enabled: commentEnabled, active: latched, onSelect: (selection) => commentPicks.push(selection) }} onPreviewModeChange={(mode) => modeChanges.push(mode)} activeContentSet="site" activeFile="index.html" mode={currentMode} navigateRequest={navigating ? { label: "Pinned heading", address: { contentSet: "site", page: "index.html", selector: "#heading" } } : undefined} onNavigateComplete={(result) => arrivals.push(result ?? { success: true })} readonly={false} editing={false} onSelect={(selection) => { if (selection) received.push(selection); }} resolveResourceUrl={(path) => `http://host/content/${path}`}/>;
+  const channel = { ...channels.fileChannel, write: async (path: string, content: string) => { if (writeFailure) throw new Error("Local save rejected"); writes.push({ path, content }); } };
+  const sharedChannels = publishedSources({ ...projection, sources: { ...projection.sources, files: [{ path: "site/index.html", content: '<h1 id="heading">Accepted shared A</h1>' }] } });
+  let publishedWrites = 0;
+  const publicChannel = { ...sharedChannels.fileChannel, write: async (path: string, content: string) => { ++publishedWrites; return sharedChannels.fileChannel.write(path, content); } };
+  const render = (currentMode: typeof mode) => <WebPreview selection={null} imageVersion={1} theme="dark" locale="en" sources={resourceRoot !== "http://host/content/" && currentMode !== "edit" ? sharedChannels.sources : channels.sources} fileChannel={resourceRoot !== "http://host/content/" && currentMode !== "edit" ? publicChannel : channel} permissions={{ editContent: currentMode === "edit", notifyAgent: currentMode === "annotate", export: false }} commenting={commentEnabled === undefined ? undefined : { enabled: commentEnabled, active: latched, onSelect: (selection) => commentPicks.push(selection) }} onPreviewModeChange={(mode) => modeChanges.push(mode)} activeContentSet="site" activeFile="index.html" mode={currentMode} navigateRequest={navigating ? { label: "Pinned heading", address: { contentSet: "site", page: "index.html", selector: "#heading" } } : undefined} onNavigateComplete={(result) => arrivals.push(result ?? { success: true })} readonly={false} editing={false} onSelect={(selection) => { if (selection) received.push(selection); }} resolveResourceUrl={(path) => `${resourceRoot}${path}`}/>;
   await act(async () => root.render(render(mode)));
   const frame = host.document.querySelector("iframe")!;
   const frameWindow = opaque ? { get location() { throw new Error("Opaque document"); }, postMessage: (command: Record<string, unknown>) => commands.push(command) } : page;
   if (!opaque) page.postMessage = (command) => { commands.push(command as Record<string, unknown>); };
   Object.defineProperty(frame, "contentWindow", { configurable: true, value: frameWindow });
-  const send = (message: Record<string, unknown>) => host.dispatchEvent(new host.MessageEvent("message", { source: frameWindow as never, data: message }));
+  const send = (message: Record<string, unknown>) => host.dispatchEvent(new host.MessageEvent("message", { source: frameWindow as never, data: message, origin: "http://host" }));
   const load = async (nonce: string, href = "http://host/content/site/index.html") => {
     await act(async () => frame.dispatchEvent(new host.Event("load")));
     const hello = commands.filter((command) => command.type === "hello").at(-1)!;
     await act(async () => send({ channel: "pneuma-webcraft-page", type: "ready", helloId: hello.helloId, nonce, href }));
   };
   const select = async (doc: string, intent?: string, tool?: string) => { await act(async () => send({ type: "pneuma:select", doc, intent, tool, selection: { type: "element", content: "Selectable heading", selector: "#heading", label: "Heading", tag: "h1", rect: { left: 0, top: 0, right: 100, bottom: 30, width: 100, height: 30 } } })); };
-  return { frame, commands, received, send, load, select, arrivals, commentPicks, modeChanges, rerender: async (nextMode: typeof mode) => { await act(async () => root.render(render(nextMode))); } };
+  return { publishedWrites: () => publishedWrites, sharedChannels, localDoc: () => page.document.documentElement.getAttribute("data-pneuma-instrumented")!, refuseWrites: () => { writeFailure = true; }, frame, commands, received, send, load, select, arrivals, commentPicks, modeChanges, writes, channels, changeRoot: async (rootUrl: string, nextMode: typeof mode = mode) => { resourceRoot = rootUrl; await act(async () => root.render(render(nextMode))); }, rerender: async (nextMode: typeof mode) => { await act(async () => root.render(render(nextMode))); } };
 }
 
 describe("Webcraft document selection readiness", () => {
@@ -62,9 +69,9 @@ describe("Webcraft document selection readiness", () => {
   test("same-origin selection uses its private edit document ID instead of the bridge nonce", async () => {
     const f = await mount(false); await f.load("bridge-nonce");
     const selectionCommand = f.commands.filter((command) => command.type === "pneuma:selectMode").at(-1)!;
-    expect(selectionCommand.enabled).toBe(true); expect(selectionCommand.doc).toBe("1");
+    expect(selectionCommand.enabled).toBe(true); expect(selectionCommand.doc).toBe(f.localDoc());
     await f.select("bridge-nonce"); expect(f.received).toHaveLength(0);
-    await f.select("1"); expect(f.received).toHaveLength(1);
+    await f.select(f.localDoc()); expect(f.received).toHaveLength(1);
   });
   test("opaque page departure blocks interaction and rejects stale selections from the same WindowProxy", async () => {
     const f = await mount(true); await f.load("first-document"); await f.select("first-document");
@@ -150,7 +157,7 @@ describe("Webcraft comment interaction boundary", () => {
     const f = await mount(false, false, "edit", true); await f.load("bridge-page");
     const key = async (name: string, type: string, ctrlKey: boolean) => { await act(async () => host.document.body.dispatchEvent(new host.KeyboardEvent(type, { key: name, ctrlKey, bubbles: true, cancelable: true }))); };
     await key("Control", "keydown", true);
-    expect(f.commands.filter((c) => c.type === "pneuma:commentControl").at(-1)).toMatchObject({ doc: "1", pressed: true });
+    expect(f.commands.filter((c) => c.type === "pneuma:commentControl").at(-1)).toMatchObject({ doc: f.localDoc(), pressed: true });
     expect(f.commands.filter((c) => c.type === "pneuma:editMode").at(-1)?.enabled).toBe(false);
     await key("Control", "keyup", false);
     expect(f.commands.filter((c) => c.type === "pneuma:editMode").at(-1)?.enabled).toBe(true);
@@ -162,9 +169,9 @@ describe("Webcraft comment interaction boundary", () => {
     const copy = new host.KeyboardEvent("keydown", { key: "c", ctrlKey: true, bubbles: true, cancelable: true });
     await act(async () => { host.document.body.dispatchEvent(copy); });
     expect(copy.defaultPrevented).toBe(false); expect(f.commands.filter((c) => c.type === "pneuma:editMode").at(-1)?.enabled).toBe(true);
-    await act(async () => { host.document.body.dispatchEvent(new host.KeyboardEvent("keyup", { key: "Control", bubbles: true })); f.send({ type: "pneuma:commentShortcut", doc: "1", pressed: true }); });
+    await act(async () => { host.document.body.dispatchEvent(new host.KeyboardEvent("keyup", { key: "Control", bubbles: true })); f.send({ type: "pneuma:commentShortcut", doc: f.localDoc(), pressed: true }); });
     await act(async () => { f.send({ channel: "pneuma-webcraft-page", nonce: "bridge-page", type: "leaving" }); });
-    await f.select("1", "comment"); expect(f.commentPicks).toHaveLength(0);
+    await f.select(f.localDoc(), "comment"); expect(f.commentPicks).toHaveLength(0);
     expect(f.modeChanges).toHaveLength(0);
   });
 });
@@ -173,7 +180,7 @@ describe("Webcraft comment interaction boundary", () => {
 test("same-origin fine navigation highlights its addressed element without selecting it", async () => {
   const f = await mount(false, true, "view"); await f.load("same-origin-page");
   expect(f.arrivals).toEqual([{ success: true }]);
-  expect(f.commands.find((command) => command.type === "pneuma:navigationHighlight")).toMatchObject({ doc: "1", selector: "#heading" });
+  expect(f.commands.find((command) => command.type === "pneuma:navigationHighlight")).toMatchObject({ doc: f.localDoc(), selector: "#heading" });
   expect(f.received).toHaveLength(0);
 });
 
@@ -188,11 +195,11 @@ test("focus entering the viewer iframe does not queue a stale Control release, w
   expect(f.commands.filter((command) => command.type === "pneuma:commentControl")).toHaveLength(controlsBefore);
   // The child's next keydown is newer than the parent focus transfer. There
   // must be no queued parent:false message that can overwrite that press.
-  await act(async () => f.send({ type: "pneuma:commentShortcut", doc: "1", pressed: true }));
+  await act(async () => f.send({ type: "pneuma:commentShortcut", doc: f.localDoc(), pressed: true }));
   expect(f.commands.filter((command) => command.type === "pneuma:editMode").at(-1)?.enabled).toBe(false);
   focused = false;
   await act(async () => host.dispatchEvent(new host.Event("blur")));
-  expect(f.commands.filter((command) => command.type === "pneuma:commentControl").at(-1)).toMatchObject({ doc: "1", pressed: false });
+  expect(f.commands.filter((command) => command.type === "pneuma:commentControl").at(-1)).toMatchObject({ doc: f.localDoc(), pressed: false });
   expect(f.commands.filter((command) => command.type === "pneuma:editMode").at(-1)?.enabled).toBe(true);
   expect(f.modeChanges).toHaveLength(0);
 });
@@ -204,7 +211,7 @@ for (const [before, after] of [["select", "annotate"], ["annotate", "select"]] a
   await f.rerender(after);
   const configurations = f.commands.filter((command) => command.type === "pneuma:selectMode");
   expect(configurations.length).toBeGreaterThan(count);
-  expect(configurations.at(-1)).toMatchObject({ enabled: true, doc: "1", tool: after });
+  expect(configurations.at(-1)).toMatchObject({ enabled: true, doc: f.localDoc(), tool: after });
   expect(f.modeChanges).toHaveLength(0);
 });
 
@@ -213,10 +220,10 @@ for (const [before, after] of [["select", "annotate"], ["annotate", "select"]] a
   const f = await mount(false, false, before); await f.load("bridge-page");
   await f.rerender(after);
   // The old document may have posted this before it saw the tool update.
-  await f.select("1", undefined, before);
+  await f.select(f.localDoc(), undefined, before);
   expect(f.received).toHaveLength(0);
   expect(host.document.querySelector('input[placeholder="Add comment (optional)..."]')).toBeNull();
-  await f.select("1", undefined, after);
+  await f.select(f.localDoc(), undefined, after);
   if (after === "select") expect(f.received).toHaveLength(1);
   else expect(host.document.querySelector('input[placeholder="Add comment (optional)..."]')).not.toBeNull();
 });
@@ -241,4 +248,66 @@ test("inline editing identifies its generated fields and preserves authored edit
   expect(page.document.getElementById("heading")!.hasAttribute("contenteditable")).toBe(false);
   expect(page.document.getElementById("authored")!.getAttribute("contenteditable")).toBe("true");
   expect(page.document.getElementById("locked")!.getAttribute("contenteditable")).toBe("false");
+});
+
+
+test("a changed immutable resource grant rejects captures from the previous displayed generation until its own handshake", async () => {
+  const f = await mount(true, false, "select", true); await f.load("accepted-A", "http://host/content/site/index.html?q=keep#heading");
+  await f.select("accepted-A", "comment"); expect(f.commentPicks).toHaveLength(1);
+  await f.changeRoot("http://host/revision/4/");
+  expect(f.frame.src).toBe("http://host/revision/4/site/index.html?q=keep#heading");
+  await f.select("accepted-A", "comment"); expect(f.commentPicks).toHaveLength(1);
+  await f.load("accepted-B", "http://host/revision/4/site/index.html");
+  await f.select("accepted-A", "comment"); expect(f.commentPicks).toHaveLength(1);
+  await f.select("accepted-B", "comment"); expect(f.commentPicks).toHaveLength(2);
+});
+
+test("a published view can request local edit mode without gaining a writable document", async () => {
+  const f = await mount(false, false, "view", true); await f.load("published-A");
+  const edit = [...host.document.querySelectorAll("button")].find((button) => button.textContent === "Edit locally")!;
+  expect(edit).toBeDefined(); await act(async () => edit.click());
+  expect(f.modeChanges).toEqual(["edit"]);
+  await act(async () => f.send({ type: "pneuma:textEdit", doc: f.localDoc(), changes: [{ tag: "h1", beforeText: "Selectable heading", afterText: "Forbidden edit" }] }));
+  await act(async () => f.send({ type: "pneuma:editsRetired", doc: f.localDoc() }));
+  expect(f.writes).toHaveLength(0);
+});
+
+test("a local edit immediately followed by the published view flushes once on its original channel and retires that capability", async () => {
+  const f = await mount(false, false, "edit", false); await f.load("local-page");
+  const script = [...page.document.querySelectorAll("script[data-pneuma-preview]")].find((node) => node.textContent.includes("var editSaved"))!;
+  page.eval(script.textContent);
+  const messages: Record<string, unknown>[] = [];
+  Object.defineProperty(page, "parent", { configurable: true, value: { postMessage: (message: Record<string, unknown>) => messages.push(message) } });
+  page.dispatchEvent(new page.MessageEvent("message", { data: { type: "pneuma:editMode", enabled: true } }));
+  const heading = page.document.getElementById("heading")! as unknown as HTMLElement;
+  heading.focus(); heading.textContent = "Saved local B";
+  page.dispatchEvent(new page.Event("pagehide"));
+  expect(messages.map((message) => message.type)).toEqual(["pneuma:textEdit", "pneuma:editsRetired"]);
+  await f.changeRoot("http://host/revision/3/", "view");
+  // A new opaque publication cannot spend an older local document's write capability.
+  for (const message of messages) await act(async () => host.dispatchEvent(new host.MessageEvent("message", { source: f.frame.contentWindow as never, origin: "null", data: message })));
+  expect(f.writes).toHaveLength(0);
+  for (const message of messages) await act(async () => f.send(message));
+  expect(f.writes).toHaveLength(1); expect(f.publishedWrites()).toBe(0); expect(f.writes[0]).toEqual({ path: "site/index.html", content: '<h1 id="heading">Saved local B</h1>' });
+  await act(async () => f.send(messages[0]!)); await act(async () => f.send(messages[1]!));
+  expect(f.writes).toHaveLength(1);
+});
+
+
+for (const conflict of [true, false]) test(`retired local edit ${conflict ? "conflict" : "write failure"} stays visible and cannot overwrite a newer file`, async () => {
+  const f = await mount(false, false, "edit", false); await f.load("local-page");
+  const script = [...page.document.querySelectorAll("script[data-pneuma-preview]")].find((node) => node.textContent.includes("var editSaved"))!;
+  page.eval(script.textContent);
+  const messages: Record<string, unknown>[] = [];
+  Object.defineProperty(page, "parent", { configurable: true, value: { postMessage: (message: Record<string, unknown>) => messages.push(message) } });
+  page.dispatchEvent(new page.MessageEvent("message", { data: { type: "pneuma:editMode", enabled: true } }));
+  const heading = page.document.getElementById("heading")! as unknown as HTMLElement; heading.focus(); heading.textContent = "Unsaved local edit";
+  page.dispatchEvent(new page.Event("pagehide"));
+  if (conflict) f.channels.update({ schema: "webcraft-public-v1", entryAddress: { contentSet: "site", page: "index.html" }, sources: { site: { byContentSet: { site: { pages: [{ file: "index.html", title: "Home" }] } } }, files: [{ path: "site/index.html", content: '<h1 id="heading">Newer AI edit</h1>' }] } });
+  else f.refuseWrites();
+  await f.changeRoot("http://host/revision/3/", "view");
+  for (const message of messages) await act(async () => f.send(message));
+  expect(f.writes).toHaveLength(0);
+  expect(host.document.body.textContent).toContain(conflict ? "the file changed after this page was shown" : "Local save rejected");
+  expect(host.document.body.textContent).toContain("Unsaved local edit");
 });

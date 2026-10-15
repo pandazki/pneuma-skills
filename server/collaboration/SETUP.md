@@ -52,6 +52,12 @@ Content-Type: application/json
 ```
 
 Select the intended site in the viewer and choose **Share this workspace**.
+While sharing, View, Select, and Annotate use the last complete published snapshot,
+including styles and images. **Edit locally** uses local files and pauses shared
+comment picking and presence until the host returns to a published view. This
+keeps guests connected and does not disable forwarding existing feedback to AI.
+A failed publication leaves the last complete shared version visible; diagnose
+the reported error rather than treating local edits as already shared.
 The equivalent request is `POST /api/collaboration/share` with:
 
 ```json

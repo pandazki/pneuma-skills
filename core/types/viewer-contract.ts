@@ -278,6 +278,8 @@ export interface ViewerPreviewProps {
   activeContentSet?: string | null;
   onActiveContentSetChange?: (prefix: string | null) => void;
   imageChangedPaths?: readonly string[];
+  /** Request a shell mode change; this callback never grants content editing.
+   * A shell may switch from an immutable shared view to its local edit surface. */
   onPreviewModeChange?: (mode: "view" | "edit" | "select" | "annotate") => void;
   onAnnotate?: (annotation: NonNullable<ViewerSelectionContext["annotations"]>[number]) => void;
   onUserAction?: (action: { actionId: string; description: string }) => void;

@@ -348,6 +348,12 @@ independent navigation, following, pointers, anchored comments, and room chat.
 Administrators manage members; readers cannot change shared state. Guest links
 grant access to one room with viewing or commenting permission.
 
+While sharing, View, Select, and Annotate show the last complete published
+snapshot, including its images and styles. Local changes appear after publishing.
+**Edit locally** switches to your local files and pauses shared comments and
+presence until you return to View, Select, or Annotate; guests keep viewing the
+accepted publication. Existing discussion can still be sent to your private AI.
+
 Hold **Control** and click a viewer element to start a comment, then release it
 to return to the current tool. Comment references show a captured preview when
 available; click one to locate and highlight its target. In the owning Session,

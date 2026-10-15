@@ -730,3 +730,29 @@ The runtime can recover interrupted downloads. Persistent certificate failures
 still require fixing the network/proxy trust configuration; invalid dependencies
 or viewer source errors require correcting the mode. They remain visible rather
 than being retried indefinitely.
+
+
+### Private host publication identity
+
+A private host sharing its selected workspace renders the accepted immutable
+publication in View, Select, and Annotate, using that publication's Sources,
+read-only FileChannel, and resource grant for HTML, styles, and images together.
+The Agent selection and annotation callbacks remain private. Shared comments and
+semantic presence become available only after the displayed document completes
+its interaction handshake inside that grant. Replacing a grant retires the old
+document identity before new interactions can be attributed to the new revision.
+
+The viewer's `onPreviewModeChange` requests a shell transition; it does not grant
+write permission. The private Webcraft toolbar can request **Edit locally** from
+a publication. Local editing uses local Sources and the writable local channel,
+while suspending shared comment picking and semantic presence without closing
+the host's collaboration connection. Returning to a non-edit mode returns to the
+last complete accepted publication. Missing or invalid publications never fall
+back to a local view with shared interactions enabled.
+
+Each local Webcraft document has an unguessable document identity and an
+origin-bound write capability. Its already queued and final blur/pagehide edits
+finish on the original local Source and FileChannel, subject to the same
+expected-source conflict check. The ordered retirement marker closes that
+capability; later document messages cannot create additional writes. Published
+documents receive no writable capability.

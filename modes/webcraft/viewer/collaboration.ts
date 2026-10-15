@@ -69,7 +69,6 @@ export class WebcraftCollaborationController {
       projectPointer: (pointer, signal) => this.project(pointer, signal),
       projectAnchor: (address, signal) => this.project({ address: address as CollaborationJsonObject }, signal) };
     window.addEventListener("message", this.onMessage);
-    this.unregister = binding?.register(this.adapter);
   }
   dispose(): void {
     if (this.disposed) return;
@@ -101,6 +100,7 @@ export class WebcraftCollaborationController {
     this.helloId = 0;
     for (const entry of this.pending.values()) entry.cancel();
     this.binding?.reportPointer(null);
+    this.unregister?.(); this.unregister = undefined;
     this.binding?.invalidateProjection();
   }
   localInput(): void {
@@ -135,6 +135,7 @@ export class WebcraftCollaborationController {
     if (this.readyDeadline) clearTimeout(this.readyDeadline); this.readyDeadline = null;
     this.send({ type: "configure", address: { ...(current.contentSet ? { contentSet: current.contentSet } : {}), page }, root });
     this.environment.loaded(page, document.href, document.nonce);
+    this.unregister ??= this.binding?.register(this.adapter);
     for (const arrival of this.arrivals) arrival();
   }
   private onMessage = (event: MessageEvent): void => {

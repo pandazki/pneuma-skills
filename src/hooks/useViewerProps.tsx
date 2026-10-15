@@ -113,8 +113,9 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
   const pushUserAction = useStore((s) => s.pushUserAction);
 
   return {
-    sources,
-    fileChannel,
+    sources: collaboration?.publishedView?.channels.sources ?? sources,
+    fileChannel: collaboration?.publishedView?.channels.fileChannel ?? fileChannel,
+    permissions: collaboration?.sharedPreviewRequested ? { editContent: false, notifyAgent: true, export: true } : undefined,
     collaboration: collaboration?.runtime?.binding,
     commenting: collaboration ? { enabled: collaboration.canComment && !replayMode, active: collaboration.commenting, onSelect: collaboration.selection } : undefined,
     activeContentSet,
@@ -133,8 +134,8 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
       const qs = activeContentSet ? `?contentSet=${encodeURIComponent(activeContentSet)}` : "";
       window.open(`${getApiBase()}/export/${modeName}${qs}`, "_blank");
     },
-    resolveResourceUrl: (path) => `/content/${path.replace(/^\//, "").split("/").map(encodeURIComponent).join("/")}`,
-    files: filesCompat,
+    resolveResourceUrl: collaboration?.publishedView?.resolveResourceUrl ?? ((path) => `/content/${path.replace(/^\//, "").split("/").map(encodeURIComponent).join("/")}`),
+    files: collaboration?.publishedView ? [...collaboration.publishedView.channels.fileChannel.snapshot()] : filesCompat,
     activeFile,
     selection: selection
       ? {
@@ -174,7 +175,7 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
       });
     },
     mode: previewMode,
-    imageVersion: imageTick,
+    imageVersion: collaboration?.publishedView?.revision ?? imageTick,
     initParams,
     onActiveFileChange: setActiveFile,
     onViewportChange: setViewportRange,

@@ -1,5 +1,5 @@
 import { CollaborationSetupEntry } from "./CollaborationSetupGuide.js";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
@@ -11,14 +11,18 @@ import type { ViewerSelectionContext } from "../../core/types/viewer-contract.js
 import { discussionAvailable, mutationAvailable, shareUrl } from "./client-state.js";
 import { useCollaboration } from "./use-collaboration.js";
 import { ViewerCollaborationRuntime } from "./viewer-runtime.js";
-import type { ViewerRuntimeSnapshot } from "./viewer-runtime.js";
+import type { ViewerRuntimeSnapshot, ViewerPresenceReport } from "./viewer-runtime.js";
 import { ViewerOverlays } from "./ViewerOverlays.js";
 import { Chat, Comments, MembersPanel, SharePanel } from "./App.js";
 import { InternetAccessPanel } from "./InternetAccessPanel.js";
 import { migrateReferenceOperations } from "./reference-operations.js";
 import { PinRoomButton, ReferencesPanel } from "./ReferencesPanel.js";
 import { createPrivateViewerInstanceId } from "../../core/types/private-viewer.js";
+import { publishedSources, publicResourceResolver } from "./published-sources.js";
 import "./session-collaboration.css";
+
+const unavailablePublication = publishedSources({ schema: "unavailable", entryAddress: {}, sources: {} });
+const unavailableResource = () => "";
 
 type Client = ReturnType<typeof useCollaboration>;
 interface SessionContext {
@@ -26,6 +30,10 @@ interface SessionContext {
   client: Client;
   runtime: ViewerCollaborationRuntime | null;
   sharedView: boolean;
+  sharedScope: boolean;
+  publicationError: string;
+  publishedView: { channels: ReturnType<typeof publishedSources>; resolveResourceUrl: (path: string) => string; revision: number } | null;
+  sharedPreviewRequested: boolean;
   open: boolean;
   setOpen: (open: boolean) => void;
   commenting: boolean;
@@ -60,6 +68,7 @@ export function SessionCollaborationProvider({ children }: { children: ReactNode
   const manifest = useStore((state) => state.modeManifest);
   const activeContentSet = useStore((state) => state.activeContentSet);
   const sessionId = useStore((state) => state.sessionId);
+  const previewMode = useStore((state) => state.previewMode);
   const projectContext = useStore((state) => state.projectContext);
   const params = new URLSearchParams(location.search);
   const enabled = (params.has("session") || params.has("mode")) && !params.has("replay") && params.get("surface") !== "chat";
@@ -103,19 +112,59 @@ export function SessionCollaborationProvider({ children }: { children: ReactNode
   }, [enabled, sessionId, projectContext?.projectRoot, refresh]);
   const client = useCollaboration(status?.connection?.token ?? "", status?.sharing ? status.roomId ?? "" : "", { baseUrl: status?.connection?.authorityBaseUrl, updateHash: false, selectDefault: false });
   const declaration = manifest?.viewerApi?.collaboration;
-  const sharedView = !!status?.sharing && !status.projectRemoved && !client.projectRemoved && activeContentSet === (status.sharedContentSet ?? null);
-  const runtime = useMemo(() => {
-    if (!viewerInstanceId || !declaration || !sharedView || !status?.roomId) return null;
-    return new ViewerCollaborationRuntime(viewerInstanceId, declaration, { address: client.room?.publication?.projection?.entryAddress ?? {} }, (report) => {
-      client.send({ type: "presence", view: null, cursor: null, ...report, sentAt: Date.now() });
-    }, { contentSet: status.sharedContentSet ?? null });
-  }, [viewerInstanceId, declaration, sharedView, status?.roomId, status?.sharedContentSet, client.send]);
-  useEffect(() => () => runtime?.dispose(), [runtime]);
+  const sharedScope = !!status?.sharing && !status.projectRemoved && !client.projectRemoved && activeContentSet === (status.sharedContentSet ?? null);
+  const sharedPreviewRequested = sharedScope && previewMode !== "edit";
+  const sharedView = sharedPreviewRequested;
+  const room = client.room;
+  const complete = sharedPreviewRequested && !!room && room.room.id === status?.roomId && !!room.publication?.projection
+    && room.publication.revision === room.room.revision && room.room.revision > 0;
+  // Publication revisions are immutable. Presence-only updates retain the same Sources and resolver.
+  const acceptedKey = complete && room ? `${room.room.id}:${room.room.revision}:${room.pageUrl}` : "";
+  const currentRuntime = useRef<ViewerCollaborationRuntime | null>(null);
+  const lastPresence = useRef<{ runtime: ViewerCollaborationRuntime; report: ViewerPresenceReport } | null>(null);
+  const [mountedPublication, setMountedPublication] = useState<{
+    key: string; view: NonNullable<SessionContext["publishedView"]> | null;
+    runtime: ViewerCollaborationRuntime | null; error: string;
+  } | null>(null);
+  // Layout-owned generations survive StrictMode replay by constructing a fresh
+  // lifecycle, rather than reusing a memo whose Sources/runtime were disposed.
+  useLayoutEffect(() => {
+    if (!complete || !room?.publication?.projection) { setMountedPublication(null); return; }
+    try {
+      const projection = room.publication.projection;
+      if (projection.schema !== declaration?.publication.schema) throw new Error("The shared publication is incompatible with this viewer");
+      const resolveResourceUrl = publicResourceResolver(room.pageUrl, room.room.page, client.baseUrl || location.origin);
+      const channels = publishedSources(projection);
+      const nextRuntime = viewerInstanceId ? new ViewerCollaborationRuntime(viewerInstanceId, declaration, { address: projection.entryAddress }, (report) => {
+        if (currentRuntime.current !== nextRuntime) return;
+        lastPresence.current = { runtime: nextRuntime!, report };
+        client.send({ type: "presence", view: null, cursor: null, ...report, sentAt: Date.now() });
+      }, { contentSet: status?.sharedContentSet ?? null }) : null;
+      setMountedPublication({ key: acceptedKey, view: { channels, resolveResourceUrl, revision: room.room.revision }, runtime: nextRuntime, error: "" });
+      return () => {
+        const previous = lastPresence.current;
+        if (previous?.runtime === nextRuntime) {
+          lastPresence.current = null;
+          // Retire pointer/follow state without closing the owner's room/lease
+          // or relabeling the last displayed semantic view with a new revision.
+          client.send({ type: "presence", view: null, cursor: null, ...previous.report, semanticPointer: null, followingId: null, sentAt: Date.now() });
+        }
+        nextRuntime?.dispose();
+        for (const source of Object.values(channels.sources)) source.destroy();
+      };
+    } catch (failure) {
+      setMountedPublication({ key: acceptedKey, view: null, runtime: null, error: failure instanceof Error ? failure.message : "The shared publication is unavailable" });
+    }
+  }, [acceptedKey, viewerInstanceId, declaration, status?.sharedContentSet, client.send]);
+  const publication = mountedPublication?.key === acceptedKey ? mountedPublication.view : null;
+  const runtime = mountedPublication?.key === acceptedKey ? mountedPublication.runtime : null;
+  currentRuntime.current = runtime;
+  const runtimeState = useSyncExternalStore(runtime?.subscribe ?? noSubscribe, runtime?.current ?? emptyRuntime, runtime?.current ?? emptyRuntime);
   useEffect(() => {
-    if (!runtime) return;
-    const room = client.room;
-    runtime.update(room?.room.revision ?? 0, client.status === "connected" && !!room, (room?.participants ?? []).filter((peer) => peer.id !== client.connectionId).map((peer) => ({ id: peer.id, revision: peer.revision ?? peer.view?.revision ?? 0, view: peer.semanticView ?? null, pointer: peer.semanticPointer ?? null, followingId: peer.followingId })), room?.comments ?? []);
-  }, [runtime, client.room, client.connectionId, client.status]);
+    if (!runtime || !publication) return;
+    runtime.update(publication.revision, client.status === "connected" && !!room, (room?.participants ?? []).filter((peer) => peer.id !== client.connectionId).map((peer) => ({ id: peer.id, revision: peer.revision ?? peer.view?.revision ?? 0, view: peer.semanticView ?? null, pointer: peer.semanticPointer ?? null, followingId: peer.followingId })), room?.comments ?? []);
+  }, [runtime, publication, room, client.connectionId, client.status]);
+  const publishedView = sharedPreviewRequested ? publication ?? mountedPublication?.view ?? { channels: unavailablePublication, resolveResourceUrl: unavailableResource, revision: 0 } : null;
   const command = useCallback(async (path: string, body?: unknown) => {
     ++refreshSequence.current;
     pendingCommand.current = true;
@@ -131,17 +180,21 @@ export function SessionCollaborationProvider({ children }: { children: ReactNode
       setError(message); throw failure;
     } finally { pendingCommand.current = false; setPending(false); }
   }, [refresh]);
-  const canDiscuss = discussionAvailable(client.project?.self, client.status) && !!client.room?.room.enabled && client.room.room.id === status?.roomId && sharedView;
-  useEffect(() => { if (!canDiscuss) { setCommenting(false); setDraft(null); } }, [canDiscuss]);
+  const canDiscuss = discussionAvailable(client.project?.self, client.status) && !!client.room?.room.enabled && client.room.room.id === status?.roomId && sharedView && !!publication && runtimeState.ready;
+  useEffect(() => {
+    if (!canDiscuss) setCommenting(false);
+    // A publication loading its next document must not erase a captured draft.
+    if (!sharedScope || previewMode === "edit" || !discussionAvailable(client.project?.self, client.status)) setDraft(null);
+  }, [canDiscuss, sharedScope, previewMode, client.project?.self, client.status]);
   const startComment = () => {
     if (!canDiscuss) return;
     setOpen(true); setTab("comments"); setCommenting(true);
   };
   const value: SessionContext = {
-    status, client, runtime, sharedView, open, setOpen, commenting, canComment: canDiscuss, startComment, draft, clearDraft: () => { setDraft(null); setCommenting(false); }, command, error, pending, referenceRecoveryError, tab, setTab,
+    status, client, runtime, sharedView, sharedScope, publicationError: mountedPublication?.error ?? "", publishedView, sharedPreviewRequested, open, setOpen, commenting, canComment: canDiscuss, startComment, draft, clearDraft: () => { setDraft(null); setCommenting(false); }, command, error, pending, referenceRecoveryError, tab, setTab,
     selection: (selection) => {
-      if (!canDiscuss || !selection || !client.room) return;
-      const anchor = createCommentAnchor(selection, client.room.room.revision);
+      if (!canDiscuss || !selection || !publication || !runtime?.current().ready || currentRuntime.current !== runtime) return;
+      const anchor = createCommentAnchor(selection, publication.revision);
       if (!anchor) return;
       setDraft(anchor);
       setCommenting(false); setOpen(true); setTab("comments");
@@ -160,7 +213,12 @@ export function SessionCollaborationButton() {
 export function SessionViewerOverlays() {
   const context = useSessionCollaboration();
   const instanceError = useStore((state) => state.viewerInstanceError);
-  return <>{instanceError && <p className="absolute bottom-2 left-2 z-50 rounded bg-cc-surface p-2 text-xs text-cc-error" role="alert">{instanceError}</p>}{context?.runtime && <ViewerOverlays runtime={context.runtime} peers={(context.client.room?.participants ?? []).filter((peer) => peer.id !== context.client.connectionId)} comments={context.client.room?.comments ?? []} onComment={() => { context.setOpen(true); context.setTab("comments"); }}/>}</>;
+  const sharedMessage = context?.status?.sharing && (context.status.sharedContentSet ?? null) === useStore.getState().activeContentSet
+    ? !context.sharedPreviewRequested ? "Editing locally. Return to View to comment and follow."
+      : context.publishedView?.revision ? `Shared revision ${context.publishedView.revision}. ${context.client.error || context.status.error ? `Showing the last complete shared version. ${context.client.error || context.status.error}` : "Local changes appear after sharing updates."}`
+      : context.publicationError || "Waiting for a complete shared publication. Shared interactions are unavailable."
+    : "";
+  return <>{sharedMessage && <p className="absolute bottom-2 left-2 z-40 max-w-[calc(100%-16px)] rounded border border-cc-border bg-cc-surface px-3 py-2 text-xs text-cc-muted" role="status">{sharedMessage}</p>}{instanceError && <p className="absolute bottom-2 left-2 z-50 rounded bg-cc-surface p-2 text-xs text-cc-error" role="alert">{instanceError}</p>}{context?.runtime && <ViewerOverlays runtime={context.runtime} peers={(context.client.room?.participants ?? []).filter((peer) => peer.id !== context.client.connectionId)} comments={context.client.room?.comments ?? []} onComment={() => { context.setOpen(true); context.setTab("comments"); }}/>}</>;
 }
 
 function SessionCollaborationPanel() {
@@ -196,7 +254,7 @@ function SessionCollaborationPanel() {
     run("share", { title: state.activeContentSet || (typeof modeName === "string" ? modeName : state.modeManifest?.name) || "Workspace", contentSet: state.activeContentSet, activeFile: state.activeFile });
   };
   const room = client.room?.room;
-  const canForward = !!room && !!client.project && !!status?.sharing && context.sharedView && status.roomId === room.id && client.selectedId === room.id && isCollaborationHost(client.project.self, room) && !!useStore.getState().sessionId;
+  const canForward = !!room && !!client.project && !!status?.sharing && context.sharedScope && status.roomId === room.id && client.selectedId === room.id && isCollaborationHost(client.project.self, room) && !!useStore.getState().sessionId;
   const forward = (item: Parameters<typeof createCommentFeedback>[0]["comment"] | Parameters<typeof createChatFeedback>[0]["message"], kind: "comment" | "chat") => {
     const state = useStore.getState();
     if (!canForward || !room || !client.project || !state.sessionId) return;
@@ -237,14 +295,14 @@ function SessionCollaborationPanel() {
         </form>
         <form className="connect-member" onSubmit={(event) => { event.preventDefault(); run("connect", { url: link.trim() }); }}><label className="field-label">Member invitation link<input type="url" required value={link} placeholder="Paste your Project member link" onChange={(event) => setLink(event.target.value)}/></label><button type="submit" className="button" disabled={pending || !link.trim()}>Connect to Project</button></form>
       </> : <>
-        <div className="session-sharing"><p>{projectRemoved ? "Shared project removed. Your local files and private Agent remain available." : status.sharing ? context.sharedView ? "This viewer is shared while this Session tab stays open." : `Sharing ${status.sharedContentSet || "the root site"}; this view is private.` : status.supported ? "Share the current workspace through this viewer." : "This mode does not support shared viewing yet. You can open other Project rooms."}</p>{!projectRemoved && status.sharing && !context.sharedView && <button className="button" onClick={() => useStore.getState().setActiveContentSet(status.sharedContentSet ?? null)}>Return to shared view</button>}<button className={`button ${status.sharing ? "" : "primary"}`} disabled={pending || !status.supported || projectRemoved} onClick={status.sharing ? () => run("stop") : share}>{pending ? "Working…" : projectRemoved ? "Sharing unavailable" : status.sharing ? "Stop sharing" : "Share this workspace"}</button><span className="muted">{projectRemoved ? "Shared project removed" : status.publisherStatus}</span></div>
+        <div className="session-sharing"><p>{projectRemoved ? "Shared project removed. Your local files and private Agent remain available." : status.sharing ? context.sharedView ? "This viewer shows the last complete shared publication. Local changes appear after publishing." : `Sharing ${status.sharedContentSet || "the root site"}; ${previewModeLabel(useStore.getState().previewMode)}.` : status.supported ? "Share the current workspace through this viewer." : "This mode does not support shared viewing yet. You can open other Project rooms."}</p>{!projectRemoved && status.sharing && !context.sharedView && <button className="button" onClick={() => { useStore.getState().setActiveContentSet(status.sharedContentSet ?? null); useStore.getState().setPreviewMode("view"); }}>Return to shared view</button>}<button className={`button ${status.sharing ? "" : "primary"}`} disabled={pending || !status.supported || projectRemoved} onClick={status.sharing ? () => run("stop") : share}>{pending ? "Working…" : projectRemoved ? "Sharing unavailable" : status.sharing ? "Stop sharing" : "Share this workspace"}</button><span className="muted">{projectRemoved ? "Shared project removed" : status.publisherStatus}</span></div>
         {!projectRemoved && <InternetAccessPanel status={status} pending={pending} command={context.command}/>}
         <form className="connect-member" onSubmit={(event) => { event.preventDefault(); run("connect", { url: link.trim() }); }}><label className="field-label">Reconnect with the current Project URL or member link<input type="url" required value={link} placeholder="Paste the current Project URL when the public address changes" onChange={(event) => setLink(event.target.value)}/></label><button type="submit" className="button" disabled={pending || !link.trim()}>Reconnect to Project</button></form>
         {client.error && <p className="inline-error" role="status">{client.error}</p>}
         {!projectRemoved && !status.sharing && status.roomId && <div className="danger-zone"><h3>Remove sharing registration</h3><p>Remove the old room before sharing a different site or viewer build. Its shared links and pinned references will become unavailable.</p><button className="button danger" disabled={pending} onClick={() => run("remove")}>Remove sharing registration</button></div>}
         <h3>Shared workspaces</h3>
         <div className="room-list">{client.project?.rooms.map((item) => <div key={item.id} className="shared-room-card"><button type="button" className="room-item" disabled={!item.enabled || item.hostOnline === false} onClick={() => window.open(shareUrl(status.connection!.token, item.id, { publicOrigin: status.connection!.authorityBaseUrl }), "_blank", "noopener,noreferrer")}><strong>{item.title}</strong><small>{item.mode} · {item.hostOnline === false ? "Host offline" : item.enabled ? "Open workspace" : "Sharing off"}</small></button>{!pending && !context.referenceRecoveryError && <PinRoomButton operationAuthority={status.connection!.referenceOperationAuthority} client={client} destinationWorkspaceId={status.connection!.workspaceId} room={item} onPinned={() => context.setTab("references")}/>}</div>)}{!client.project?.rooms.length && <p className="muted">Shared workspaces will appear here.</p>}</div>
-        {room && <><h3>People in this workspace</h3><div className="participant-list">{peers.map((peer) => <button type="button" className="button" key={peer.id} aria-pressed={runtimeState.followingId === peer.id} disabled={!context.runtime || !runtimeState.ready || !peer.semanticView || !!peer.followingId} onClick={() => context.runtime?.setFollowing(runtimeState.followingId === peer.id ? null : peer.id)}>{peer.name}</button>)}{!peers.length && <span className="muted">You have the workspace to yourself.</span>}</div>{runtimeState.followingId && <button className="text-button" onClick={() => context.runtime?.setFollowing(null)}>Stop following</button>}<button className="button" disabled={!context.sharedView || !discussionAvailable(client.project?.self, client.status)} onClick={context.startComment}>Add comment to selection</button></>}
+        {room && <><h3>People in this workspace</h3><div className="participant-list">{peers.map((peer) => <button type="button" className="button" key={peer.id} aria-pressed={runtimeState.followingId === peer.id} disabled={!context.runtime || !runtimeState.ready || !peer.semanticView || !!peer.followingId} onClick={() => context.runtime?.setFollowing(runtimeState.followingId === peer.id ? null : peer.id)}>{peer.name}</button>)}{!peers.length && <span className="muted">You have the workspace to yourself.</span>}</div>{runtimeState.followingId && <button className="text-button" onClick={() => context.runtime?.setFollowing(null)}>Stop following</button>}<button className="button" disabled={!context.canComment} onClick={context.startComment}>Add comment to selection</button></>}
         {!projectRemoved && client.project?.self.role === "admin" && <form className="danger-zone" onSubmit={(event) => { event.preventDefault(); void removeProject(); }}><h3>Remove shared project</h3><p>Disable this Project's shared rooms, links, and references for everyone. Local files and private Agent sessions remain. Shared access cannot be restored by reopening a Session.</p><label className="field-label">Type {client.project.project.name} to confirm<input value={confirmProjectName} onChange={(event) => setConfirmProjectName(event.target.value)}/></label><button className="button danger" disabled={pending || removingProject || confirmProjectName !== client.project.project.name} type="submit">{removingProject ? "Removing shared access…" : removalOperation.current ? "Retry removing shared project" : "Remove shared project"}</button></form>}
       </>}
     </div>}
@@ -262,3 +320,4 @@ function SessionCollaborationPanel() {
 const EMPTY_RUNTIME: ViewerRuntimeSnapshot = { ready: false, followingId: null, error: "", pointers: {}, anchors: {} };
 const emptyRuntime = () => EMPTY_RUNTIME;
 const noSubscribe = () => () => {};
+const previewModeLabel = (mode: string) => mode === "edit" ? "editing locally pauses shared comments and presence" : "this view is private";

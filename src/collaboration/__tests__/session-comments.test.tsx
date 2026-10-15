@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { SessionCollaborationProvider, useSessionCollaboration } from "../SessionCollaboration.js";
 import { useStore } from "../../store.js";
+import { useViewerProps } from "../../hooks/useViewerProps.js";
+import type { ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import webcraftManifest from "../../../modes/webcraft/manifest.js";
 import type { SessionCollaborationStatus } from "../../../core/types/collaboration-session.js";
 import type { CollaborationRoomState } from "../../../core/types/collaboration.js";
 
@@ -14,12 +17,13 @@ const sockets = new Set<Bun.ServerWebSocket<undefined>>();
 let posted: unknown[];
 let state: { project: { id: string; name: string }; self: { kind: "member"; id: string; name: string; role: "admin" | "reader" }; rooms: CollaborationRoomState["room"][]; members: []; workspaces: [] };
 let room: CollaborationRoomState;
-function Probe() { context = useSessionCollaboration()!; return null; }
+let viewer: ViewerPreviewProps;
+function Probe() { context = useSessionCollaboration()!; viewer = useViewerProps({ theme: "dark", locale: "en" }); return null; }
 beforeEach(() => {
   posted = [];
-  room = { room: { id: "room", title: "Shared site", mode: "webcraft", ownerId: "owner", workspaceId: "workspace", modeInstanceId: "instance", enabled: true, revision: 3, page: "index.html", updatedAt: 1 }, participants: [],
+  room = { room: { id: "room", title: "Shared site", mode: "webcraft", ownerId: "owner", workspaceId: "workspace", modeInstanceId: "instance", enabled: true, revision: 3, page: "site/index.html", updatedAt: 1 }, participants: [],
     comments: [{ id: "comment", roomId: "room", status: "open", anchor: { address: { contentSet: "site", page: "index.html", selector: "#heading" }, quote: "Heading", x: 0, y: 0, revision: 3 }, messages: [{ id: "message", authorId: "peer", authorName: "Peer", body: "Make the title clearer", createdAt: 1 }], resolvedBy: null, updatedAt: 1 }],
-    messages: [{ id: "chat", roomId: "room", authorId: "peer", authorName: "Peer", body: "Check the heading", createdAt: 1 }], pageUrl: "http://host/site" };
+    messages: [{ id: "chat", roomId: "room", authorId: "peer", authorName: "Peer", body: "Check the heading", createdAt: 1 }], pageUrl: "http://host/revision/3/site/index.html", publication: { revision: 3, files: [], projection: { schema: "webcraft-public-v1", entryAddress: { contentSet: "site", page: "index.html" }, sources: { site: { byContentSet: { site: { pages: [{ file: "index.html", title: "Accepted A" }] } } }, files: [{ path: "site/index.html", content: "Accepted A" }] } } } };
   state = { project: { id: "project", name: "Project" }, self: { id: "owner", name: "Owner", kind: "member", role: "admin" }, rooms: [room.room], members: [], workspaces: [] };
   server = Bun.serve<undefined>({ hostname: "127.0.0.1", port: 0, async fetch(request, server) {
     const path = new URL(request.url).pathname;
@@ -35,12 +39,13 @@ beforeEach(() => {
   saved.set("IS_REACT_ACT_ENVIRONMENT", globals.IS_REACT_ACT_ENVIRONMENT); globals.IS_REACT_ACT_ENVIRONMENT = true;
   const originalFetch = globalThis.fetch; saved.set("fetch", originalFetch); globals.fetch = (input: string | URL | Request, init?: RequestInit) => originalFetch(typeof input === "string" ? new URL(input, win.location.origin) : input, init);
   restore = () => { for (const [key, value] of saved) value === undefined ? delete globals[key] : globals[key] = value; };
-  useStore.setState({ sessionId: "private", activeContentSet: "site", modeManifest: null, projectContext: null, viewerInstanceId: null, previewMode: "annotate", selection: null, collaborationFeedback: [], pendingMessages: [], messages: [], tornOff: false, surfaceForm: "collapsed" });
+  useStore.setState({ sessionId: "private", activeContentSet: "site", modeManifest: webcraftManifest, projectContext: null, viewerInstanceId: "mounted-private-viewer", staticPlayer: true, files: [{ path: "site/index.html", content: "Local unpublished B" }], previewMode: "annotate", selection: null, collaborationFeedback: [], pendingMessages: [], messages: [], tornOff: false, surfaceForm: "collapsed" });
   const element = win.document.createElement("div"); win.document.body.append(element); root = createRoot(element as unknown as HTMLElement);
 });
 afterEach(async () => { await act(async () => root.unmount()); for (const socket of sockets) socket.close(); await server.stop(true); await win.happyDOM.close(); restore(); });
 async function until(check: () => boolean) { for (let attempt = 0; attempt < 100; attempt++) { if (check()) return; await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); }); } throw new Error("Session comment fixture did not become ready"); }
-async function mount() { await act(async () => root.render(<SessionCollaborationProvider><Probe/></SessionCollaborationProvider>)); await until(() => context.client.status === "connected" && !!context.client.room); }
+async function mount() { await act(async () => root.render(<SessionCollaborationProvider><Probe/></SessionCollaborationProvider>)); await until(() => context.client.status === "connected" && !!context.client.room); await ready(); }
+async function ready() { await act(async () => { context.runtime?.binding.register({ applyView: async () => ({ success: true }), projectAnchor: async () => ({ status: "unresolved" }), projectPointer: async () => ({ status: "unresolved" }) }); }); }
 function button(text: string) { return [...win.document.querySelectorAll("button")].find((button) => button.textContent === text); }
 
 test("private toolbar and shortcut selection open a bounded comment draft without changing the current tool or posting", async () => {
@@ -62,7 +67,7 @@ test("private host can stage comment and chat snapshots into its current AI comp
   await act(async () => button("Send to AI")!.click());
   expect(useStore.getState().collaborationFeedback).toHaveLength(1); expect(useStore.getState().collaborationFeedback[0]?.kind).toBe("comment");
   expect(useStore.getState().tornOff).toBe(false); expect(useStore.getState().surfaceForm).toBe("docked"); expect(context.open).toBe(false);
-  await act(async () => { context.setOpen(true); context.setTab("chat"); });
+  await act(async () => { context.setOpen(true); context.setTab("chat"); useStore.getState().setPreviewMode("edit"); });
   await act(async () => button("Send to AI")!.click());
   expect(useStore.getState().collaborationFeedback).toHaveLength(2); expect(useStore.getState().collaborationFeedback[1]?.kind).toBe("chat");
   expect(useStore.getState().pendingMessages).toHaveLength(0); expect(useStore.getState().messages).toHaveLength(0); expect(posted).toHaveLength(0);
@@ -80,4 +85,68 @@ test("a private unshared view and a reader cannot start comment picking", async 
   expect(context.draft).toBeNull(); expect(context.commenting).toBe(false);
   await act(async () => { useStore.setState({ activeContentSet: "private-site" }); });
   expect(context.canComment).toBe(false);
+});
+
+
+test("private shared preview stays on the accepted complete snapshot through local changes and a later publication", async () => {
+  await mount();
+  expect(viewer.files?.[0]?.content).toBe("Accepted A");
+  expect(viewer.resolveResourceUrl!("site/style.css")).toBe("http://host/revision/3/site/style.css");
+  expect(viewer.permissions?.editContent).toBe(false);
+  await expect(viewer.fileChannel.write("site/index.html", "overwrite published content")).rejects.toThrow("cannot write");
+  await act(async () => { useStore.setState({ files: [{ path: "site/index.html", content: "Still unpublished B" }] }); });
+  expect(viewer.files?.[0]?.content).toBe("Accepted A");
+  const oldSelect = viewer.commenting!.onSelect;
+  await act(async () => oldSelect({ type: "heading", content: "Accepted A", address: { contentSet: "site", page: "index.html" } }));
+  expect(context.draft?.revision).toBe(3);
+  await act(async () => context.clearDraft());
+  room = structuredClone(room); room.room.revision = 4; room.publication!.revision = 4; room.pageUrl = "http://host/revision/4/site/index.html";
+  (room.publication!.projection!.sources.files as { path: string; content: string }[])[0]!.content = "Accepted B";
+  await act(async () => { for (const socket of sockets) socket.send(JSON.stringify({ type: "room", state: room })); });
+  await until(() => context.client.room?.room.revision === 4);
+  expect(viewer.files?.[0]?.content).toBe("Accepted B");
+  expect(viewer.resolveResourceUrl!("site/style.css")).toBe("http://host/revision/4/site/style.css");
+  expect(viewer.resolveResourceUrl!("site/image.png")).toBe("http://host/revision/4/site/image.png");
+  expect(context.canComment).toBe(false);
+  await act(async () => oldSelect({ type: "heading", content: "Late captured A", address: { contentSet: "site", page: "index.html" } }));
+  expect(context.draft).toBeNull();
+  await ready(); expect(context.canComment).toBe(true);
+  await act(async () => viewer.commenting!.onSelect({ type: "heading", content: "Accepted B", address: { contentSet: "site", page: "index.html" } }));
+  expect(context.draft?.revision).toBe(4);
+});
+
+test("inline local editing suspends shared comments and restores accepted Sources only after returning to view", async () => {
+  await mount();
+  const oldRuntime = context.runtime!; const oldSelect = viewer.commenting!.onSelect;
+  await act(async () => { viewer.onPreviewModeChange!("edit"); });
+  expect(context.runtime).toBeNull(); expect(context.canComment).toBe(false);
+  expect(viewer.permissions?.editContent).not.toBe(false);
+  expect(viewer.resolveResourceUrl!("site/index.html")).toBe("/content/site/index.html");
+  await act(async () => oldSelect({ type: "heading", content: "Inline B", address: { contentSet: "site", page: "index.html" } }));
+  expect(context.draft).toBeNull();
+  await act(async () => viewer.onPreviewModeChange!("view"));
+  expect(viewer.files?.[0]?.content).toBe("Accepted A"); expect(context.canComment).toBe(false);
+  await ready(); expect(context.canComment).toBe(true);
+});
+
+test("a missing or incomplete accepted publication never exposes local files as a shared view", async () => {
+  room.publication = undefined;
+  await mount();
+  expect(context.canComment).toBe(false); expect(context.runtime).toBeNull();
+  expect(viewer.files).toHaveLength(0); expect(viewer.fileChannel.snapshot()).toHaveLength(0);
+  expect(viewer.permissions?.editContent).toBe(false);
+});
+
+
+test("StrictMode replay keeps immutable Sources live and a replacement incarnation rejects an old callback", async () => {
+  await act(async () => root.render(<StrictMode><SessionCollaborationProvider><Probe/></SessionCollaborationProvider></StrictMode>));
+  await until(() => context.client.status === "connected" && !!context.client.room); await ready();
+  expect(viewer.files?.[0]?.content).toBe("Accepted A");
+  expect(viewer.sources.files.current()).toEqual([{ path: "site/index.html", content: "Accepted A" }]);
+  const stale = viewer.commenting!.onSelect;
+  await act(async () => viewer.onPreviewModeChange!("edit"));
+  await act(async () => viewer.onPreviewModeChange!("view"));
+  await act(async () => stale({ type: "heading", content: "Old incarnation", address: { contentSet: "site", page: "index.html" } }));
+  expect(context.draft).toBeNull(); expect(context.canComment).toBe(false);
+  await ready(); expect(context.canComment).toBe(true);
 });
