@@ -846,7 +846,9 @@ describe("cloud project collaboration with real workerd and R2", () => {
     const secondProject = `project-${crypto.randomUUID()}`; const base = `/projects/${secondProject}`;
     const token = crypto.randomUUID();
     const config = { project: { id: secondProject, name: "Another project" }, owner: { id: "owner", name: "Separate owner", token } };
-    expect((await request(ownerToken, `${base}/internal/bootstrap`, "POST", config)).status).toBe(401);
+    const unauthorized = await request(ownerToken, `${base}/internal/bootstrap`, "POST", config);
+    expect(unauthorized.status).toBe(401);
+    expect(await unauthorized.json()).toEqual({ error: "Bootstrap authorization required" });
     await json(bootstrapSecret, `${base}/internal/bootstrap`, "POST", config);
     const state = await json<CollaborationProjectState>(token, `${base}/api/state`);
     expect(state.project.id).toBe(secondProject); expect(state.rooms).toEqual([]); expect(state.workspaces).toEqual([]);

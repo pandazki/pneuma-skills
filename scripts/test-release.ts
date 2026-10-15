@@ -8,7 +8,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
 
-const COMMON = ["core", "server", "bin", "snapshot", "plugins", "src", "scripts/__tests__", "desktop/__tests__"];
+const COMMON = ["core", "server", "bin", "snapshot", "plugins", "src", "scripts/__tests__", "desktop/__tests__", "cloud/collaboration/tests"];
 // These adapters do not participate in the local raster/video pipelines.
 // Storyboard's own cropping tests still run in _shared; Sprite never calls it.
 const IMAGE_ADAPTERS = /^modes\/_shared\/scripts\/(?:generate_image\.(?:mjs|d\.mts)|edit_image\.mjs|storyboard\.(?:mjs|d\.mts)|__tests__\/(?:image-generation|storyboard)\.test\.ts)$/;
@@ -157,6 +157,10 @@ export function buildReleaseTestPlan(root: string, options: { base?: string; ful
       }
       if (path === "package.json" || path === "desktop/package.json") {
         if (!versionOnlyPackage(previous(root, commit, path), current(root, path))) full(`package/configuration change: ${path}`);
+      } else if (path.startsWith("cloud/collaboration/")) {
+        // The isolated Worker package and its dependencies are covered by the
+        // mandatory workerd integration suite. They do not run mode media or
+        // authenticated agent backends. Other cloud roots remain unclassified.
       } else if (/^(?:docs\/|\.agents\/|\.claude\/).*\.md$/.test(path) || /^[^/]+\.md$/.test(path)) {
         // Common guidance and mode declaration checks cover these documents.
       } else if (/^templates\/session-commands\/[^/]+\.md$/.test(path)) {

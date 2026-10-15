@@ -13,6 +13,13 @@ and uncertain scope retain broader coverage. The selector is a program, not an
 agent's remembered list of tests. It prints its complete changed-file set,
 baseline, selected modes, enabled tiers and reasons before running anything.
 
+Install both dependency trees before testing: `bun install --frozen-lockfile`
+at the repository root and `bun install --frozen-lockfile --cwd cloud/collaboration`.
+The nested lockfile owns Miniflare/workerd and Worker tooling; root installation
+does not install them. Also run `bun run --cwd cloud/collaboration typecheck`:
+the root TypeScript project excludes this isolated Worker package. CI performs
+both frozen installs and typechecks before the release test selector.
+
 - **Baseline:** choose the nearest reachable stable release tag whose version is
   lower than the target `package.json` version; exclude a tag for the target
   itself. Include every commit since that baseline and local staged, unstaged
@@ -21,7 +28,8 @@ baseline, selected modes, enabled tiers and reasons before running anything.
   implementation commits before the metadata-only release commit. CI must keep
   `actions/checkout` at `fetch-depth: 0` so this decision has history and tags.
 - **Common checks:** always run `core`, `server`, `bin`, `snapshot`, `plugins`,
-  `src`, `scripts/__tests__`, and `desktop/__tests__`, plus every mode's
+  `src`, `scripts/__tests__`, `desktop/__tests__`, and
+  `cloud/collaboration/tests`, plus every mode's
   `manifest`, `registration` and `mode-definition` test files. This keeps root
   README/CLAUDE checks without expanding every mode for release-note edits.
   Mode changes add their
@@ -40,6 +48,9 @@ baseline, selected modes, enabled tiers and reasons before running anything.
   their tests) selects all modes without unrelated video or live backend suites;
   other shared media/transport changes, such as video scripts or `fal-queue.mjs`,
   retain full coverage.
+  The isolated `cloud/collaboration/` package always runs its local workerd
+  contracts, including on metadata-only releases; changes within that package
+  do not enable unrelated mode media or authenticated backend tests.
 - **Release metadata:** changing only the version fields in root and desktop
   `package.json` does not make a mode-only release a shared-runtime change.
   Compare parsed contents; dependency, script, engine, packaging and other
