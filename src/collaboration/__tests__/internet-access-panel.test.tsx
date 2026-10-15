@@ -114,7 +114,7 @@ describe("private public access controls", () => {
     expect(win.document.querySelector("details")?.open).toBe(false);
     const input = win.document.querySelector('input[aria-label="Public Project URL"]')! as unknown as HTMLInputElement;
     expect(input.value).toBe("https://temporary.example/projects/project-a");
-    expect(input.closest("details")?.textContent).toContain("New members need an invitation from Share");
+    expect(input.closest("details")?.textContent).toContain("Invite guests from Share; add Project members in Collaboration settings → Members & permissions.");
     expect(input.value).not.toContain(active.connection!.token); expect(new URL(input.value).hash).toBe("");
     await act(async () => button("Copy Project URL").click());
     expect(win.document.querySelector('[role="alert"]')?.textContent).toBe("Copy failed. Select the Project URL and copy it manually.");
@@ -124,6 +124,24 @@ describe("private public access controls", () => {
     await act(async () => root.render(<InternetAccessPanel status={moved} pending={false} command={async () => {}}/>));
     expect(input.value).toBe("https://reopened.example/projects/project-a");
     expect(win.document.querySelector('[role="alert"]')).toBeNull();
+  });
+  for (const outcome of ["resolve", "reject"] as const) test(`a stale Project URL clipboard ${outcome} cannot update the replacement URL`, async () => {
+    const writes: { value: string; resolve: () => void; reject: (error: Error) => void }[] = [];
+    Object.defineProperty(win.navigator, "clipboard", { configurable: true, value: { writeText: (value: string) => new Promise<void>((resolve, reject) => writes.push({ value, resolve, reject })) } });
+    const active = status("active");
+    await act(async () => root.render(<InternetAccessPanel status={active} pending={false} command={async () => {}}/>));
+    await act(async () => button("Copy Project URL").click());
+    expect(writes[0]!.value).toBe("https://temporary.example/projects/project-a");
+    const moved = status("active"); moved.internetAccess!.publicOrigin = "https://replacement.example";
+    await act(async () => root.render(<InternetAccessPanel status={moved} pending={false} command={async () => {}}/>));
+    await act(async () => { if (outcome === "resolve") writes[0]!.resolve(); else writes[0]!.reject(new Error("Old copy denied")); });
+    expect(!!button("Copied Project URL")).toBe(false);
+    expect(win.document.querySelector('[role="alert"]')?.textContent ?? "").toBe("");
+    expect(win.document.querySelector("input")!.value).toBe("https://replacement.example/projects/project-a");
+    await act(async () => button("Copy Project URL").click());
+    expect(writes[1]!.value).toBe("https://replacement.example/projects/project-a");
+    await act(async () => writes[1]!.resolve());
+    expect(!!button("Copied Project URL")).toBe(true);
   });
   test("active access reports authenticated public participants and the runtime idle deadline", async () => {
     const active = status("active"); active.internetAccess!.idleDeadline = Date.now() + 90000;

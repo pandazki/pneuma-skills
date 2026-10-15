@@ -8,7 +8,7 @@
     "named": "自有網域"
   },
   "descriptions": {
-    "lan": "適用於同一 Wi-Fi 或區域網路，無需隧道。",
+    "lan": "適用於同一 Wi-Fi 或區域網路。",
     "temporary": "免費公開網址，無需網域或 Cloudflare 帳號。",
     "named": "使用 Cloudflare 網域和具名隧道提供固定 HTTPS 網址。"
   },
@@ -57,7 +57,7 @@
   "request_label": "給 Claude Code 或 Codex 的設定請求",
   "advanced_title": "進階：使用自行託管的雲端協作服務",
   "advanced_body": "在 Collaboration settings → Advanced 中連接 Cloud host。Cloud host 可連線至你依照儲存庫 cloud/collaboration 部署說明自行部署和管理的協作服務；需要其 HTTPS 網址和佈建金鑰，不會建立託管服務帳號；工作區內容仍需要主機和 Session 保持上線。",
-  "entry": "需要協助？協作設定指南",
+  "entry": "設定說明",
   "request_paths": {
     "lan": "同一網路內的協作",
     "temporary": "透過免費 Cloudflare Quick Tunnel 的臨時網際網路協作",
@@ -70,7 +70,7 @@
     "named": "Project、網域或 Cloudflare 帳號資訊"
   },
   "request": "請為 {{platform}} 上的 Pneuma Skills {{appVersion}} 設定並驗證{{scenario}}{{hostnameClause}}，先閱讀本機完整設定指南 {{guidePath}}（若無法讀取，則從目前執行中的私有 Pneuma 應用程式取得 {{guideUrl}}），詢問我缺少的{{missing}}後實際執行設定，並驗證訪客可在瀏覽器中開啟分享的 Webcraft 工作區並使用 Comment & chat，同時保持我的 Agent 對話私密。",
-  "lan_ready": "同一網路內的協作不需要隧道。",
+  "lan_ready": "已就緒，無需隧道。",
   "public_recovery": "若公開存取失敗，請排除顯示的原因，選取 Retry stopping public access 清理失敗的嘗試，再次選取 Enable public access；「重新檢查」只會檢查安裝狀態。",
   "steps_title": "逐步設定指南"
 }

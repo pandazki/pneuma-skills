@@ -8,7 +8,7 @@
     "named": "自有域名"
   },
   "descriptions": {
-    "lan": "适用于同一 Wi-Fi 或局域网，无需隧道。",
+    "lan": "适用于同一 Wi-Fi 或局域网。",
     "temporary": "免费公网地址，无需域名或 Cloudflare 账号。",
     "named": "使用 Cloudflare 域名和命名隧道提供固定 HTTPS 地址。"
   },
@@ -57,7 +57,7 @@
   "request_label": "给 Claude Code 或 Codex 的配置请求",
   "advanced_title": "进阶：使用自托管云端协作服务",
   "advanced_body": "在 Collaboration settings → Advanced 中连接 Cloud host。Cloud host 用于连接你自行部署和管理的协作服务，部署说明位于仓库的 cloud/collaboration；需要其 HTTPS URL 和部署密钥，不会创建托管服务账号。工作区内容仍要求主机和 Session 保持在线。",
-  "entry": "需要帮助？查看协作配置指南",
+  "entry": "配置帮助",
   "request_paths": {
     "lan": "同一网络内协作",
     "temporary": "通过免费的 Cloudflare Quick Tunnel 临时跨网协作",
@@ -70,7 +70,7 @@
     "named": "Project、域名或 Cloudflare 账号信息"
   },
   "request": "请为 {{platform}} 上的 Pneuma Skills {{appVersion}} 配置并验证{{scenario}}{{hostnameClause}}，先阅读本机完整配置指南 {{guidePath}}（若无法读取则从当前运行的私有 Pneuma 应用获取 {{guideUrl}}），询问缺失的{{missing}}后实际执行配置，并验证访客可在浏览器中打开共享的 Webcraft 工作区并使用评论和聊天，同时保持我的 Agent 对话私密。",
-  "lan_ready": "同一网络内协作无需隧道。",
+  "lan_ready": "已就绪，无需隧道。",
   "public_recovery": "若公网访问失败，请先修复错误原因，点击 Retry stopping public access 清理失败状态，再重新 Enable public access；“重新检查”仅检测安装情况。",
   "steps_title": "逐步配置指南"
 }

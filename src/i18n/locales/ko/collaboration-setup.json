@@ -8,7 +8,7 @@
     "named": "자체 도메인"
   },
   "descriptions": {
-    "lan": "같은 Wi-Fi나 로컬 네트워크용입니다. 터널이 필요하지 않습니다.",
+    "lan": "같은 Wi-Fi나 로컬 네트워크용입니다.",
     "temporary": "무료 인터넷 주소입니다. 도메인이나 Cloudflare 계정이 필요하지 않습니다.",
     "named": "Cloudflare 도메인과 이름이 있는 Tunnel로 고정 HTTPS 주소를 사용합니다."
   },
@@ -57,7 +57,7 @@
   "request_label": "Claude Code 또는 Codex용 설정 요청",
   "advanced_title": "고급: 직접 호스팅하는 클라우드 협업 서비스 사용",
   "advanced_body": "Collaboration settings → Advanced에서 Cloud host에 연결하세요. Cloud host는 저장소의 cloud/collaboration 배포 지침에 따라 직접 배포하고 관리하는 협업 서비스에 연결합니다. 해당 서비스의 HTTPS URL과 프로비저닝 키가 필요하며, 호스팅 서비스 계정을 만들지는 않습니다. 작업 공간 콘텐츠를 사용하려면 호스트와 Session이 온라인 상태여야 합니다.",
-  "entry": "도움이 필요하신가요? 협업 설정 가이드",
+  "entry": "설정 도움말",
   "request_paths": {
     "lan": "같은 네트워크 내 협업",
     "temporary": "무료 Cloudflare Quick Tunnel을 사용하는 임시 인터넷 협업",
@@ -70,7 +70,7 @@
     "named": "Project, 도메인 또는 Cloudflare 계정 정보"
   },
   "request": "{{platform}}의 Pneuma Skills {{appVersion}}에서 {{scenario}}{{hostnameClause}}을 설정하고 검증하기 위해 로컬의 전체 설정 가이드 {{guidePath}}를 먼저 읽고(읽을 수 없으면 현재 실행 중인 비공개 Pneuma 앱에서 {{guideUrl}}를 가져오기), 누락된 {{missing}}를 나에게 물어본 뒤 실제 설정을 실행하고, 내 Agent 대화를 비공개로 유지하면서 방문자가 브라우저에서 공유된 Webcraft 작업 공간을 열고 Comment & chat을 사용할 수 있는지 검증해 주세요.",
-  "lan_ready": "같은 네트워크 내 협업에는 터널이 필요하지 않습니다.",
+  "lan_ready": "준비됨. 터널이 필요하지 않습니다.",
   "public_recovery": "공개 접속에 실패하면 표시된 원인을 해결하고 Retry stopping public access를 선택해 실패한 시도를 정리한 뒤 Enable public access를 다시 선택하세요. ‘다시 확인’은 설치 여부만 확인합니다.",
   "steps_title": "단계별 설정"
 }

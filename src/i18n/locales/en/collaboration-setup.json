@@ -8,7 +8,7 @@
     "named": "Own domain"
   },
   "descriptions": {
-    "lan": "For people on the same Wi-Fi or local network. No tunnel needed.",
+    "lan": "For people on the same Wi-Fi or local network.",
     "temporary": "A free internet address; no domain or Cloudflare account needed.",
     "named": "A stable HTTPS address using your Cloudflare domain and named Tunnel."
   },
@@ -57,7 +57,7 @@
   "request_label": "Setup request for Claude Code or Codex",
   "advanced_title": "Advanced: use a self-hosted cloud authority",
   "advanced_body": "Open Collaboration settings → Advanced to connect a Cloud host. Cloud host connects to a collaboration authority you deploy and manage yourself using the repository’s cloud/collaboration deployment instructions; it requires its HTTPS URL and provisioning key and does not create a hosted service account. Workspace content still depends on its host and Session staying online.",
-  "entry": "Need help? Collaboration setup guide",
+  "entry": "Setup help",
   "request_paths": {
     "lan": "same-network collaboration",
     "temporary": "temporary internet collaboration using a free Cloudflare Quick Tunnel",
@@ -70,7 +70,7 @@
     "named": "Project, domain, or Cloudflare account details"
   },
   "request": "Configure and verify {{scenario}}{{hostnameClause}} for Pneuma Skills {{appVersion}} on {{platform}} by reading the complete local setup guide at {{guidePath}} (if unavailable, fetch {{guideUrl}} from this running private Pneuma app), ask me for any missing {{missing}}, then execute the setup and verify the visitor browser can open the shared Webcraft workspace and use Comment & chat while keeping my Agent conversation private.",
-  "lan_ready": "No tunnel is needed for same-network collaboration.",
+  "lan_ready": "Ready. No tunnel needed.",
   "public_recovery": "If public access fails, fix the reported cause, select Retry stopping public access to clear the failed attempt, then Enable public access again; Check again only checks installation.",
   "steps_title": "Step-by-step setup"
 }

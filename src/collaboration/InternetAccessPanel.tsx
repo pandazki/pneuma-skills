@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SessionCollaborationStatus } from "../../core/types/collaboration-session.js";
 
 const disclosure = "mt-4 border-t border-cc-border pt-3";
@@ -19,10 +19,14 @@ export function InternetAccessPanel({ status, pending, command }: {
   const [optionsOpen, setOptionsOpen] = useState(access?.provider.kind === "named" && (!access.provider.tunnelId.trim() || !access.provider.credentialsFile.trim() || !access.provider.publicOrigin.trim()));
   const [now, setNow] = useState(Date.now());
   const [copiedProjectUrl, setCopiedProjectUrl] = useState(false);
+  const copyOperation = useRef(0);
   const [copyError, setCopyError] = useState("");
   const publicProjectUrl = access?.status === "active" && access.publicOrigin && status.connection
     ? new URL(`/projects/${encodeURIComponent(status.connection.projectId)}`, access.publicOrigin).toString() : "";
-  useEffect(() => { setCopiedProjectUrl(false); setCopyError(""); }, [publicProjectUrl]);
+  useEffect(() => {
+    ++copyOperation.current; setCopiedProjectUrl(false); setCopyError("");
+    return () => { ++copyOperation.current; };
+  }, [publicProjectUrl]);
   const providerKey = JSON.stringify(access?.provider ?? null);
   useEffect(() => {
     const provider = access?.provider;
@@ -58,10 +62,19 @@ export function InternetAccessPanel({ status, pending, command }: {
     </details>}
     <details className={disclosure}>
       <summary className={summary}>Connection details</summary>
-      {publicProjectUrl && <div className="copy-link"><label className="field-label">Public Project URL<input aria-label="Public Project URL" readOnly value={publicProjectUrl} onFocus={(event) => event.currentTarget.select()}/></label><button className="button" type="button" onClick={() => { void (async () => {
-        try { if (!navigator.clipboard) throw new Error("Clipboard unavailable"); await navigator.clipboard.writeText(publicProjectUrl); setCopiedProjectUrl(true); setCopyError(""); }
-        catch { setCopiedProjectUrl(false); setCopyError("Copy failed. Select the Project URL and copy it manually."); }
-      })(); }}>{copiedProjectUrl ? "Copied Project URL" : "Copy Project URL"}</button><p className="muted">Existing members can reconnect at this address. New members need an invitation from Share.</p>{copyError && <p className="inline-error" role="alert">{copyError}</p>}</div>}
+      {publicProjectUrl && <div className="copy-link"><label className="field-label">Public Project URL<input aria-label="Public Project URL" readOnly value={publicProjectUrl} onFocus={(event) => event.currentTarget.select()}/></label><button className="button" type="button" onClick={() => {
+        const sequence = ++copyOperation.current; setCopiedProjectUrl(false); setCopyError("");
+        void (async () => {
+          try {
+            if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+            await navigator.clipboard.writeText(publicProjectUrl);
+            if (sequence !== copyOperation.current) return;
+            setCopiedProjectUrl(true);
+          } catch {
+            if (sequence !== copyOperation.current) return;
+            setCopyError("Copy failed. Select the Project URL and copy it manually.");
+          }
+        })(); }}>{copiedProjectUrl ? "Copied Project URL" : "Copy Project URL"}</button><p className="muted">Existing members can reconnect at this address. Invite guests from Share; add Project members in Collaboration settings → Members & permissions.</p>{copyError && <p className="inline-error" role="alert">{copyError}</p>}</div>}
       <p className="muted internet-access-footnote">Keep this computer, Pneuma, and the sharing Session tab online. Public access stops after 10 minutes with no authenticated public participants, even when this tab is closed, and starts off after a restart. Local network access stays available.</p>
       {!active && <p className="muted">Temporary addresses change each time public access restarts.</p>}
       <p className="muted">If startup fails, fix the reported cause, retry stopping public access, then enable it again.</p>

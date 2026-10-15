@@ -8,7 +8,7 @@
     "named": "独自ドメイン"
   },
   "descriptions": {
-    "lan": "同じ Wi-Fi やローカルネットワーク向け。トンネルは不要です。",
+    "lan": "同じ Wi-Fi やローカルネットワーク向け。",
     "temporary": "無料の公開アドレス。ドメインや Cloudflare アカウントは不要です。",
     "named": "Cloudflare のドメインと名前付き Tunnel で固定 HTTPS アドレスを使います。"
   },
@@ -57,7 +57,7 @@
   "request_label": "Claude Code または Codex 向けの設定リクエスト",
   "advanced_title": "詳細：自分でホストするクラウド共同作業サービスを使う",
   "advanced_body": "Collaboration settings → Advanced から Cloud host に接続します。Cloud host は、リポジトリの cloud/collaboration の手順に従って自分でデプロイ・管理する共同作業サービスに接続します。HTTPS URL とプロビジョニングキーが必要で、ホスト型サービスのアカウントは作成しません。ワークスペースのコンテンツには、ホストと Session がオンラインである必要があります。",
-  "entry": "お困りですか？共同作業の設定ガイド",
+  "entry": "設定ヘルプ",
   "request_paths": {
     "lan": "同じネットワーク内での共同作業",
     "temporary": "無料の Cloudflare Quick Tunnel による一時的なインターネット上の共同作業",
@@ -70,7 +70,7 @@
     "named": "Project、ドメイン、Cloudflare アカウントの情報"
   },
   "request": "{{platform}} 上の Pneuma Skills {{appVersion}} で{{scenario}}{{hostnameClause}}を設定・検証するため、まずローカルの完全な設定ガイド {{guidePath}} を読み (読めない場合は実行中の非公開 Pneuma アプリから {{guideUrl}} を取得)、不足している{{missing}}を私に確認してから設定を実行し、Agent との会話を非公開に保ったまま、訪問者がブラウザーで共有 Webcraft ワークスペースを開き、Comment & chat を使えることを検証してください。",
-  "lan_ready": "同じネットワーク内での共同作業にトンネルは不要です。",
+  "lan_ready": "準備完了。トンネルは不要です。",
   "public_recovery": "公開アクセスに失敗したら、表示された原因を解消し、Retry stopping public access で失敗した試行を整理してから、再度 Enable public access を選んでください。「再確認」はインストール状況のみを確認します。",
   "steps_title": "手順を確認する"
 }

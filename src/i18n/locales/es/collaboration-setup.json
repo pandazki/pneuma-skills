@@ -8,7 +8,7 @@
     "named": "Dominio propio"
   },
   "descriptions": {
-    "lan": "Para la misma red Wi-Fi o local. No hace falta un túnel.",
+    "lan": "Para la misma red Wi-Fi o local.",
     "temporary": "Una dirección de internet gratuita, sin dominio ni cuenta de Cloudflare.",
     "named": "Una dirección HTTPS fija con tu dominio de Cloudflare y un Tunnel con nombre."
   },
@@ -57,7 +57,7 @@
   "request_label": "Solicitud de configuración para Claude Code o Codex",
   "advanced_title": "Avanzado: usar una autoridad en la nube propia",
   "advanced_body": "Conecta un Cloud host desde Collaboration settings → Advanced. Cloud host conecta con una autoridad de colaboración que despliegas y administras siguiendo las instrucciones de cloud/collaboration del repositorio; requiere su URL HTTPS y su clave de aprovisionamiento, y no crea una cuenta de servicio alojado. El contenido del espacio sigue dependiendo de que su anfitrión y la Session estén conectados.",
-  "entry": "¿Necesitas ayuda? Guía de configuración de colaboración",
+  "entry": "Ayuda de configuración",
   "request_paths": {
     "lan": "la colaboración en la misma red",
     "temporary": "la colaboración temporal por internet mediante un Cloudflare Quick Tunnel gratuito",
@@ -70,7 +70,7 @@
     "named": "el Project, el dominio o la cuenta de Cloudflare"
   },
   "request": "Configura y verifica {{scenario}}{{hostnameClause}} para Pneuma Skills {{appVersion}} en {{platform}} leyendo la guía local completa en {{guidePath}} (si no está disponible, obtén {{guideUrl}} desde esta aplicación privada de Pneuma en ejecución), pregúntame los datos que falten sobre {{missing}}, realiza la configuración y verifica que el visitante pueda abrir el espacio de trabajo compartido de Webcraft en su navegador y usar Comment & chat, manteniendo privada mi conversación con el Agent.",
-  "lan_ready": "La colaboración en la misma red no necesita ningún túnel.",
+  "lan_ready": "Listo. No hace falta un túnel.",
   "public_recovery": "Si falla el acceso público, corrige la causa indicada, selecciona Retry stopping public access para limpiar el intento fallido y vuelve a seleccionar Enable public access; «Comprobar de nuevo» solo comprueba la instalación.",
   "steps_title": "Configuración paso a paso"
 }

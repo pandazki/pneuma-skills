@@ -8,7 +8,7 @@
     "named": "Eigene Domain"
   },
   "descriptions": {
-    "lan": "Für dasselbe WLAN oder lokale Netzwerk. Kein Tunnel nötig.",
+    "lan": "Für dasselbe WLAN oder lokale Netzwerk.",
     "temporary": "Eine kostenlose Internetadresse, ohne Domain oder Cloudflare-Konto.",
     "named": "Eine feste HTTPS-Adresse über deine Cloudflare-Domain und einen benannten Tunnel."
   },
@@ -57,7 +57,7 @@
   "request_label": "Einrichtungsanfrage für Claude Code oder Codex",
   "advanced_title": "Erweitert: selbst gehostete Cloud-Autorität nutzen",
   "advanced_body": "Verbinde einen Cloud host unter Collaboration settings → Advanced. Cloud host verbindet sich mit einer Autorität für die Zusammenarbeit, die du nach der Anleitung unter cloud/collaboration im Repository selbst bereitstellst und verwaltest; dafür brauchst du deren HTTPS-URL und Bereitstellungsschlüssel, ein Konto bei einem gehosteten Dienst wird nicht erstellt. Für die Inhalte des Arbeitsbereichs müssen Host und Session weiterhin online bleiben.",
-  "entry": "Brauchst du Hilfe? Anleitung zur Zusammenarbeit",
+  "entry": "Einrichtungshilfe",
   "request_paths": {
     "lan": "die Zusammenarbeit im selben Netzwerk",
     "temporary": "die temporäre Zusammenarbeit über das Internet mit einem kostenlosen Cloudflare Quick Tunnel",
@@ -70,7 +70,7 @@
     "named": "Project, Domain oder Cloudflare-Konto"
   },
   "request": "Richte {{scenario}}{{hostnameClause}} für Pneuma Skills {{appVersion}} auf {{platform}} ein und prüfe sie, indem du die vollständige lokale Anleitung unter {{guidePath}} liest (falls sie nicht verfügbar ist, rufe {{guideUrl}} aus dieser laufenden privaten Pneuma-App ab), mich nach fehlenden Angaben zu {{missing}} fragst, die Einrichtung ausführst und prüfst, ob Besucher den geteilten Webcraft-Arbeitsbereich im Browser öffnen und Comment & chat nutzen können, während mein Gespräch mit dem Agent privat bleibt.",
-  "lan_ready": "Für die Zusammenarbeit im selben Netzwerk ist kein Tunnel nötig.",
+  "lan_ready": "Bereit. Kein Tunnel nötig.",
   "public_recovery": "Falls der öffentliche Zugriff fehlschlägt, behebe die gemeldete Ursache, wähle Retry stopping public access zum Bereinigen des fehlgeschlagenen Versuchs und dann erneut Enable public access; „Erneut prüfen“ prüft nur die Installation.",
   "steps_title": "Einrichtung Schritt für Schritt"
 }
