@@ -340,10 +340,14 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 `cloudflared`，并可一键复制配置请求给 Claude Code 或 Codex。请求会带上随客户端
 提供的操作说明；复制不会自动开启分享或发送 AI 消息。协作面板内也能打开同一份引导。
 
-在 Project 内打开 Webcraft Session，点击 **Collaborate**。可以创建局域网项目，
-连接已配置的云端服务，或粘贴项目成员邀请链接。点击 **Share this workspace** 发布当前站点。
-每个人保留自己的文件和私有 Agent 对话；共享 viewer 支持独立浏览、跟随、指针、定位批注和房间聊天。
-管理员管理成员，只读成员不能修改共享状态；访客链接只授予一个房间的观看或评论权限。
+在 Project 内打开 Webcraft Session，点击 **Collaborate → Share**，填写姓名后选择
+**Start collaboration**，默认使用局域网，再点击 **Share this workspace** 发布当前站点。
+在 Share 中选择 **View only** 或 **Comment & chat** 并创建邀请；链接默认 1 小时后过期，
+过期时间和链接管理可按需展开。通过 **Comments** 和 **Chat** 参与讨论；共享 viewer 支持
+独立浏览、跟随、指针和定位批注。齿轮按钮打开 **Collaboration settings**，集中管理公网访问、
+成员权限和引用；**Advanced** 中提供云端连接和重新连接控制。加入已有 Project 时，
+可在 Share 中展开 **Join with a link**。管理员管理成员，只读成员不能修改共享状态；
+访客链接只授予一个房间的访问权限。
 
 分享期间，View、Select 和 Annotate 显示最近完整发布的快照，图片和样式也使用该版本；
 本地修改发布完成后才会出现。**Edit locally** 切换到本地文件，暂停共享评论和实时指针、跟随，
@@ -358,15 +362,16 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 重新锚定到新内容。升级时应保留原有 Project 和协作状态，让评论、聊天、成员、
 邀请和引用继续可用。
 
-本机托管的项目可以通过 **Public access** 同时提供局域网和公网入口。默认使用免费的
-Cloudflare 临时隧道，也可配置自己已有的命名隧道；本机需要安装 `cloudflared`。
+本机托管的项目可以通过 **Collaboration settings → Public access** 同时提供局域网和公网入口。
+默认使用免费的 Cloudflare 临时隧道，也可配置自己已有的命名隧道；本机需要安装 `cloudflared`。
 公网可手动关闭，连续 10 分钟没有公网参与者连接时也会自动关闭，设置页面关闭后计时仍然有效，
 服务重启后默认关闭。局域网访问继续保留。临时链接重新开启后会变化，Quick Tunnel 不保证可用性；
 托管电脑和共享工作区仍需保持在线。
-临时地址变化后，已加入的成员可将主持人提供的新项目 URL 粘贴到 **Reconnect to Project**，
-继续使用原有身份和工作区。
+临时地址变化后，已加入的成员可将主持人提供的新项目 URL 粘贴到
+**Collaboration settings → Advanced → Reconnect to Project**，继续使用原有身份和工作区。
 
-**References** 将其他工作区的发布地址和版本固定下来。打开引用仍需当前访问权限和源主持人在线；
+**Collaboration settings → References** 将其他工作区的发布地址和版本固定下来。
+打开引用仍需当前访问权限和源主持人在线；
 **Import a local copy** 会明确创建带来源信息的本地副本，供自己的 Agent 继续处理。
 主持人的 Session 页面和同步服务必须同时在线；断线后参与者需要主动重新加入，项目里的其他房间可继续在线。
 

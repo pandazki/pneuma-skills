@@ -8,6 +8,7 @@ import type { ViewerCollaborationRuntime } from "./viewer-runtime.js";
 import type { SessionCollaborationStatus } from "../../core/types/collaboration-session.js";
 import { EntryLink } from "./EntryLink.js";
 import { CommentReference } from "./CommentReference.js";
+import "./share-panel.css";
 
 type Client = ReturnType<typeof useCollaboration>;
 type IconName = "grid" | "arrow" | "link" | "chat" | "comment" | "code" | "people" | "close" | "check" | "eye" | "refresh" | "plus";
@@ -420,7 +421,7 @@ function CopyLink({ url }: { url: string }) {
   return <div className="copy-link"><label>Invitation link<input ref={input} readOnly value={url} onFocus={(event) => event.target.select()}/></label><button className="button" onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(true); } catch { input.current?.select(); setManual(true); } }}>{copied ? "Copied" : "Copy link"}</button>{manual && <p className="muted">Link selected. Copy it using your keyboard.</p>}</div>;
 }
 
-export function SharePanel({ client, room, entries }: { client: Client; room: CollaborationRoom; entries?: SessionCollaborationStatus["entries"] }) {
+export function SharePanel({ client, room, entries, embedded = false }: { client: Client; room: CollaborationRoom; entries?: SessionCollaborationStatus["entries"]; embedded?: boolean }) {
   const cloud = !!client.project?.publicOrigin;
   const [access, setAccess] = useState<"view" | "comment">("view");
   const [duration, setDuration] = useState(3600);
@@ -440,7 +441,31 @@ export function SharePanel({ client, room, entries }: { client: Client; room: Co
     catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to revoke links."); }
     finally { setPending(false); }
   };
-  return <div className="panel-content"><div className="sharing-summary"><Icon name="link" size={24}/><h3>A window into your work</h3><p>{cloud ? "Invite people to follow your work and join the discussion from their browser. They only see this workspace." : "Guests can view this workspace in their browser. They cannot edit, comment, chat, or browse the project."}</p></div>{cloud && <><label className="field-label">Guests can</label><div className="duration-picker" role="group" aria-label="Guest permissions"><button className={access === "comment" ? "selected" : ""} aria-pressed={access === "comment"} onClick={() => setAccess("comment")}>Comment & chat</button><button className={access === "view" ? "selected" : ""} aria-pressed={access === "view"} onClick={() => setAccess("view")}>View only</button></div><p className="role-description">{access === "comment" ? "View, follow, comment, and chat. Source files and project settings stay private." : "View and follow. Guests cannot write comments or messages."}</p></>}<label className="field-label">Link expires after</label><div className="duration-picker" role="group" aria-label="Guest link expiry">{[[900, "15 minutes"], [3600, "1 hour"], [86400, "24 hours"]].map(([seconds, label]) => <button key={seconds} className={duration === seconds ? "selected" : ""} aria-pressed={duration === seconds} onClick={() => setDuration(Number(seconds))}>{label}</button>)}</div><button className="button primary wide" disabled={pending || !room.enabled} onClick={() => void create()}><Icon name="link"/>{pending ? "Working…" : "Create guest link"}</button>{!room.enabled && <p className="warning">Turn on collaboration before sharing a link.</p>}{link && <><EntryLink token={link.token} roomId={room.id} invitation={cloud} entries={entries} fallback={client.baseUrl || client.project?.publicOrigin}/><p className="muted">{link.access === "comment" ? "Comments & chat" : "View only"} · Expires {new Date(link.expiresAt).toLocaleString()}.</p></>}{error && <p className="inline-error" role="alert">{error}</p>}{revoked && <p className="success" role="status">All guest links for this workspace have been revoked.</p>}<div className="danger-zone"><h3>Revoke guest access</h3><p>Immediately close access through every guest link for this workspace.</p><button className="button danger" disabled={pending} onClick={() => void revoke()}>Revoke all guest links</button></div></div>;
+  return <div className={`share-panel${embedded ? "" : " panel-content"}`}>
+    <h3>Invite to this workspace</h3>
+    <p className="share-description">{cloud ? "Guests see this workspace. Source files and project settings stay private." : "Guests can view and follow this workspace. Editing, comments, and chat are unavailable."}</p>
+    {cloud && <div className="share-choices" role="group" aria-label="Guest permissions">
+      <button type="button" disabled={pending} aria-pressed={access === "view"} onClick={() => setAccess("view")}>View only</button>
+      <button type="button" disabled={pending} aria-pressed={access === "comment"} onClick={() => setAccess("comment")}>Comment & chat</button>
+    </div>}
+    <details className="share-options">
+      <summary><span>Link options</span><span className="share-expiry">Expires in {duration === 900 ? "15 minutes" : duration === 86400 ? "24 hours" : "1 hour"}</span></summary>
+      <div className="share-choices" role="group" aria-label="Guest link expiry">{[[900, "15 minutes"], [3600, "1 hour"], [86400, "24 hours"]].map(([seconds, label]) => <button key={seconds} type="button" disabled={pending} aria-pressed={duration === seconds} onClick={() => setDuration(Number(seconds))}>{label}</button>)}</div>
+    </details>
+    <button type="button" className={`button ${link ? "quiet" : "primary"} wide`} disabled={pending || !room.enabled} onClick={() => void create()}>{pending ? "Working…" : link ? "Create another invitation" : "Create invitation"}</button>
+    {!room.enabled && <p className="warning">Turn on collaboration before sharing a link.</p>}
+    {link && <div className="share-result">
+      <EntryLink token={link.token} roomId={room.id} invitation={cloud} entries={entries} fallback={client.baseUrl || client.project?.publicOrigin}/>
+      <p className="share-link-facts">{link.access === "comment" ? "Comment & chat" : "View only"} · Expires {new Date(link.expiresAt).toLocaleString()}.</p>
+    </div>}
+    {error && <p className="inline-error" role="alert">{error}</p>}
+    {revoked && <p className="success" role="status">All guest links for this workspace have been revoked.</p>}
+    <details className="share-manage">
+      <summary>Manage links</summary>
+      <p>Revoking ends access through every guest link for this workspace.</p>
+      <button type="button" className="button danger" disabled={pending} onClick={() => void revoke()}>Revoke all guest links</button>
+    </details>
+  </div>;
 }
 
 export function MembersPanel({ client, entries }: { client: Client; entries?: SessionCollaborationStatus["entries"] }) {

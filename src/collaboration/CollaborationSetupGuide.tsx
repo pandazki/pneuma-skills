@@ -87,15 +87,18 @@ export function CollaborationSetupGuide() {
       <p role="status" className={loadError ? "text-cc-error" : undefined}>{loading ? t("checking") : loadError ? t("check_error") : status ? t(path === "lan" ? "lan_ready" : status.cloudflared.installed ? "cloudflared_found" : "cloudflared_missing") : ""}</p>
       <button type="button" disabled={loading} onClick={() => void refresh()} className={`rounded underline underline-offset-4 hover:text-cc-fg disabled:opacity-50 cursor-pointer ${focus}`}>{t("check_again")}</button>
     </div>
-    {path !== "lan" && status && !status.cloudflared.installed && <p className="mt-1.5 text-cc-muted">{t("install_hint")}</p>}
     <button type="button" disabled={!prompt || loading || copyState === "copying"} onClick={() => void copy()} className={`button primary mt-4 w-full rounded-md bg-cc-primary px-3 py-2.5 text-xs font-semibold text-cc-bg [.cc-theme-light_&]:!text-cc-fg hover:brightness-110 disabled:opacity-50 cursor-pointer ${focus}`}>{copyState === "copied" ? t("copied") : copyState === "copying" ? t("copying") : t("copy_request")}</button>
     <p className="mt-1.5 text-cc-muted">{t("paste_hint")}</p>
     {copyState === "error" && <p role="alert" className="mt-2 text-cc-error">{t("copy_error")}</p>}
     <button type="button" aria-expanded={expanded} aria-controls={`${id}-request`} onClick={() => setExpanded(!expanded)} className={`mt-2 rounded text-cc-muted underline underline-offset-4 hover:text-cc-fg cursor-pointer ${focus}`}>{t(expanded ? "hide_request" : "show_request")}</button>
     {expanded && <textarea ref={textarea} id={`${id}-request`} aria-label={t("request_label")} readOnly value={prompt} rows={7} onFocus={(event) => event.currentTarget.select()} className={`mt-2 block w-full min-w-0 resize-y appearance-none rounded-md border border-cc-border bg-cc-input-bg p-2.5 text-xs leading-relaxed text-cc-fg caret-cc-primary ${focus}`}/>}
-    <ol className="mt-4 list-decimal space-y-2 pl-5 marker:text-cc-muted">{Array.isArray(steps) && steps.map((step, index) => <li key={`${path}-${index}`} className="pl-1">{step}</li>)}</ol>
-    <p className="mt-4 text-cc-muted">{t("keep_online")}</p>
-    {path !== "lan" && <><p className="mt-2 text-cc-muted">{t("public_lifecycle")}</p><p className="mt-2 text-cc-muted">{t("public_recovery")}</p></>}
+    <details className="mt-4 border-t border-cc-border pt-3">
+      <summary className={`cursor-pointer rounded text-cc-muted hover:text-cc-fg ${focus}`}>{t("steps_title")}</summary>
+      <ol className="mt-3 list-decimal space-y-2 pl-5 marker:text-cc-muted">{Array.isArray(steps) && steps.map((step, index) => <li key={`${path}-${index}`} className="pl-1">{step}</li>)}</ol>
+      {path !== "lan" && status && !status.cloudflared.installed && <p className="mt-3 text-cc-muted">{t("install_hint")}</p>}
+      <p className="mt-4 text-cc-muted">{t("keep_online")}</p>
+      {path !== "lan" && <><p className="mt-2 text-cc-muted">{t("public_lifecycle")}</p><p className="mt-2 text-cc-muted">{t("public_recovery")}</p></>}
+    </details>
     <details className="mt-4 border-t border-cc-border pt-3 text-cc-muted">
       <summary className={`cursor-pointer rounded hover:text-cc-fg ${focus}`}>{t("advanced_title")}</summary>
       <p className="mt-2">{t("advanced_body")}</p>

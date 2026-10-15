@@ -27,6 +27,9 @@ describe("private public access controls", () => {
     const commands: unknown[] = []; const command = async (path: string, body?: unknown) => { commands.push({ path, body }); };
     await act(async () => root.render(<InternetAccessPanel status={status()} pending={false} command={command}/>));
     expect(button("Free temporary address").getAttribute("aria-pressed")).toBe("true");
+    const options = [...win.document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent === "Connection options")!;
+    expect(options).toBeDefined(); expect(options.open).toBe(false);
+    expect(commands).toEqual([]);
     await act(async () => button("Enable public access").click());
     expect(commands).toEqual([{ path: "internet-access", body: { enabled: true, provider: { kind: "quick" } } }]);
     // A successful HTTP request does not imply runtime cleanup or startup completion.
@@ -40,6 +43,7 @@ describe("private public access controls", () => {
     await act(async () => root.render(<InternetAccessPanel status={status()} pending={false} command={command}/>));
     await act(async () => button("Your own Tunnel").click());
     expect(button("Enable public access").disabled).toBe(true);
+    expect(win.document.querySelector("details")?.open).toBe(true);
     const inputs = win.document.querySelectorAll("input");
     const values = ["https://fixed.example", "11111111-2222-3333-4444-555555555555", "/private/tunnel.json"];
     await act(async () => { inputs.forEach((input, index) => { Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, "value")!.set!.call(input, values[index]); input.dispatchEvent(new win.Event("input", { bubbles: true })); }); });
@@ -50,10 +54,33 @@ describe("private public access controls", () => {
     expect(win.document.body.textContent).toContain("Named Tunnel could not start.");
     expect(button("Your own Tunnel").getAttribute("aria-pressed")).toBe("true");
     expect(commands).toEqual([]);
-    expect(button("Enable public access").disabled).toBe(true);
+    expect(button("Enable public access")).toBeUndefined();
     await act(async () => button("Retry stopping public access").click());
     expect(commands).toEqual([{ enabled: false }]);
     expect(win.document.body.textContent).toContain("hostname already routed to that Tunnel");
+  });
+  test("failure recovery remains visible with options closed and only explicit recovery sends a command", async () => {
+    const failed = status("failed"); failed.internetAccess!.error = "Stop did not finish.";
+    const commands: unknown[] = [];
+    await act(async () => root.render(<InternetAccessPanel status={failed} pending={false} command={async (_path, body) => { commands.push(body); }}/>));
+    const options = win.document.querySelector("details")!;
+    expect(options.open).toBe(false);
+    expect(win.document.querySelector('[role="alert"]')?.closest("details")).toBeNull();
+    expect(button("Retry stopping public access").closest("details")).toBeNull();
+    expect(commands).toEqual([]);
+    await act(async () => options.querySelector("summary")!.click());
+    expect(commands).toEqual([]);
+    await act(async () => button("Retry stopping public access").click());
+    expect(commands).toEqual([{ enabled: false }]);
+  });
+  test("incomplete persisted named settings open for completion without enabling access", async () => {
+    const incomplete = status(); incomplete.internetAccess!.provider = { kind: "named", tunnelId: "saved-id", credentialsFile: "", publicOrigin: "https://fixed.example" };
+    const commands: unknown[] = [];
+    await act(async () => root.render(<InternetAccessPanel status={incomplete} pending={false} command={async (_path, body) => { commands.push(body); }}/>));
+    expect(win.document.querySelector("details")?.open).toBe(true);
+    expect(button("Enable public access").disabled).toBe(true);
+    expect(win.document.querySelectorAll("input")[1]!.value).toBe("saved-id");
+    expect(commands).toEqual([]);
   });
   test("persisted named settings survive reload, failed startup, and idle expiry", async () => {
     const named = status(); named.internetAccess!.provider = { kind: "named", tunnelId: "11111111-2222-3333-4444-555555555555", credentialsFile: "/private/tunnel.json", publicOrigin: "https://fixed.example" };
@@ -61,6 +88,7 @@ describe("private public access controls", () => {
     await act(async () => root.render(<InternetAccessPanel status={named} pending={false} command={command}/>));
     expect(button("Your own Tunnel").getAttribute("aria-pressed")).toBe("true");
     expect(win.document.querySelectorAll("input")[0]!.value).toBe("https://fixed.example");
+    expect(win.document.querySelector("details")?.open).toBe(false);
     for (const phase of ["failed", "idleexpired"] as const) {
       named.internetAccess!.status = phase;
       await act(async () => root.render(<InternetAccessPanel status={{ ...named }} pending={false} command={command}/>));
@@ -83,8 +111,10 @@ describe("private public access controls", () => {
     Object.defineProperty(win.navigator, "clipboard", { configurable: true, value: undefined });
     const active = status("active");
     await act(async () => root.render(<InternetAccessPanel status={active} pending={false} command={async () => {}}/>));
+    expect(win.document.querySelector("details")?.open).toBe(false);
     const input = win.document.querySelector('input[aria-label="Public Project URL"]')! as unknown as HTMLInputElement;
     expect(input.value).toBe("https://temporary.example/projects/project-a");
+    expect(input.closest("details")?.textContent).toContain("Invite guests from Share; add Project members in Collaboration settings → Members & permissions.");
     expect(input.value).not.toContain(active.connection!.token); expect(new URL(input.value).hash).toBe("");
     await act(async () => button("Copy Project URL").click());
     expect(win.document.querySelector('[role="alert"]')?.textContent).toBe("Copy failed. Select the Project URL and copy it manually.");
@@ -94,6 +124,24 @@ describe("private public access controls", () => {
     await act(async () => root.render(<InternetAccessPanel status={moved} pending={false} command={async () => {}}/>));
     expect(input.value).toBe("https://reopened.example/projects/project-a");
     expect(win.document.querySelector('[role="alert"]')).toBeNull();
+  });
+  for (const outcome of ["resolve", "reject"] as const) test(`a stale Project URL clipboard ${outcome} cannot update the replacement URL`, async () => {
+    const writes: { value: string; resolve: () => void; reject: (error: Error) => void }[] = [];
+    Object.defineProperty(win.navigator, "clipboard", { configurable: true, value: { writeText: (value: string) => new Promise<void>((resolve, reject) => writes.push({ value, resolve, reject })) } });
+    const active = status("active");
+    await act(async () => root.render(<InternetAccessPanel status={active} pending={false} command={async () => {}}/>));
+    await act(async () => button("Copy Project URL").click());
+    expect(writes[0]!.value).toBe("https://temporary.example/projects/project-a");
+    const moved = status("active"); moved.internetAccess!.publicOrigin = "https://replacement.example";
+    await act(async () => root.render(<InternetAccessPanel status={moved} pending={false} command={async () => {}}/>));
+    await act(async () => { if (outcome === "resolve") writes[0]!.resolve(); else writes[0]!.reject(new Error("Old copy denied")); });
+    expect(!!button("Copied Project URL")).toBe(false);
+    expect(win.document.querySelector('[role="alert"]')?.textContent ?? "").toBe("");
+    expect(win.document.querySelector("input")!.value).toBe("https://replacement.example/projects/project-a");
+    await act(async () => button("Copy Project URL").click());
+    expect(writes[1]!.value).toBe("https://replacement.example/projects/project-a");
+    await act(async () => writes[1]!.resolve());
+    expect(!!button("Copied Project URL")).toBe(true);
   });
   test("active access reports authenticated public participants and the runtime idle deadline", async () => {
     const active = status("active"); active.internetAccess!.idleDeadline = Date.now() + 90000;

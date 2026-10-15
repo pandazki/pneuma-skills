@@ -46,7 +46,7 @@ interface SessionContext {
   error: string;
   pending: boolean;
   referenceRecoveryError: string;
-  tab: "project" | "references" | "comments" | "chat" | "links" | "members";
+  tab: "project" | "references" | "comments" | "chat" | "links" | "members" | "settings";
   setTab: (tab: SessionContext["tab"]) => void;
 }
 const Context = createContext<SessionContext | null>(null);
@@ -227,7 +227,6 @@ function SessionCollaborationPanel() {
   const runtimeState = useSyncExternalStore(context.runtime?.subscribe ?? noSubscribe, context.runtime?.current ?? emptyRuntime, context.runtime?.current ?? emptyRuntime);
   const [name, setName] = useState("");
   const [link, setLink] = useState("");
-  const [cloud, setCloud] = useState(false);
   const [origin, setOrigin] = useState("");
   const [bootstrapKey, setBootstrapKey] = useState("");
   const [notice, setNotice] = useState("");
@@ -277,42 +276,86 @@ function SessionCollaborationPanel() {
   };
   const panelError = context.error || status?.error || registrationError;
   const internetError = status?.internetAccess?.error?.replace(/^Error: /, "");
+  const shareTab = tab === "project" || tab === "links";
+  const settingsTab = tab === "settings" || tab === "references" || tab === "members";
+  const roomMatches = !!room && room.id === status?.roomId;
+  const online = client.status === "connected" && !client.hostOffline && (!roomMatches || room.hostOnline !== false);
+  const stateLabel = !status ? "Checking collaboration…" : projectRemoved ? "Shared project removed" : !status.connection ? "Not connected"
+    : client.hostOffline || roomMatches && room.hostOnline === false ? "Host offline"
+    : client.status === "connecting" ? "Connecting…" : client.status === "reconnecting" ? "Reconnecting…"
+    : !online ? "Disconnected" : status.sharing ? !roomMatches ? "Opening shared workspace…" : !room.enabled ? "Sharing off" : "Workspace shared" : "Ready to share";
+  const accessLabel = status?.connection?.authorityKind === "cloud" ? "Cloud host" : status?.internetAccess?.status === "active" ? "Internet access on" : status?.internetAccess?.status === "starting" ? "Internet access starting…" : status?.internetAccess?.status === "stopping" ? "Internet access stopping…" : status?.internetAccess?.status === "failed" ? "Internet access failed" : "Local network";
+  const create = (cloud: boolean) => {
+    const body: CreateSessionCollaboration = { name: name.trim(), ...(cloud ? { authority: { kind: "cloud", origin: origin.trim() }, bootstrapKey } : {}) };
+    run("create", body);
+  };
+  const connectForm = <form className="connect-member" onSubmit={(event) => { event.preventDefault(); run("connect", { url: link.trim() }); }}>
+    <label className="field-label">{status?.connection ? "Project URL or member link" : "Member invitation link"}<input type="url" required value={link} placeholder="Paste a Project URL or member link" onChange={(event) => setLink(event.target.value)}/></label>
+    <button type="submit" className="button" disabled={pending || !link.trim()}>{status?.connection ? "Reconnect to Project" : "Connect to Project"}</button>
+  </form>;
   return <section ref={panelRef} className="session-collaboration" aria-label="Project collaboration">
-    <header><h2>{client.project?.project.name || "Project collaboration"} <span className="text-[10px] font-medium uppercase tracking-wide text-cc-muted">Beta</span></h2><button type="button" aria-label="Close collaboration" onClick={() => context.setOpen(false)}>Close</button></header>
-    <nav className="session-collaboration-tabs" aria-label="Collaboration panels">{(["project", "references", "comments", "chat", "links", "members"] as const).filter((item) => item === "project" || item === "references" && !!status?.connection || item === "comments" && !!room || item === "chat" && !!room || item === "links" && !!room && mutationAvailable(client.project?.self, client.status) || item === "members" && client.project?.self.role === "admin").map((item) => <button key={item} type="button" aria-pressed={tab === item} onClick={() => context.setTab(item)}>{item[0].toUpperCase() + item.slice(1)}{item === "comments" || item === "chat" ? client.unread[client.selectedId]?.[item] ? ` (${client.unread[client.selectedId]![item]})` : "" : ""}</button>)}</nav>
-    {panelError && panelError !== internetError && <p className="inline-error" role="alert">{panelError}</p>}
+    <header>
+      <h2>Collaboration <span className="collaboration-beta">Beta</span></h2>
+      <div className="collaboration-header-actions">
+        <button type="button" className="collaboration-icon-button" aria-label="Collaboration settings" aria-pressed={settingsTab} onClick={() => context.setTab(settingsTab ? "project" : "settings")}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9.5 3-.7 2.2-2 .9-2.1-.5L2.4 9.4 4 11v2l-1.6 1.6 2.3 3.8 2.1-.5 2 .9.7 2.2h5l.7-2.2 2-.9 2.1.5 2.3-3.8L20 13v-2l1.6-1.6-2.3-3.8-2.1.5-2-.9-.7-2.2z"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button type="button" className="collaboration-icon-button" aria-label="Close collaboration" onClick={() => context.setOpen(false)}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+    </header>
+    <div className="collaboration-status" role="status" data-state={status?.connection && online && !projectRemoved && (!status.sharing || roomMatches && room.enabled) ? "connected" : "inactive"}>
+      <span className="collaboration-status-dot" aria-hidden="true"/>
+      <div><strong>{stateLabel}</strong><span>{client.project?.project.name ? `${client.project.project.name} · ` : ""}{status?.connection ? accessLabel : "Your Agent conversation stays private"}</span></div>
+    </div>
+    <nav className="session-collaboration-tabs" aria-label="Collaboration panels">{(["project", "comments", "chat"] as const).map((item) => <button key={item} type="button" aria-pressed={item === "project" ? shareTab : tab === item} disabled={item !== "project" && !room} onClick={() => context.setTab(item)}>{item === "project" ? "Share" : item === "comments" ? "Comments" : "Chat"}{item !== "project" && client.unread[client.selectedId]?.[item] ? ` (${client.unread[client.selectedId]![item]})` : ""}</button>)}</nav>
+    {panelError && (tab !== "settings" || panelError !== internetError) && <p className="inline-error" role="alert">{panelError}</p>}
+    {client.error && client.error !== panelError && <p className="inline-error" role="alert">{client.error}</p>}
     {notice && <p className="inline-error" role="status">{notice}</p>}
     {context.referenceRecoveryError && tab !== "references" && <p className="inline-error" role="alert">{context.referenceRecoveryError}</p>}
-    {tab === "project" && <div className="panel-content">
-      <CollaborationSetupEntry/>
-      {!status?.projectAvailable ? <p>Open a Project Session to connect collaboration across your workspaces.</p> : !status.connection ? <>
-        <p>Connect this Project to share work and keep your Agent conversation private.</p>
-        <form onSubmit={(event) => { event.preventDefault(); const body: CreateSessionCollaboration = { name: name.trim(), ...(cloud ? { authority: { kind: "cloud", origin: origin.trim() }, bootstrapKey } : {}) }; run("create", body); }}>
+    {shareTab && <div className="panel-content collaboration-share-content">
+      {!status ? <p className="muted">Loading collaboration…</p> : !status.projectAvailable ? <p>Open a Project Session to connect collaboration across your workspaces.</p> : !status.connection ? <>
+        <form className="collaboration-start" onSubmit={(event) => { event.preventDefault(); create(false); }}>
           <label className="field-label">Your name<input autoComplete="name" required value={name} maxLength={80} onChange={(event) => setName(event.target.value)}/></label>
-          <div className="duration-picker" role="group" aria-label="Collaboration hosting"><button type="button" aria-pressed={!cloud} className={!cloud ? "selected" : ""} onClick={() => setCloud(false)}>Local network</button><button type="button" aria-pressed={cloud} className={cloud ? "selected" : ""} onClick={() => setCloud(true)}>Cloud host</button></div>
-          {cloud && <><label className="field-label">Cloud host URL<input type="url" required value={origin} placeholder="https://collaboration.example.com" onChange={(event) => setOrigin(event.target.value)}/></label><label className="field-label">Provisioning key<input type="password" required autoComplete="off" value={bootstrapKey} onChange={(event) => setBootstrapKey(event.target.value)}/></label></>}
-          <button className="button primary" type="submit" disabled={pending || !name.trim()}>{pending ? "Connecting…" : "Create collaboration"}</button>
+          <button className="button primary wide" type="submit" disabled={pending || !name.trim()}>{pending ? "Connecting…" : "Start collaboration"}</button>
+          <p className="muted">On your local network. Internet access is in settings.</p>
         </form>
-        <form className="connect-member" onSubmit={(event) => { event.preventDefault(); run("connect", { url: link.trim() }); }}><label className="field-label">Member invitation link<input type="url" required value={link} placeholder="Paste your Project member link" onChange={(event) => setLink(event.target.value)}/></label><button type="submit" className="button" disabled={pending || !link.trim()}>Connect to Project</button></form>
-      </> : <>
-        <div className="session-sharing"><p>{projectRemoved ? "Shared project removed. Your local files and private Agent remain available." : status.sharing ? context.sharedView ? "This viewer shows the last complete shared publication. Local changes appear after publishing." : `Sharing ${status.sharedContentSet || "the root site"}; ${previewModeLabel(useStore.getState().previewMode)}.` : status.supported ? "Share the current workspace through this viewer." : "This mode does not support shared viewing yet. You can open other Project rooms."}</p>{!projectRemoved && status.sharing && !context.sharedView && <button className="button" onClick={() => { useStore.getState().setActiveContentSet(status.sharedContentSet ?? null); useStore.getState().setPreviewMode("view"); }}>Return to shared view</button>}<button className={`button ${status.sharing ? "" : "primary"}`} disabled={pending || !status.supported || projectRemoved} onClick={status.sharing ? () => run("stop") : share}>{pending ? "Working…" : projectRemoved ? "Sharing unavailable" : status.sharing ? "Stop sharing" : "Share this workspace"}</button><span className="muted">{projectRemoved ? "Shared project removed" : status.publisherStatus}</span></div>
-        {!projectRemoved && <InternetAccessPanel status={status} pending={pending} command={context.command}/>}
-        <form className="connect-member" onSubmit={(event) => { event.preventDefault(); run("connect", { url: link.trim() }); }}><label className="field-label">Reconnect with the current Project URL or member link<input type="url" required value={link} placeholder="Paste the current Project URL when the public address changes" onChange={(event) => setLink(event.target.value)}/></label><button type="submit" className="button" disabled={pending || !link.trim()}>Reconnect to Project</button></form>
-        {client.error && <p className="inline-error" role="status">{client.error}</p>}
-        {!projectRemoved && !status.sharing && status.roomId && <div className="danger-zone"><h3>Remove sharing registration</h3><p>Remove the old room before sharing a different site or viewer build. Its shared links and pinned references will become unavailable.</p><button className="button danger" disabled={pending} onClick={() => run("remove")}>Remove sharing registration</button></div>}
-        <h3>Shared workspaces</h3>
-        <div className="room-list">{client.project?.rooms.map((item) => <div key={item.id} className="shared-room-card"><button type="button" className="room-item" disabled={!item.enabled || item.hostOnline === false} onClick={() => window.open(shareUrl(status.connection!.token, item.id, { publicOrigin: status.connection!.authorityBaseUrl }), "_blank", "noopener,noreferrer")}><strong>{item.title}</strong><small>{item.mode} · {item.hostOnline === false ? "Host offline" : item.enabled ? "Open workspace" : "Sharing off"}</small></button>{!pending && !context.referenceRecoveryError && <PinRoomButton operationAuthority={status.connection!.referenceOperationAuthority} client={client} destinationWorkspaceId={status.connection!.workspaceId} room={item} onPinned={() => context.setTab("references")}/>}</div>)}{!client.project?.rooms.length && <p className="muted">Shared workspaces will appear here.</p>}</div>
-        {room && <><h3>People in this workspace</h3><div className="participant-list">{peers.map((peer) => <button type="button" className="button" key={peer.id} aria-pressed={runtimeState.followingId === peer.id} disabled={!context.runtime || !runtimeState.ready || !peer.semanticView || !!peer.followingId} onClick={() => context.runtime?.setFollowing(runtimeState.followingId === peer.id ? null : peer.id)}>{peer.name}</button>)}{!peers.length && <span className="muted">You have the workspace to yourself.</span>}</div>{runtimeState.followingId && <button className="text-button" onClick={() => context.runtime?.setFollowing(null)}>Stop following</button>}<button className="button" disabled={!context.canComment} onClick={context.startComment}>Add comment to selection</button></>}
-        {!projectRemoved && client.project?.self.role === "admin" && <form className="danger-zone" onSubmit={(event) => { event.preventDefault(); void removeProject(); }}><h3>Remove shared project</h3><p>Disable this Project's shared rooms, links, and references for everyone. Local files and private Agent sessions remain. Shared access cannot be restored by reopening a Session.</p><label className="field-label">Type {client.project.project.name} to confirm<input value={confirmProjectName} onChange={(event) => setConfirmProjectName(event.target.value)}/></label><button className="button danger" disabled={pending || removingProject || confirmProjectName !== client.project.project.name} type="submit">{removingProject ? "Removing shared access…" : removalOperation.current ? "Retry removing shared project" : "Remove shared project"}</button></form>}
+        <details className="collaboration-disclosure"><summary>Join with a link</summary>{connectForm}</details>
+        <CollaborationSetupEntry/>
+      </> : projectRemoved ? <p>Shared access was removed. Your local files and private Agent remain available.</p> : <>
+        {!status.sharing ? <div className="session-sharing"><p className="muted">{status.supported ? "Invite people to this workspace. Your Agent stays private." : "Shared viewing is unavailable in this mode. Open another shared workspace in settings."}</p><button className="button primary wide" disabled={pending || !status.supported} onClick={share}>{pending ? "Working…" : "Share this workspace"}</button></div> : <>
+          {!context.sharedView && <div className="collaboration-private-view"><p className="muted">{useStore.getState().previewMode === "edit" ? "Editing locally. Shared comments and presence are paused." : "You are viewing a private workspace."}</p><button className="button" onClick={() => { useStore.getState().setActiveContentSet(status.sharedContentSet ?? null); useStore.getState().setPreviewMode("view"); }}>Return to shared view</button></div>}
+          {online && roomMatches && room.enabled && mutationAvailable(client.project?.self, client.status) ? <SharePanel client={client} room={room} entries={status.entries} embedded/> : <p className="muted">{!online ? "Invitation actions will be available when the connection returns." : !roomMatches ? "Opening the shared workspace. Invitation actions will be available when it is ready." : !room.enabled ? "Sharing is off for this workspace. Invitation actions are unavailable." : "Your role can view shared work. Ask an administrator for an invitation link."}</p>}
+          <div className="collaboration-share-footer"><button type="button" className="text-button" disabled={pending} onClick={() => run("stop")}>{pending ? "Working…" : "Stop sharing"}</button></div>
+        </>}
       </>}
     </div>}
+    {tab === "settings" && <div className="panel-content collaboration-settings-content">
+      <div className="collaboration-subheading"><button type="button" className="text-button" onClick={() => context.setTab("project")}>Back to Share</button><h3>Collaboration settings</h3></div>
+      {status?.connection && !projectRemoved && <InternetAccessPanel status={status} pending={pending} command={context.command}/>}
+      {status?.connection && <>
+        <div className="collaboration-settings-entries">
+          {client.project?.self.role === "admin" && <button type="button" className="collaboration-settings-entry" onClick={() => context.setTab("members")}>Members &amp; permissions<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>}
+          <button type="button" className="collaboration-settings-entry" onClick={() => context.setTab("references")}>References<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <details className="collaboration-disclosure"><summary>Shared workspaces</summary>
+        <div className="room-list">{client.project?.rooms.map((item) => <div key={item.id} className="shared-room-card"><button type="button" className="room-item" disabled={!item.enabled || item.hostOnline === false} onClick={() => window.open(shareUrl(status.connection!.token, item.id, { publicOrigin: status.connection!.authorityBaseUrl }), "_blank", "noopener,noreferrer")}><strong>{item.title}</strong><small>{item.mode} · {item.hostOnline === false ? "Host offline" : item.enabled ? "Open workspace" : "Sharing off"}</small></button>{!pending && !context.referenceRecoveryError && <PinRoomButton operationAuthority={status.connection!.referenceOperationAuthority} client={client} destinationWorkspaceId={status.connection!.workspaceId} room={item} onPinned={() => context.setTab("references")}/>}</div>)}{!client.project?.rooms.length && <p className="muted">Shared workspaces will appear here.</p>}</div></details>
+        {room && <details className="collaboration-disclosure"><summary>People in this workspace</summary><div className="participant-list">{peers.map((peer) => <button type="button" className="button" key={peer.id} aria-pressed={runtimeState.followingId === peer.id} disabled={!context.runtime || !runtimeState.ready || !peer.semanticView || !!peer.followingId} onClick={() => context.runtime?.setFollowing(runtimeState.followingId === peer.id ? null : peer.id)}>{peer.name}</button>)}{!peers.length && <span className="muted">You have the workspace to yourself.</span>}</div>{runtimeState.followingId && <button className="text-button" onClick={() => context.runtime?.setFollowing(null)}>Stop following</button>}<button className="button" disabled={!context.canComment} onClick={context.startComment}>Add comment to selection</button></details>}
+      </>}
+      {status?.projectAvailable && <details className="collaboration-disclosure collaboration-advanced"><summary>Advanced</summary>
+        {!status.connection ? <form className="collaboration-cloud" onSubmit={(event) => { event.preventDefault(); create(true); }}><h3>Cloud host</h3><label className="field-label">Your name<input autoComplete="name" required value={name} maxLength={80} onChange={(event) => setName(event.target.value)}/></label><label className="field-label">Cloud host URL<input type="url" required value={origin} placeholder="https://collaboration.example.com" onChange={(event) => setOrigin(event.target.value)}/></label><label className="field-label">Provisioning key<input type="password" required autoComplete="off" value={bootstrapKey} onChange={(event) => setBootstrapKey(event.target.value)}/></label><button className="button" type="submit" disabled={pending || !name.trim() || !origin.trim() || !bootstrapKey.trim()}>{pending ? "Connecting…" : "Connect cloud host"}</button></form> : <>
+          <p className="muted">{status.publisherStatus}</p>
+          <h3>Reconnect to Project</h3><p className="muted">Use the current Project URL or member link if its address changes.</p>{connectForm}
+          {!projectRemoved && !status.sharing && status.roomId && <div className="danger-zone"><h3>Remove sharing registration</h3><p>Remove the old room before sharing a different site or viewer build. Its links and pinned references will become unavailable.</p><button className="button danger" disabled={pending} onClick={() => run("remove")}>Remove sharing registration</button></div>}
+          {!projectRemoved && client.project?.self.role === "admin" && <form className="danger-zone" onSubmit={(event) => { event.preventDefault(); void removeProject(); }}><h3>Remove shared project</h3><p>Disable this Project's shared rooms, links, and references for everyone. Local files and private Agent sessions remain. Shared access cannot be restored by reopening a Session.</p><label className="field-label">Type {client.project.project.name} to confirm<input value={confirmProjectName} onChange={(event) => setConfirmProjectName(event.target.value)}/></label><button className="button danger" disabled={pending || removingProject || confirmProjectName !== client.project.project.name} type="submit">{removingProject ? "Removing shared access…" : removalOperation.current ? "Retry removing shared project" : "Remove shared project"}</button></form>}
+        </>}
+      </details>}
+      <CollaborationSetupEntry/>
+    </div>}
+    {(tab === "references" || tab === "members") && <div className="collaboration-secondary-heading"><button type="button" className="text-button" onClick={() => context.setTab("settings")}>Back to settings</button><h3>{tab === "references" ? "References" : "Members & permissions"}</h3></div>}
     {tab === "references" && status?.connection && (context.referenceRecoveryError ? <div className="panel-content"><p role="alert">{context.referenceRecoveryError}</p></div> : pending ? <div className="panel-content"><p role="status">Updating Project connection… References will be available when this finishes.</p></div> : <ReferencesPanel key={`${client.baseUrl}:${status.connection.workspaceId}`} client={client} operationAuthority={status.connection.referenceOperationAuthority} destinationWorkspaceId={status.connection.workspaceId}/>)}
     {tab === "comments" && room && <Comments client={client} onForwardComment={canForward ? (comment) => forward(comment, "comment") : undefined} writable={discussionAvailable(client.project?.self, client.status)} canResolve={mutationAvailable(client.project?.self, client.status)} draftAnchor={context.draft} onCancelDraft={context.clearDraft} onStart={context.startComment} onLocate={(anchor) => {
       if (!context.runtime) { setNotice("Return to the shared view before opening this comment's location."); return; }
       void context.runtime.navigateAnchor(anchor).then((result) => { if (!result.success) setNotice(result.message || "The comment's location could not be reached"); });
     }}/>} 
     {tab === "chat" && room && <Chat client={client} onForwardMessage={canForward ? (message) => forward(message, "chat") : undefined} writable={discussionAvailable(client.project?.self, client.status)}/>} 
-    {tab === "links" && room && <SharePanel client={client} room={room} entries={status?.entries}/>} 
     {tab === "members" && client.project?.self.role === "admin" && <MembersPanel client={client} entries={status?.entries}/>} 
   </section>;
 }
@@ -320,4 +363,3 @@ function SessionCollaborationPanel() {
 const EMPTY_RUNTIME: ViewerRuntimeSnapshot = { ready: false, followingId: null, error: "", pointers: {}, anchors: {} };
 const emptyRuntime = () => EMPTY_RUNTIME;
 const noSubscribe = () => () => {};
-const previewModeLabel = (mode: string) => mode === "edit" ? "editing locally pauses shared comments and presence" : "this view is private";
