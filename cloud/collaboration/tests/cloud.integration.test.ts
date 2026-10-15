@@ -509,12 +509,13 @@ describe("cloud project collaboration with real workerd and R2", () => {
     const duplicate = await request(null, `/publisher/ws?token=${publisherToken}`, "GET", undefined, { Upgrade: "websocket", Connection: "close" });
     expect(duplicate.status).toBe(409);
     expect((await duplicate.json() as { error: string }).error).toContain("publisher");
+    // Lease rejection precedes body consumption; keep these sockets out of Bun's pool.
     const unleasedCommit = await request(publisherToken, "/api/publisher/commit", "POST", {
       opId: crypto.randomUUID(), baseRevision: state.revision, files: originalPublication.files, fingerprint: originalPublication.fingerprint,
-    });
+    }, { Connection: "close" });
     expect(unleasedCommit.status).toBe(409);
     expect((await unleasedCommit.json() as { error: string }).error).toContain("Publisher connection changed");
-    const wrongLease = await request(publisherToken, "/api/publisher/error", "POST", { message: "Wrong lease" }, { "X-Publisher-Id": "outdated" });
+    const wrongLease = await request(publisherToken, "/api/publisher/error", "POST", { message: "Wrong lease" }, { "X-Publisher-Id": "outdated", Connection: "close" });
     expect(wrongLease.status).toBe(409);
     expect((await wrongLease.json() as { error: string }).error).toContain("Publisher connection changed");
     await json(publisherToken, "/api/publisher/error", "POST", { message: "Resource upload interrupted" }, { "X-Publisher-Id": publisherLease });
