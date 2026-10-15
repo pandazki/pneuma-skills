@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.58.1] - 2026-10-15
+
+### Improved
+- **Simpler Collaboration Beta controls** — Start on your local network with your name, then use Share, Comments, and Chat. The settings gear groups public access, members, and references, with advanced connection and management controls collapsed until needed.
+- **Clearer invitations and setup** — Choose View only or Comment & chat, create a link with a one-hour default, and expand expiry or link management when needed. Setup guidance follows the new navigation and retains a complete request to copy into Claude Code or Codex.
+
+### Fixed
+- **Accurate sharing status** — Distinguish a ready workspace from one still opening, sharing turned off, or an offline host, and offer invitations only when the shared room is ready.
+- **Reliable link-copy feedback** — Report success or failure for the current link; an earlier copy operation can no longer overwrite feedback after the Project URL changes.
+
 ## [3.58.0] - 2026-10-15
 
 ### Added

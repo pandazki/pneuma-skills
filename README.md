@@ -340,13 +340,17 @@ Collaboration is in Beta, with Webcraft as the first supported mode. Share a
 workspace for live viewing and feedback while each participant keeps their own
 files and private Agent conversation.
 
-Open a Webcraft Session inside a Project and choose **Collaborate**. Create a LAN
-Project, connect to a configured cloud host, or paste a Project member link.
-Choose **Share this workspace** to publish the selected site. Members retain
-their own files and private Agent conversations; the shared viewer supports
-independent navigation, following, pointers, anchored comments, and room chat.
-Administrators manage members; readers cannot change shared state. Guest links
-grant access to one room with viewing or commenting permission.
+Open a Webcraft Session inside a Project and choose **Collaborate → Share**.
+Enter your name and choose **Start collaboration** to use your local network,
+then **Share this workspace** to publish the selected site. In Share, choose
+**View only** or **Comment & chat** and create an invitation; links expire in one
+hour by default, with expiry and management under expandable options. Use
+**Comments** and **Chat** for discussion. The shared viewer supports independent
+navigation, following, pointers, and anchored comments. The settings gear opens
+**Collaboration settings** for public access, members and permissions, and
+references; **Advanced** contains cloud-host and reconnection controls. To join
+an existing Project, expand **Join with a link** in Share. Administrators manage
+members; readers cannot change shared state. Guest links grant access to one room.
 
 While sharing, View, Select, and Annotate show the last complete published
 snapshot, including its images and styles. Local changes appear after publishing.
@@ -367,15 +371,16 @@ re-anchored to revised content. Preserve the existing Project and collaboration
 state when upgrading so its comments, chat, members, invitations, and references
 remain available.
 
-For a locally hosted Project, **Public access** adds an Internet link alongside
-its LAN link. The default uses a free temporary Cloudflare Tunnel; you can also
-configure your existing named Tunnel. `cloudflared` must be installed. Public
+For a locally hosted Project, **Collaboration settings → Public access** adds
+an Internet link alongside its LAN link. The default uses a free temporary
+Cloudflare Tunnel; you can also configure your existing named Tunnel. `cloudflared` must be installed. Public
 access stops on request or after ten minutes with no connected public
 participants, even if the settings tab is closed, and stays off after a restart.
 LAN access continues. Temporary links change when reopened; Quick Tunnels have
 no uptime guarantee. Your host computer and the shared workspace must stay online.
 After a temporary address changes, existing members can paste the host's new
-Project URL into **Reconnect to Project** to retain their membership and workspace.
+Project URL into **Collaboration settings → Advanced → Reconnect to Project**
+to retain their membership and workspace.
 
 **Settings → Collaboration setup** guides the host through each connection option,
 checks whether `cloudflared` is available, and offers a setup request to copy into
@@ -383,9 +388,10 @@ Claude Code or Codex. The request points to instructions shipped with the app;
 copying it does not enable sharing or send an Agent message. The same guide is
 available inside the private collaboration panel.
 
-**References** pins another workspace's published address and revision. Opening
-a reference requires current source access and an online host. **Import a local
-copy** explicitly creates an attributed copy for your own Agent to work on.
+**Collaboration settings → References** pins another workspace's published
+address and revision. Opening a reference requires current source access and an
+online host. **Import a local copy** explicitly creates an attributed copy for
+your own Agent to work on.
 The host's Session tab and publisher must stay online; participants must rejoin
 after a host disconnects. Other rooms in the Project can remain online.
 
