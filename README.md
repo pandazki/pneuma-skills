@@ -334,7 +334,11 @@ Quick (project-less) sessions remain fully supported — projects are opt-in. Cr
 - Frontend features now read `agent_capabilities` from session state. Claude-only features such as Schedules and backend-reported session cost tracking are hidden for non-Claude backends. Mode-specific asset costs, such as Lucid's OpenRouter image receipts, are tracked separately.
 - While an agent is working, a queued user message can join the active turn without interrupting it when the selected backend supports steering. Claude Code and Codex support this today; Kimi's ACP connection leaves the control disabled instead of emulating it with cancel-and-resend.
 
-## Project collaboration
+## Project collaboration (Beta)
+
+Collaboration is in Beta, with Webcraft as the first supported mode. Share a
+workspace for live viewing and feedback while each participant keeps their own
+files and private Agent conversation.
 
 Open a Webcraft Session inside a Project and choose **Collaborate**. Create a LAN
 Project, connect to a configured cloud host, or paste a Project member link.
@@ -351,6 +355,12 @@ available; click one to locate and highlight its target. In the owning Session,
 input. Add instructions or send the feedback directly; attaching it never sends
 it automatically.
 
+Anchored comments remain tied to the revision captured when they were created.
+Later edits can make their targets unavailable; comments are not automatically
+re-anchored to revised content. Preserve the existing Project and collaboration
+state when upgrading so its comments, chat, members, invitations, and references
+remain available.
+
 For a locally hosted Project, **Public access** adds an Internet link alongside
 its LAN link. The default uses a free temporary Cloudflare Tunnel; you can also
 configure your existing named Tunnel. `cloudflared` must be installed. Public
@@ -361,7 +371,7 @@ no uptime guarantee. Your host computer and the shared workspace must stay onlin
 After a temporary address changes, existing members can paste the host's new
 Project URL into **Reconnect to Project** to retain their membership and workspace.
 
-**Settings → Collaboration** guides the host through each connection option,
+**Settings → Collaboration setup** guides the host through each connection option,
 checks whether `cloudflared` is available, and offers a setup request to copy into
 Claude Code or Codex. The request points to instructions shipped with the app;
 copying it does not enable sharing or send an Agent message. The same guide is

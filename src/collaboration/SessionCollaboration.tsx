@@ -154,7 +154,7 @@ export function SessionCollaborationButton() {
   const collaboration = useSessionCollaboration();
   if (!collaboration) return null;
   const count = Object.values(collaboration.client.unread).reduce((sum, counts) => sum + counts.chat + counts.comments, 0);
-  return <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-cc-border text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover" onClick={() => collaboration.setOpen(!collaboration.open)} aria-expanded={collaboration.open} title="Project collaboration"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-17a3 3 0 0 1 0 6m2 5a5 5 0 0 1 3 4v2"/></svg>{collaboration.status?.sharing ? "Sharing" : "Collaborate"}{count > 0 && <span>{count > 99 ? "99+" : count}</span>}</button>;
+  return <button type="button" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-cc-border text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover" onClick={() => collaboration.setOpen(!collaboration.open)} aria-expanded={collaboration.open} title="Project collaboration (Beta)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-17a3 3 0 0 1 0 6m2 5a5 5 0 0 1 3 4v2"/></svg>{collaboration.status?.sharing ? "Sharing" : "Collaborate"}<span className="rounded border border-cc-border px-1 text-[9px] leading-4 uppercase tracking-wide">Beta</span>{count > 0 && <span>{count > 99 ? "99+" : count}</span>}</button>;
 }
 
 export function SessionViewerOverlays() {
@@ -220,7 +220,7 @@ function SessionCollaborationPanel() {
   const panelError = context.error || status?.error || registrationError;
   const internetError = status?.internetAccess?.error?.replace(/^Error: /, "");
   return <section ref={panelRef} className="session-collaboration" aria-label="Project collaboration">
-    <header><h2>{client.project?.project.name || "Project collaboration"}</h2><button type="button" aria-label="Close collaboration" onClick={() => context.setOpen(false)}>Close</button></header>
+    <header><h2>{client.project?.project.name || "Project collaboration"} <span className="text-[10px] font-medium uppercase tracking-wide text-cc-muted">Beta</span></h2><button type="button" aria-label="Close collaboration" onClick={() => context.setOpen(false)}>Close</button></header>
     <nav className="session-collaboration-tabs" aria-label="Collaboration panels">{(["project", "references", "comments", "chat", "links", "members"] as const).filter((item) => item === "project" || item === "references" && !!status?.connection || item === "comments" && !!room || item === "chat" && !!room || item === "links" && !!room && mutationAvailable(client.project?.self, client.status) || item === "members" && client.project?.self.role === "admin").map((item) => <button key={item} type="button" aria-pressed={tab === item} onClick={() => context.setTab(item)}>{item[0].toUpperCase() + item.slice(1)}{item === "comments" || item === "chat" ? client.unread[client.selectedId]?.[item] ? ` (${client.unread[client.selectedId]![item]})` : "" : ""}</button>)}</nav>
     {panelError && panelError !== internetError && <p className="inline-error" role="alert">{panelError}</p>}
     {notice && <p className="inline-error" role="status">{notice}</p>}

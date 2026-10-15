@@ -10,6 +10,7 @@ import { startCollaborationHost } from "../../../server/collaboration/host.js";
 import { buildCollaborationFrameScript } from "../viewer/collaboration-frame.js";
 import { collaborationFixture } from "./collab-fixture.js";
 import type { CollaborationRole } from "../../../core/types/collaboration.js";
+import { buildCollaborationAssets } from "../../../snapshot/collaboration-build.js";
 
 interface LabMember { id: string; name: string; role: CollaborationRole; token: string }
 interface LabConfig {
@@ -82,18 +83,7 @@ if (await Bun.file(configPath).exists()) {
 
 const repoRoot = resolve(import.meta.dir, "../../..");
 const frontendDir = join(stateDir, "frontend");
-await mkdir(frontendDir, { recursive: true });
-const build = await Bun.build({
-  entrypoints: [join(repoRoot, "src/collaboration/main.tsx")],
-  outdir: frontendDir, target: "browser", minify: false,
-  define: { "process.env.NODE_ENV": JSON.stringify("development") },
-});
-if (!build.success) throw new AggregateError(build.logs, "Could not build the collaboration viewer");
-const entry = build.outputs.find((output) => output.kind === "entry-point" && output.path.endsWith(".js"));
-if (!entry) throw new Error("The collaboration viewer build did not produce an entry point");
-const styles = build.outputs.filter((output) => output.path.endsWith(".css"));
-const relativeAsset = (path: string) => path.slice(frontendDir.length + 1);
-await Bun.write(join(frontendDir, "index.html"), `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Pneuma · Project collaboration</title>${styles.map((asset) => `<link rel="stylesheet" href="/${relativeAsset(asset.path)}">`).join("")}</head><body><div id="root"></div><script type="module" src="/${relativeAsset(entry.path)}"></script></body></html>`);
+await buildCollaborationAssets({ projectRoot: repoRoot, directory: frontendDir });
 
 const host = await startCollaborationHost({
   ...config, stateDir, frontendDir, frameScript: buildCollaborationFrameScript(),

@@ -1,4 +1,8 @@
-# Configure Pneuma collaboration
+# Configure Pneuma collaboration (Beta)
+
+Collaboration is in Beta, with Webcraft as the first supported mode. It shares
+the selected workspace for live viewing and feedback; private Agent conversations
+remain with their owners.
 
 This guide ships with Pneuma and is intended for the person or local coding agent
 helping configure it. Use the connection option and optional hostname in the
@@ -25,7 +29,8 @@ restarted, copy a fresh request from Settings instead of guessing a port.
   response also contains a private member token: read only the fields needed
   and never print, copy, or share the entire response.
 
-The UI entry is **Collaborate**, renamed **Sharing** once sharing is active.
+The UI entry is **Collaborate**, renamed **Sharing** once sharing is active;
+both display a Beta badge.
 Webcraft is the first supported mode. A visitor following an invitation only
 needs a browser; the setup below belongs on the host computer.
 
@@ -159,7 +164,9 @@ separate collaboration listener.
 4. Explain the feedback loop: Control-click starts a comment; the host's
    **Send to AI** attaches feedback above the private Agent composer. The host
    can add instructions and explicitly send it, then review and resolve the
-   comment after the change. Copying this setup request does not send a turn.
+   comment after the change. Anchored comments remain tied to their captured
+   revision; later edits may make a target unavailable, and do not automatically
+   re-anchor the comment. Copying this setup request does not send a turn.
 
 Keep the host computer, owning Session tab, and publisher online. Public access
 closes after ten minutes without authenticated public participants and starts
@@ -178,7 +185,8 @@ when updating an existing link. Existing members can use **Reconnect to Project*
   error rather than starting another connector or killing unrelated processes.
 - LAN connection failures need a reachable local address and allowed application
   traffic, not a router port-forward to the private Session.
-- Keep existing project files, comments, invitations, references, and membership.
+- Upgrades must preserve the existing Project and collaboration state, including
+  project files, comments, chat history, invitations, references, and membership.
   Do not hand-edit the collaboration database or reset it as a setup shortcut.
 - An independently hosted **Cloud host** is a different, advanced deployment
   using a Worker, Durable Object, storage, and provisioning credentials. It is

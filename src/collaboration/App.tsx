@@ -249,7 +249,7 @@ export function CollaborationApp({ token, initialRoom, baseUrl = "" }: { token: 
 
   return <div className={`collab-app${guest ? " is-guest" : ""}`}>
     {!guest && <aside className="project-rail">
-      <div className="brand"><span className="brand-mark"><Icon name="grid" size={20}/></span><span>Pneuma<span className="brand-version">4.0 preview</span></span></div>
+      <div className="brand"><span className="brand-mark"><Icon name="grid" size={20}/></span><span>Pneuma<span className="brand-version">Collaboration Beta</span></span></div>
       <div className="project-name"><span className="project-monogram">{initials(project.project.name)}</span><div><strong>{project.project.name}</strong><span>Shared project</span></div></div>
       <div className="rail-heading"><span>Workspaces</span><span>{project.rooms.length}</span></div>
       <nav aria-label="Project workspaces" className="room-list">{project.rooms.map((item) => <button key={item.id} className={`room-item ${item.id === selectedId ? "selected" : ""}`} onClick={() => client.selectRoom(item.id)} aria-current={item.id === selectedId ? "page" : undefined}>
@@ -264,7 +264,7 @@ export function CollaborationApp({ token, initialRoom, baseUrl = "" }: { token: 
     <main className="room-main">
       {!guest && <div className="mobile-projectbar"><nav aria-label="Project workspaces">{project.rooms.map((item) => <button key={item.id} aria-current={item.id === selectedId ? "page" : undefined} className={item.id === selectedId ? "selected" : ""} onClick={() => client.selectRoom(item.id)}>{item.title}</button>)}</nav>{self.role === "admin" && <button className="icon-button" aria-label="Manage members" onClick={() => setPanel("members")}><Icon name="people"/></button>}</div>}
       <header className="room-header">
-        <div className="room-heading">{guest && <span className="brand-mark"><Icon name="grid"/></span>}<div><h1>{displayRoom?.title || "Choose a workspace"}</h1><div className="room-subtitle"><span>{guest ? "Shared preview" : displayRoom?.mode || "Project collaboration"}</span>{displayRoom && <><span className="separator">/</span><span>Revision {displayRoom.revision}</span></>}</div></div></div>
+        <div className="room-heading">{guest && <span className="brand-mark"><Icon name="grid"/></span>}<div><h1>{displayRoom?.title || "Choose a workspace"}</h1><div className="room-subtitle"><span>Beta</span><span className="separator">/</span><span>{guest ? "Shared preview" : displayRoom?.mode || "Project collaboration"}</span>{displayRoom && <><span className="separator">/</span><span>Revision {displayRoom.revision}</span></>}</div></div></div>
         {displayRoom && <RoomActions self={self} room={displayRoom} enabled={status === "connected"} commenting={commenting} canEditSource={project.capabilities?.editSource !== false} onComment={() => { setCommenting((value) => !value); setTab("comments"); }} onSource={() => setPanel(panel === "source" ? null : "source")} onShare={() => setPanel(panel === "share" ? null : "share")} onToggle={() => void doToggle(displayRoom)}/>}
       </header>
       <div className="presence-bar">
@@ -310,7 +310,7 @@ export function CollaborationApp({ token, initialRoom, baseUrl = "" }: { token: 
 }
 
 function Welcome({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
-  return <div className="welcome"><span className="brand-mark"><Icon name="grid" size={26}/></span><h1>{title}</h1><p>{text}</p>{action}</div>;
+  return <div className="welcome"><span className="brand-mark"><Icon name="grid" size={26}/></span><span className="brand-version">Collaboration Beta</span><h1>{title}</h1><p>{text}</p>{action}</div>;
 }
 
 function EmptyDiscussion({ icon, title, children }: { icon: IconName; title: string; children: ReactNode }) {
