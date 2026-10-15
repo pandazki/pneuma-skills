@@ -48,6 +48,13 @@ export interface CollaborationViewerCompatibility {
   publicationSchema: string;
 }
 
+/** Current packaged viewer committed atomically with a complete new publication. */
+export interface CollaborationPublicationViewer {
+  compatibility: CollaborationViewerCompatibility;
+  frameScript?: string;
+  frameScriptUrl?: string;
+}
+
 export interface ModePublicationInput {
   /** Trusted local input. Only the adapter's explicit projection can leave. */
   files: readonly ViewerFileContent[];

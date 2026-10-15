@@ -1,6 +1,6 @@
 import type { CollaborationReference } from "../types/collaboration-reference.js";
 import { describe, expect, test } from "bun:test";
-import { removeProject, replayProjectRemoval, requireActiveProject, type ProjectData, collaborationLeaseDeadline, collaborationLeaseIsLive, publicRoomRecord, validateReferenceSource, requireReferenceQuota, retainedCollaborationRevisions, validateFiles, validateProjection, validateRegistration } from "../collaboration/authority-domain.js";
+import { applyPublicationViewer, requirePublicationViewer, validatePublicationViewer, requirePackagedPublicationViewer, publicationViewerChanged, removeProject, replayProjectRemoval, requireActiveProject, type ProjectData, collaborationLeaseDeadline, collaborationLeaseIsLive, publicRoomRecord, validateReferenceSource, requireReferenceQuota, retainedCollaborationRevisions, validateFiles, validateProjection, validateRegistration } from "../collaboration/authority-domain.js";
 
 const registration = { workspaceId: "workspace", modeInstanceId: "instance", mode: "webcraft", title: "Public work", page: "content-set/index.html",
   compatibility: { coreVersion: "4.0.0", modeVersion: "1.0.0", viewerHash: "a".repeat(64), publicationSchema: "public-v1" } };
@@ -15,6 +15,23 @@ describe("portable collaboration authority domain", () => {
     expect(() => validateRegistration({ ...registration, enabled: "true" }, "member")).toThrow();
     const publicRoom = publicRoomRecord({ ...room, publisherHash: "private-credential-hash", frameScript: "private-instrumentation" }, true);
     expect(JSON.stringify(publicRoom)).not.toContain("private-"); expect(publicRoom.compatibility).toEqual(registration.compatibility);
+  });
+  test("viewer upgrades require an installed build and retire old revisions without changing stored references", () => {
+    const room: import("../collaboration/authority-domain.js").RoomRecord = { ...validateRegistration(registration, "owner"), publisherHash: "publisher", revision: 3 };
+    const viewer = validatePublicationViewer({ compatibility: { ...registration.compatibility, coreVersion: "4.1.0", viewerHash: "b".repeat(64) }, frameScriptUrl: "/viewer/new-frame.js" }, room)!;
+    const catalog = { coreVersion: "4.1.0", modes: [{ mode: "webcraft", ...viewer.compatibility, frameScriptUrl: viewer.frameScriptUrl }] };
+    expect(() => requirePackagedPublicationViewer(viewer, room.mode, catalog)).not.toThrow();
+    expect(() => requirePackagedPublicationViewer(viewer, room.mode, { ...catalog, modes: [] })).toThrow("packaged viewer");
+    expect(() => requirePackagedPublicationViewer({ ...viewer, frameScriptUrl: "/viewer/missing.js" }, room.mode, catalog)).toThrow("packaged viewer");
+    expect(publicationViewerChanged(room, viewer)).toBe(true);
+    room.revision++;
+    applyPublicationViewer(room, viewer);
+    expect(room.viewerRevisionStart).toBe(4); expect(room.compatibility).toEqual(viewer.compatibility);
+    expect(() => requirePublicationViewer(room, 3)).toThrow("retired viewer");
+    expect(() => requirePublicationViewer(room, 4)).not.toThrow();
+    expect(() => validatePublicationViewer(undefined, room)).toThrow("current packaged viewer");
+    expect(publicationViewerChanged(room, viewer)).toBe(false);
+    expect(publicationViewerChanged(room, { ...viewer, frameScriptUrl: "/viewer/other-frame.js" })).toBe(true);
   });
   test("Source projection must match registered schema and remain bounded plain JSON", () => {
     const room = validateRegistration(registration, "member");

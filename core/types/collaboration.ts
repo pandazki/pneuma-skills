@@ -33,6 +33,8 @@ export interface CollaborationRoom {
   workspaceId?: string;
   modeInstanceId?: string;
   compatibility?: CollaborationViewerCompatibility;
+  /** Earlier revisions remain stored, but their retired viewer is unavailable. */
+  viewerRevisionStart?: number;
   enabled: boolean;
   revision: number;
   page: string;

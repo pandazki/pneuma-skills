@@ -48,6 +48,7 @@ export function mountSessionCollaborationRoutes(app: Hono, options: SessionColla
   let error = "";
   let publisherStatus = "Not sharing";
   let initialized: Promise<void> | null = null;
+  let initializationReady = false;
   let starting: Promise<void> | null = null;
   let stopped = false;
   let projectRemoved = false;
@@ -96,13 +97,13 @@ export function mountSessionCollaborationRoutes(app: Hono, options: SessionColla
     return asset;
   }
   async function status(): Promise<SessionCollaborationStatus> {
-    const connection = binding;
+    const connection = initializationReady ? binding : null;
     const referenceOperationAuthority = connection ? await collaborationReferenceOperationAuthority(connection.authority) : undefined;
-    return { projectAvailable: !!options.projectRoot, supported, sharing: !!room?.enabled && !projectRemoved,
+    return { projectAvailable: !!options.projectRoot, supported, sharing: initializationReady && !!room?.enabled && !projectRemoved,
       publisherStatus: publisher?.status ?? publisherStatus,
       ...(connection ? { connection: { projectId: connection.projectId, workspaceId: connection.workspace.id,
         ownerId: connection.workspace.ownerId, authorityBaseUrl: collaborationAuthorityBase(connection.authority, connection.projectId), token: connection.memberToken, authorityKind: connection.authority.kind, referenceOperationAuthority } } : {}),
-      ...(internetAccess ? { internetAccess } : {}), canManageInternetAccess, ...(entries ? { entries } : {}),
+      ...(internetAccess ? { internetAccess } : {}), canManageInternetAccess, ...(initializationReady && entries ? { entries } : {}),
       ...(room ? { roomId: room.roomId, sharedContentSet: room.contentSet } : {}), ...(projectRemoved ? { projectRemoved: true } : {}), ...(error ? { error } : {}) };
   }
   async function startPublishing(): Promise<void> {
@@ -114,11 +115,14 @@ export function mountSessionCollaborationRoutes(app: Hono, options: SessionColla
       if (!options.manifest || !options.modeDir || !supported) throw new CollaborationRouteError("This running mode cannot publish a shared viewer.");
       if (attachment.projectId !== connection.projectId || attachment.workspaceId !== connection.workspace.id
         || attachment.modeInstanceId !== options.sessionId) throw new CollaborationRouteError("This sharing registration belongs to another running instance.");
+      const asset = await viewerAsset();
       const adapter = await loadModePublicationAdapter(options.modeDir, options.manifest);
       publisherStatus = "Connecting publisher";
       const active = await startCollaborationPublisher({
         authorityBaseUrl: collaborationAuthorityBase(connection.authority, connection.projectId),
         roomId: attachment.roomId, publisherToken: attachment.publisherToken,
+        viewer: { compatibility: { coreVersion: asset.coreVersion, modeVersion: asset.modeVersion, viewerHash: asset.viewerHash, publicationSchema: asset.publicationSchema },
+          ...(asset.frameScriptUrl ? { frameScriptUrl: asset.frameScriptUrl } : { frameScript: adapter.frameScript ?? "" }) },
         getSnapshot: () => readModeContentSnapshot({ workspace: options.workspace, manifest: options.manifest!, adapter,
           input: { files: readPublicationInputFiles(options.workspace, attachment.contentSet), contentSet: attachment.contentSet,
             activeFile: attachment.activeFile, initParams: options.initParams ?? {} } }),
@@ -138,8 +142,10 @@ export function mountSessionCollaborationRoutes(app: Hono, options: SessionColla
       binding = await readLocalCollaborationBinding(options.projectRoot);
       room = await readLocalCollaborationRoom(options.stateDir);
       if (binding?.authority.kind === "lan") await ensureOwnedLanCollaborationService({ projectRoot: options.projectRoot, packageRoot: options.packageRoot, binding, frontendDir });
+      initializationReady = true;
+      error = "";
       if (room?.enabled && binding) void startPublishing().catch(() => undefined);
-    })().catch((failure) => { error = failure instanceof Error ? failure.message : "Cannot load collaboration configuration."; });
+    })().catch((failure) => { initialized = null; initializationReady = false; error = failure instanceof Error ? failure.message : "Cannot load collaboration configuration."; throw new CollaborationRouteError(error, 409); });
     await initialized;
   }
   async function create(body: CreateSessionCollaboration) {
@@ -246,11 +252,12 @@ export function mountSessionCollaborationRoutes(app: Hono, options: SessionColla
     if (!entries.length) entries.push({ kind: "lan", baseUrl: collaborationAuthorityBase(binding.authority, binding.projectId) });
   }
   async function changeInternetAccess(body: CollaborationInternetAccessChange) {
-    const root = requireProject(); await initialize();
+    const root = requireProject();
+    await initialize().catch((failure) => { if (body.enabled !== false) throw failure; });
     if (!binding || binding.authority.kind !== "lan") throw new CollaborationRouteError("Public access is available only for a locally hosted LAN Project.", 409);
     await setInternetAccess(root, body, { projectId: binding.projectId, memberToken: binding.memberToken, authorityOrigin: binding.authority.origin });
     await refreshAccess();
-    error = "";
+    if (initializationReady) error = "";
     return status();
   }
   async function connect(urlString: unknown) {
@@ -319,8 +326,8 @@ export function mountSessionCollaborationRoutes(app: Hono, options: SessionColla
     const current = room && state.rooms.find((entry) => entry.id === room!.roomId);
     if (current) {
       if (current.ownerId !== binding.workspace.ownerId || current.workspaceId !== binding.workspace.id || current.modeInstanceId !== options.sessionId) throw new CollaborationRouteError("Room ownership does not match this private Session.", 403);
-      if (room!.contentSet !== body.contentSet || current.compatibility?.viewerHash !== asset.viewerHash) {
-        throw new CollaborationRouteError("This room is pinned to its published site and viewer build. Remove its sharing registration before sharing a different scope or build.", 409);
+      if (room!.contentSet !== body.contentSet) {
+        throw new CollaborationRouteError("This room is pinned to its published site. Remove its sharing registration before sharing a different scope.", 409);
       }
     }
     const adapter = await loadModePublicationAdapter(options.modeDir, options.manifest);
@@ -381,7 +388,7 @@ export function mountSessionCollaborationRoutes(app: Hono, options: SessionColla
     room = null; error = "";
     return status();
   }
-  app.get("/api/collaboration", async (c) => { await initialize(); if (binding) await refreshAccess().catch((failure) => { error = failure instanceof Error ? failure.message : "Public access status is unavailable."; }); c.header("Cache-Control", "no-store"); return c.json(await status()); });
+  app.get("/api/collaboration", async (c) => { await initialize().catch(() => undefined); if (binding) await refreshAccess().catch((failure) => { error = failure instanceof Error ? failure.message : "Public access status is unavailable."; }); c.header("Cache-Control", "no-store"); return c.json(await status()); });
   for (const [path, action] of Object.entries({ create, "internet-access": changeInternetAccess, connect: (body: { url: unknown }) => connect(body.url), share, stop: stopSharing, remove: removeSharingRegistration })) {
     app.post(`/api/collaboration/${path}`, async (c) => {
       try {

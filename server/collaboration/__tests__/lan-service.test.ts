@@ -48,3 +48,57 @@ test("detached service controls require private loopback key and project admin; 
   expect(restarted.publicKey).toBe(identity.publicKey);
   expect(await ensureOwnedLanCollaborationService({ ...options, binding: { ...binding, authority: { ...binding.authority, origin: "https://remote.test" } } })).toBe(false);
 }, 10_000);
+
+test("a stale detached build retires only when idle and keeps its authority URL and identity", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pneuma-service-upgrade-")); cleanups.push(() => rm(projectRoot, { force: true, recursive: true }));
+  const options = { projectRoot, packageRoot: resolve(import.meta.dir, "../../.."), project: { id: "upgrade-service", name: "Upgrade Project" },
+    owner: { id: "owner", name: "Owner", role: "admin" as const, token: "owner-token" }, frontendDir: projectRoot, publicHostname: "127.0.0.1" };
+  await Bun.write(join(projectRoot, "viewer-manifest.json"), JSON.stringify({ coreVersion: "one", modes: [] }));
+  const origin = await ensureLanCollaborationService(options);
+  const recordPath = join(collaborationStateDir(projectRoot), "service.json");
+  let record = JSON.parse(await readFile(recordPath, "utf8")) as Record;
+  let pid = record.pid;
+  cleanups.push(async () => { try { process.kill(pid, "SIGTERM"); await waitStopped(pid); } catch {} });
+  const beforeIdentity = await (await fetch(`${origin}/projects/upgrade-service/api/identity`)).json() as CollaborationAuthorityIdentity;
+  const url = new URL(`${origin}/projects/upgrade-service/ws?token=owner-token`); url.protocol = "ws:";
+  const socket = new WebSocket(url); cleanups.push(async () => { socket.close(); });
+  await new Promise<void>((resolve) => { socket.onmessage = () => resolve(); });
+  await Bun.write(join(projectRoot, "viewer-manifest.json"), JSON.stringify({ coreVersion: "two", modes: [] }));
+  await expect(ensureLanCollaborationService(options)).rejects.toThrow("active collaboration participants and publishers");
+  expect((JSON.parse(await readFile(recordPath, "utf8")) as Record).pid).toBe(pid);
+  expect(socket.readyState).toBe(WebSocket.OPEN);
+  socket.close();
+  await new Promise<void>((resolve) => { if (socket.readyState === WebSocket.CLOSED) resolve(); else socket.addEventListener("close", () => resolve(), { once: true }); });
+  await Bun.sleep(10);
+  const api = async (path: string, body: unknown) => (await fetch(`${origin}/projects/upgrade-service${path}`, { method: "POST", headers: { Authorization: "Bearer owner-token", "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+  await api("/api/workspaces", { id: "workspace", name: "Workspace", placement: "local" });
+  const registration = await api("/api/rooms", { workspaceId: "workspace", modeInstanceId: "instance", mode: "test", title: "Test", page: "index.html",
+    compatibility: { coreVersion: "one", modeVersion: "1", viewerHash: "a".repeat(64), publicationSchema: "test" } }) as { room: { id: string }; publisherToken: string };
+  const publisherUrl = new URL(`${origin}/projects/upgrade-service/publisher/ws?roomId=${registration.room.id}&token=${registration.publisherToken}`); publisherUrl.protocol = "ws:";
+  const publisher = new WebSocket(publisherUrl); cleanups.push(async () => { publisher.close(); });
+  await new Promise<void>((resolve) => { publisher.onmessage = () => resolve(); });
+  await expect(ensureLanCollaborationService(options)).rejects.toThrow("active collaboration participants and publishers");
+  expect(publisher.readyState).toBe(WebSocket.OPEN);
+  publisher.close();
+  await new Promise<void>((resolve) => { if (publisher.readyState === WebSocket.CLOSED) resolve(); else publisher.addEventListener("close", () => resolve(), { once: true }); });
+  await Bun.sleep(10);
+  expect(await ensureLanCollaborationService(options)).toBe(origin);
+  record = JSON.parse(await readFile(recordPath, "utf8")) as Record;
+  expect(record.pid).not.toBe(pid); pid = record.pid;
+  const afterIdentity = await (await fetch(`${origin}/projects/upgrade-service/api/identity`)).json() as CollaborationAuthorityIdentity;
+  expect(afterIdentity.publicKey).toBe(beforeIdentity.publicKey);
+  expect((await readInternetAccess(projectRoot, { projectId: options.project.id, memberToken: options.owner.token }))?.status).toBe("off");
+}, 15000);
+
+test("an unidentified legacy service never causes a PID signal or a second authority", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pneuma-service-legacy-")); cleanups.push(() => rm(projectRoot, { force: true, recursive: true }));
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => Response.json({ project: { id: "legacy" } }) });
+  cleanups.push(async () => { await server.stop(true); });
+  const { writePrivateJson } = await import("../local-state.js");
+  const directory = collaborationStateDir(projectRoot);
+  await writePrivateJson(join(directory, "service.json"), { pid: process.pid, projectId: "legacy", origin: `http://127.0.0.1:${server.port}` });
+  await expect(ensureLanCollaborationService({ projectRoot, packageRoot: resolve(import.meta.dir, "../../.."), project: { id: "legacy", name: "Legacy" },
+    owner: { id: "owner", name: "Owner", role: "admin", token: "owner-token" }, frontendDir: projectRoot })).rejects.toThrow("End its original collaboration runtime");
+  expect(JSON.parse(await readFile(join(directory, "service.json"), "utf8")).pid).toBe(process.pid);
+  expect(await Bun.file(join(directory, "service-config.json")).exists()).toBe(false);
+});

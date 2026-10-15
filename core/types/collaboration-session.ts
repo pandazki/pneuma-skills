@@ -5,6 +5,7 @@ import type { CollaborationAuthority } from "./collaboration-workspace.js";
 export interface SessionCollaborationStatus {
   projectAvailable: boolean;
   supported: boolean;
+  /** Available only after authority initialization succeeds; a failed upgrade may still have a persisted private binding. */
   connection?: {
     projectId: string;
     workspaceId: string;

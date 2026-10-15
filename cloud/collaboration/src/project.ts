@@ -11,7 +11,7 @@ import {
 } from "../../../core/types/collaboration.js";
 import {
   LIMITS, HttpError, canonical, ensure, finite, mime, publicMember, publicPath,
-  ProjectRemovedError, requireActiveProject, replayProjectRemoval, removeProject, resolveIdentity, sha256, short, validRole, validateFiles, validateView, validateRegistration, publicRoomRecord, validateProjection, collaborationLeaseDeadline, validateFrameScriptUrl, validateReferenceSource, requireReferenceDestination, validateReferenceRoom, requireReferenceQuota, retainedCollaborationRevisions, COLLABORATION_REFERENCE_LIMIT,
+  PublicationViewerUnavailableError, registeredPublicationViewer, validatePublicationViewer, requirePackagedPublicationViewer, publicationViewerChanged, applyPublicationViewer, requirePublicationViewer, ProjectRemovedError, requireActiveProject, replayProjectRemoval, removeProject, resolveIdentity, sha256, short, validRole, validateFiles, validateView, validateRegistration, publicRoomRecord, validateProjection, collaborationLeaseDeadline, validateFrameScriptUrl, validateReferenceSource, requireReferenceDestination, validateReferenceRoom, requireReferenceQuota, retainedCollaborationRevisions, COLLABORATION_REFERENCE_LIMIT,
   COLLABORATION_HOST_OFFLINE,
   type ProjectData, type PublishedFile, type RoomRecord,
 } from "./domain.js";
@@ -514,7 +514,7 @@ export class ProjectCollaboration extends DurableObject<Env> {
     this.rate(`publisher:${roomId}`, 100);
     if (url.pathname === "/api/publisher/state" && request.method === "GET") {
       return json({ room: this.publicRoom(roomId), revision: room.revision,
-        fingerprint: room.fingerprint, hostOnline: this.hostOnline(roomId) });
+        fingerprint: room.fingerprint, hostOnline: this.hostOnline(roomId), viewer: registeredPublicationViewer(room) });
     }
     const upload = /^\/api\/publisher\/blobs\/([a-f0-9]{64})$/.exec(url.pathname);
     if (upload && request.method === "PUT") {
@@ -544,7 +544,15 @@ export class ProjectCollaboration extends DurableObject<Env> {
       if (prior !== undefined) return json(prior);
       ensure(!this.recordRoom(roomId).removed, 409, "Room registration was removed");
       const files = validateFiles(body.files, this.recordRoom(roomId).page);
-      const projection = validateProjection(body.projection, room);
+      const viewer = validatePublicationViewer(body.viewer, this.recordRoom(roomId));
+      if (viewer) {
+        const response = await this.env.ASSETS.fetch(new Request(new URL("/viewer-manifest.json", request.url)));
+        ensure(response.ok, 409, "The packaged viewer catalog is unavailable. Deploy current shared viewer assets before publishing.");
+        const catalog: unknown = await response.json();
+        this.requireLease(request, credential, roomId);
+        requirePackagedPublicationViewer(viewer, this.recordRoom(roomId).mode, catalog);
+      }
+      const projection = validateProjection(body.projection, viewer ? { ...this.recordRoom(roomId), compatibility: viewer.compatibility } : this.recordRoom(roomId));
       const fingerprint = await sha256(projection ? canonical({ files, projection }) : JSON.stringify(files));
       ensure(fingerprint === body.fingerprint, 400, "Manifest fingerprint does not match its files");
       // Only a successful, checksum-validated private R2 upload may satisfy a manifest.
@@ -568,8 +576,9 @@ export class ProjectCollaboration extends DurableObject<Env> {
       ensure(Number.isInteger(body.baseRevision) && body.baseRevision === this.recordRoom(roomId).revision, 409, "Published revision changed; reload before committing");
       const next = structuredClone(this.state());
       const target = next.rooms.find((entry) => entry.id === roomId)!;
-      const changed = target.fingerprint !== fingerprint;
+      const changed = target.fingerprint !== fingerprint || publicationViewerChanged(target, viewer);
       if (changed) { target.revision++; target.updatedAt = Date.now(); target.fingerprint = fingerprint; }
+      applyPublicationViewer(target, viewer);
       target.publicationError = null;
       const result = { revision: target.revision, fingerprint };
       this.ctx.storage.transactionSync(() => {
@@ -622,6 +631,7 @@ export class ProjectCollaboration extends DurableObject<Env> {
     const source = validateReferenceSource(value, this.state().project.id);
     const room = validateReferenceRoom(this.state(), actor, source);
     ensure(this.hostOnline(room.id), 423, HOST_OFFLINE);
+    requirePublicationViewer(room, source.publicationRevision);
     const publication = this.publication(room.id, source.publicationRevision);
     ensure(publication, 410, "The pinned source publication is unavailable");
     return { source, room, publication };
@@ -861,6 +871,7 @@ export class ProjectCollaboration extends DurableObject<Env> {
     let path: string;
     try { path = decodeURIComponent(rawPath!); } catch { throw new HttpError(400, "Invalid resource path"); }
     ensure(publicPath(path), 403, "Private resource");
+    requirePublicationViewer(this.recordRoom(roomId!), Number(revision));
     const manifest = this.ctx.storage.sql.exec<{ files: string }>("SELECT files FROM room_manifests WHERE room_id=? AND revision=?", roomId!, Number(revision)).toArray()[0];
     ensure(manifest, 404, "Resource revision is unavailable");
     const file = (JSON.parse(manifest.files) as PublishedFile[]).find((entry) => entry.path === path);
@@ -868,6 +879,7 @@ export class ProjectCollaboration extends DurableObject<Env> {
     const object = await this.env.BLOBS.get(`${this.state().project.id}/${file.hash}`);
     this.room(this.requireIdentity(grant.c), roomId);
     ensure(grant.v === this.recordRoom(roomId).grantEpoch && grant.e > Date.now(), 403, "Asset grant expired");
+    requirePublicationViewer(this.recordRoom(roomId!), Number(revision));
     ensure(object && object.size === file.size, 404, "Resource is unavailable");
     const base = `/projects/${this.state().project.id}/rooms/${roomId}/revisions/${revision}/${token}/`;
     const originalBytes = request.headers.get("X-Pneuma-Publication-Bytes") === "1";
@@ -943,7 +955,7 @@ export class ProjectCollaboration extends DurableObject<Env> {
       throw new HttpError(404, "Not found");
     } catch (error) {
       if (this.data?.removal) return json({ error: "Project was removed", code: "project_removed" }, 410);
-      if (error instanceof HttpError) return json({ error: error.message, ...(error instanceof ProjectRemovedError ? { code: error.code } : {}) }, error.status);
+      if (error instanceof HttpError) return json({ error: error.message, ...(error instanceof ProjectRemovedError || error instanceof PublicationViewerUnavailableError ? { code: error.code } : {}) }, error.status);
       console.error(JSON.stringify({ event: "collaboration_request_failed", error: error instanceof Error ? error.name : "UnknownError" }));
       return json({ error: "Collaboration request failed" }, 500);
     }

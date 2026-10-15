@@ -54,7 +54,7 @@ async function fixture() {
       manifest: selectedManifest, modeDir: resolve(import.meta.dir, "../../../modes/webcraft"), frontendDir }));
     return app;
   };
-  return { ...tracked, workspace, stateDir, mount };
+  return { ...tracked, workspace, stateDir, frontendDir, mount };
 }
 async function post(app: Hono, path: string, body: unknown) {
   return app.request(`/api/collaboration/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -101,6 +101,39 @@ describe("normal private Session collaboration lifecycle", () => {
     expect(resumed.internetAccess?.status).toBe("off");
     expect((await state(resumed)).project.id).toBe(created.connection!.projectId);
   }, 10_000);
+  test("opening a shared Session after a viewer upgrade replaces the idle authority and republishes automatically", async () => {
+    const f = await fixture(); const app = f.mount();
+    await post(app, "create", { name: "Owner" });
+    const shared = await (await post(app, "share", { title: "Persisted room", contentSet: "site-a", activeFile: "index.html" })).json() as SessionCollaborationStatus;
+    const originalBinding = await readLocalCollaborationBinding(f.root);
+    const originalRoom = await readLocalCollaborationRoom(f.stateDir);
+    const recordPath = join(collaborationStateDir(f.root), "service.json");
+    const beforePid = (await Bun.file(recordPath).json()).pid;
+    const catalogPath = join(f.frontendDir, "viewer-manifest.json");
+    const catalog = await Bun.file(catalogPath).json();
+    catalog.coreVersion = "3.58.0";
+    catalog.modes[0].coreVersion = "3.58.0"; catalog.modes[0].viewerHash = "b".repeat(64);
+    await Bun.write(catalogPath, JSON.stringify(catalog));
+    const resumedApp = f.mount();
+    const waiting = await getStatus(resumedApp);
+    expect(waiting.error).toContain("active collaboration participants and publishers");
+    expect(waiting.connection).toBeUndefined(); expect(waiting.sharing).toBe(false);
+    expect(waiting.canManageInternetAccess).toBe(true);
+    expect((await post(resumedApp, "share", { title: "Must wait", contentSet: "site-a", activeFile: "index.html" })).status).toBe(409);
+    const disabled = await (await post(resumedApp, "internet-access", { enabled: false })).json() as SessionCollaborationStatus;
+    expect(disabled.internetAccess?.status).toBe("off"); expect(disabled.connection).toBeUndefined(); expect(disabled.error).toContain("active collaboration");
+    await f.controllers[0]!.stop();
+    await Bun.sleep(10);
+    const resumed = await getStatus(resumedApp);
+    expect(resumed.error).toBeUndefined(); expect(resumed.roomId).toBe(shared.roomId);
+    await waitUntil(async () => (await state(resumed)).rooms[0]?.revision === 2);
+    const upgraded = (await state(resumed)).rooms[0]!;
+    expect(upgraded.compatibility?.coreVersion).toBe("3.58.0"); expect(upgraded.viewerRevisionStart).toBe(2);
+    expect((await Bun.file(recordPath).json()).pid).not.toBe(beforePid);
+    expect(await readLocalCollaborationBinding(f.root)).toEqual(originalBinding);
+    expect(await readLocalCollaborationRoom(f.stateDir)).toEqual(originalRoom);
+    expect(resumed.connection?.authorityBaseUrl).toBe(shared.connection?.authorityBaseUrl);
+  }, 15000);
   test("a mode without shared viewing can create the project directory but cannot publish a room", async () => {
     const f = await fixture();
     const app = f.mount({ ...manifest, name: "unsupported", viewerApi: undefined });

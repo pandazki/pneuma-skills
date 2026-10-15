@@ -9,7 +9,7 @@ import type {
 
 import { isCollaborationJson } from "../types/viewer-collaboration.js";
 
-import { COLLABORATION_CONTENT_LIMITS, COLLABORATION_ASSET_TYPES, isCollaborationPublicPath, type CollaborationPublicationProjection, type CollaborationPublishedFile } from "../types/collaboration-publication.js";
+import { COLLABORATION_CONTENT_LIMITS, COLLABORATION_ASSET_TYPES, isCollaborationPublicPath, type CollaborationViewerCompatibility, type CollaborationPublicationViewer, type CollaborationPublicationProjection, type CollaborationPublishedFile } from "../types/collaboration-publication.js";
 
 export const LIMITS = {
   ...COLLABORATION_CONTENT_LIMITS,
@@ -142,18 +142,23 @@ export const COLLABORATION_OWNER_LEASE_MS = 15_000;
 export const COLLABORATION_PUBLISHER_LEASE_MS = 45_000;
 export const COLLABORATION_HOST_OFFLINE = "The host is offline. Rejoin when the host is online.";
 
-/** Registration binds logical ownership; a runtime endpoint never owns a room. */
-export function validateRegistration(value: Record<string, unknown>, ownerId: string): Omit<RoomRecord, "publisherHash"> {
-  const compatibility = value.compatibility as Record<string, unknown>;
+export function validateViewerCompatibility(value: unknown): CollaborationViewerCompatibility {
+  const compatibility = value as Record<string, unknown>;
   ensure(compatibility && typeof compatibility === "object" && !Array.isArray(compatibility), 400, "Viewer compatibility is required");
   const fields = { coreVersion: short(compatibility.coreVersion, 100, "core version"),
     modeVersion: short(compatibility.modeVersion, 100, "mode version"),
     viewerHash: short(compatibility.viewerHash, 200, "viewer hash"),
     publicationSchema: short(compatibility.publicationSchema, 100, "publication schema") };
+  ensure(/^[a-f0-9]{64}$/.test(fields.viewerHash), 400, "Viewer hash must identify a built artifact");
+  return fields;
+}
+
+/** Registration binds logical ownership; a runtime endpoint never owns a room. */
+export function validateRegistration(value: Record<string, unknown>, ownerId: string): Omit<RoomRecord, "publisherHash"> {
+  const fields = validateViewerCompatibility(value.compatibility);
   ensure(value.enabled === undefined || typeof value.enabled === "boolean", 400, "Room sharing flag must be boolean");
   const page = short(value.page, 500, "entry page");
   ensure(publicPath(page), 400, "Room requires a public entry resource");
-  ensure(/^[a-f0-9]{64}$/.test(fields.viewerHash), 400, "Viewer hash must identify a built artifact");
   ensure(typeof value.workspaceId === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(value.workspaceId)
     && typeof value.modeInstanceId === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(value.modeInstanceId), 400, "Invalid workspace or mode instance id");
   return { id: crypto.randomUUID(), ownerId,
@@ -170,7 +175,56 @@ export function publicRoomRecord(room: RoomRecord, hostOnline: boolean): Collabo
     enabled: room.enabled, revision: room.revision, page: room.page, updatedAt: room.updatedAt, hostOnline,
     ...(room.workspaceId ? { workspaceId: room.workspaceId } : {}),
     ...(room.modeInstanceId ? { modeInstanceId: room.modeInstanceId } : {}),
-    ...(room.compatibility ? { compatibility: { ...room.compatibility } } : {}) };
+    ...(room.compatibility ? { compatibility: { ...room.compatibility } } : {}),
+    ...(room.viewerRevisionStart ? { viewerRevisionStart: room.viewerRevisionStart } : {}) };
+}
+
+/** A viewer change is accepted only alongside a complete publication, never by relabeling a room. */
+export function validatePublicationViewer(value: unknown, room: RoomRecord): CollaborationPublicationViewer | undefined {
+  if (value === undefined) {
+    ensure(!room.viewerRevisionStart, 409, "This room requires a current packaged viewer. Update and reopen its publishing Session.");
+    return undefined;
+  }
+  ensure(value && typeof value === "object" && !Array.isArray(value), 400, "Invalid publication viewer");
+  const body = value as Record<string, unknown>;
+  const compatibility = validateViewerCompatibility(body.compatibility);
+  ensure(body.frameScript === undefined || typeof body.frameScript === "string" && new TextEncoder().encode(body.frameScript).length <= 256 * 1024, 400, "Invalid frame instrumentation");
+  return { compatibility,
+    ...(typeof body.frameScript === "string" ? { frameScript: body.frameScript } : {}),
+    ...(body.frameScriptUrl !== undefined ? { frameScriptUrl: validateFrameScriptUrl(body.frameScriptUrl) } : {}) };
+}
+/** Authorities accept only a viewer actually present in their installed public catalog. */
+export function requirePackagedPublicationViewer(viewer: CollaborationPublicationViewer, mode: string, catalog: unknown): void {
+  const built = catalog as { coreVersion?: string; modes?: Array<{ mode: string; frameScriptUrl?: string } & CollaborationPublicationViewer["compatibility"]> } | null;
+  ensure(built && Array.isArray(built.modes) && built.coreVersion === viewer.compatibility.coreVersion
+    && built.modes.some((asset) => asset.mode === mode && asset.frameScriptUrl === viewer.frameScriptUrl
+      && canonical({ coreVersion: asset.coreVersion, modeVersion: asset.modeVersion, viewerHash: asset.viewerHash, publicationSchema: asset.publicationSchema }) === canonical(viewer.compatibility)),
+  409, "Publication requires the current packaged viewer. Update and reopen the publishing Session and authority together.");
+}
+export function registeredPublicationViewer(room: RoomRecord): CollaborationPublicationViewer | undefined {
+  return room.compatibility ? { compatibility: room.compatibility,
+    ...(room.frameScript !== undefined ? { frameScript: room.frameScript } : {}),
+    ...(room.frameScriptUrl !== undefined ? { frameScriptUrl: room.frameScriptUrl } : {}) } : undefined;
+}
+export function publicationViewerChanged(room: RoomRecord, viewer: CollaborationPublicationViewer | undefined): boolean {
+  return !!viewer && canonical(registeredPublicationViewer(room)) !== canonical(viewer);
+}
+export function applyPublicationViewer(room: RoomRecord, viewer: CollaborationPublicationViewer | undefined): void {
+  if (!viewer) return;
+  if (publicationViewerChanged(room, viewer)) {
+    room.viewerRevisionStart = room.revision;
+    room.grantEpoch++;
+  }
+  room.compatibility = viewer.compatibility;
+  room.frameScript = viewer.frameScript;
+  room.frameScriptUrl = viewer.frameScriptUrl;
+}
+export class PublicationViewerUnavailableError extends HttpError {
+  readonly code = "publication_viewer_unavailable";
+  constructor() { super(410, "This publication used a retired viewer build and is unavailable. Its history is retained; refresh the reference explicitly to use the current publication."); }
+}
+export function requirePublicationViewer(room: RoomRecord, revision: number): void {
+  if (room.viewerRevisionStart && revision < room.viewerRevisionStart) throw new PublicationViewerUnavailableError();
 }
 
 export function validateProjection(value: unknown, room: CollaborationRoom): CollaborationPublicationProjection | undefined {

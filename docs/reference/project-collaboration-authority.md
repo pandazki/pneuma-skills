@@ -124,6 +124,32 @@ operation ID.
 Recovery errors block reference actions while leaving connection status and
 public-access shutdown available.
 
+### Package upgrades and detached ownership
+
+The detached LAN authority belongs to its Project, independently of the desktop
+window or private Session. Its private service record captures the package
+location/version, public viewer catalog digest, and a random process-instance
+identity. Opening an owning Project compares that build with the current package
+before reusing it. A changed build uses the authenticated loopback lifecycle
+control to retire only the identified idle instance. Retirement closes new
+admissions atomically; a live participant or publisher lease prevents it and
+returns instructions to close sharing Sessions and participant windows before
+reopening. Until that check succeeds, private Session status withholds connection
+credentials and sharing readiness so a newly opened client cannot keep the old
+authority busy. The error and explicit public-access shutdown remain available.
+The authority also checks its installed build periodically and retires
+when changed and idle. No PID is signaled to perform an upgrade.
+
+Restart reuses the same Project database, private authority key, configured LAN
+hostname and port. Rooms, members, guest credentials/invitations, discussion,
+references and operation receipts remain intact. Public ingress restarts off;
+a temporary public hostname therefore needs explicit enable and verified
+reconnect as described above. An unrecognized process or a pre-release Preview
+service without lifecycle identity is never replaced automatically. End that
+original runtime through the application or terminal that started it, or restart
+the computer, then reopen the Project; do not delete collaboration state or infer
+process ownership from a PID alone.
+
 ## Identity and registration
 
 Canonical endpoints are scoped by `/projects/:projectId`. The cloud deployment
@@ -162,7 +188,7 @@ live publisher. The `publisher_ready` frame returns a connection ID used as
 
 Publisher endpoints are `/api/publisher/rooms/:roomId/state`, `/blobs/:sha256`,
 `/commit`, and `/error`. Blob uploads verify their SHA-256 and byte length.
-Commit accepts `{ opId, baseRevision, fingerprint, files, projection? }` and
+Commit accepts `{ opId, baseRevision, fingerprint, files, projection?, viewer? }` and
 checks the current publisher lease, confirmed resource bytes, and compare-and-swap
 revision before accepting metadata and its operation receipt together.
 
@@ -171,6 +197,28 @@ The projection carries only bounded plain JSON `sources`, optional public
 `initParams`, and `entryAddress`. Its fingerprint is SHA-256 of the shared
 canonical encoding of `{ files, projection }`. Legacy resource-only publications
 retain SHA-256 of `JSON.stringify(files)`.
+
+Normal Sessions supply `viewer: { compatibility, frameScript?, frameScriptUrl? }`
+from their current packaged viewer catalog on every publication. The authority
+checks the exact core/mode/schema/artifact identity and instrumentation asset URL
+against its own installed catalog. A stale or unavailable build is rejected.
+Publisher state returns the registered `viewer` for comparison. A changed viewer
+or instrumentation forces a new revision even when source bytes are unchanged;
+the complete snapshot, viewer metadata and receipt are accepted atomically.
+The current publisher connection still fences commits, so an old connection
+cannot write after replacement. Opening a persisted sharing Session automatically
+republishes using its current adapter and viewer; it retains the room and scope.
+
+A viewer change records `room.viewerRevisionStart`, the first revision rendered
+by the current build. Earlier manifests and pinned-reference metadata remain
+stored and retain their original revision and captured compatibility, but their
+resources and reference resolution fail with HTTP 410 and
+`code: "publication_viewer_unavailable"`. The response explains the retired build
+and explicit reference-refresh action. Old snapshots are never relabeled as
+compatible with a new viewer. This permits ordinary package builds to replace
+public assets without promising historical viewer availability. Content-only
+updates within the same build retain ordinary pinned-revision access. Publishers
+omitting viewer metadata cannot update a room after its first viewer transition.
 
 `GET /api/rooms/:roomId` and `content` WebSocket frames carry a complete
 `publication: { revision, files, projection? }` paired with their room revision

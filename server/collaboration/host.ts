@@ -16,7 +16,7 @@ import {
   type CollaborationServerMessage, type CollaborationView,
 } from "../../core/types/collaboration.js";
 import { HttpError, ensure, short, finite, validRole as role, publicMember, canonical,
-  ProjectRemovedError, requireActiveProject, replayProjectRemoval, removeProject, resolveIdentity, validateRegistration, publicRoomRecord, validateFiles, validateProjection, validateView, collaborationLeaseIsLive, validateFrameScriptUrl, validateReferenceSource, requireReferenceDestination, validateReferenceRoom, requireReferenceQuota, COLLABORATION_REFERENCE_LIMIT,
+  PublicationViewerUnavailableError, registeredPublicationViewer, validatePublicationViewer, requirePackagedPublicationViewer, publicationViewerChanged, applyPublicationViewer, requirePublicationViewer, ProjectRemovedError, requireActiveProject, replayProjectRemoval, removeProject, resolveIdentity, validateRegistration, publicRoomRecord, validateFiles, validateProjection, validateView, collaborationLeaseIsLive, validateFrameScriptUrl, validateReferenceSource, requireReferenceDestination, validateReferenceRoom, requireReferenceQuota, COLLABORATION_REFERENCE_LIMIT,
   COLLABORATION_OWNER_LEASE_MS, COLLABORATION_PUBLISHER_LEASE_MS, COLLABORATION_HOST_OFFLINE, LIMITS,
 } from "../../core/collaboration/authority-domain.js";
 import { isCollaborationJson, isViewerViewState } from "../../core/types/viewer-collaboration.js";
@@ -151,6 +151,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
   const watchers: WorkspaceWatcher[] = [];
   const publicationErrors = new Set<string>();
   let closed = false;
+  let retiring = false;
   let publicServer: ReturnType<typeof Bun.serve<Connection>> | null = null;
   let publicOrigin: string | null = null;
   let publicAdmission = false;
@@ -217,6 +218,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
   }
 
   function requireIdentity(credential: string): CollaborationIdentity {
+    ensure(!retiring, 503, "The authority is restarting for a package update");
     requireActiveProject(activeState());
     const actor = identity(credential);
     ensure(actor, 401, "Credential is invalid or expired");
@@ -454,6 +456,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
     let path: string;
     try { path = decodeURIComponent(rawPath); } catch { throw new HttpError(400, "Invalid resource path"); }
     ensure(publicPath(path), 403, "Private resource");
+    requirePublicationViewer(room, Number(revisionString));
     const found = store.file(roomId, Number(revisionString), path);
     ensure(found, 404, "Resource revision is unavailable");
     const originalBytes = request.headers.get("X-Pneuma-Publication-Bytes") === "1";
@@ -542,6 +545,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
     reconcileAccess(); return json(result, 201);
   }
   function requirePublisher(credential: string, roomId?: string): RoomRecord {
+    ensure(!retiring, 503, "The authority is restarting for a package update");
     requireActiveProject(activeState());
     const room = activeState().rooms.find((room) => !room.removed && room.publisherHash === credential && (!roomId || room.id === roomId));
     ensure(room, 401, "Publisher credential required for this room");
@@ -592,7 +596,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
     let room = requirePublisher(credential, scoped?.[1]);
     const path = scoped ? `/api/publisher/${scoped[2]}` : url.pathname;
     checkRate(credential);
-    if (path === "/api/publisher/state" && request.method === "GET") return json({ room: publicRoom(room), revision: room.revision, fingerprint: room.fingerprint, hostOnline: hostOnline(room.id) });
+    if (path === "/api/publisher/state" && request.method === "GET") return json({ room: publicRoom(room), revision: room.revision, fingerprint: room.fingerprint, hostOnline: hostOnline(room.id), viewer: registeredPublicationViewer(room) });
     const upload = /^\/api\/publisher\/blobs\/([a-f0-9]{64})$/.exec(path);
     if (upload && request.method === "PUT") {
       const bytes = await binaryBody(request, CONTENT_LIMITS.fileBytes);
@@ -613,7 +617,17 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
       const prior = store.receipt(actor, opId);
       if (prior) { ensure(prior.fingerprint === fingerprint, 409, "Operation id was used for different input"); return json(prior.result); }
       const files = validateFiles(body.files, room.page);
-      const projection = validateProjection(body.projection, room);
+      const viewer = validatePublicationViewer(body.viewer, room);
+      if (viewer) {
+        let catalog: unknown;
+        try { catalog = await Bun.file(join(options.frontendDir, "viewer-manifest.json")).json(); }
+        catch { throw new HttpError(409, "The packaged viewer catalog is unavailable. Rebuild shared viewer assets and reopen the publishing Session."); }
+        room = requirePublisherLease(request, credential, room.id);
+        const raced = store.receipt(actor, opId);
+        if (raced) { ensure(raced.fingerprint === fingerprint, 409, "Operation id was used for different input"); return json(raced.result); }
+        requirePackagedPublicationViewer(viewer, room.mode, catalog);
+      }
+      const projection = validateProjection(body.projection, viewer ? { ...room, compatibility: viewer.compatibility } : room);
       const digest = hash(projection ? canonical({ files, projection }) : JSON.stringify(files));
       ensure(digest === body.fingerprint, 400, "Manifest fingerprint does not match its files");
       const blobs = new Map<string, Uint8Array>();
@@ -624,8 +638,9 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
       ensure(Number.isInteger(body.baseRevision) && body.baseRevision === room.revision, 409, "Published revision changed; reload before committing");
       ensure(store.receiptCount() < 100_000, 409, "Operation receipt capacity reached");
       const next = structuredClone(activeState()); const target = next.rooms.find((entry) => entry.id === room.id)!;
-      const changed = target.fingerprint !== digest;
+      const changed = target.fingerprint !== digest || publicationViewerChanged(target, viewer);
       if (changed) { target.revision++; target.fingerprint = digest; target.updatedAt = Date.now(); }
+      applyPublicationViewer(target, viewer);
       target.publicationError = null;
       const result = { revision: target.revision, fingerprint: digest };
       store.db.transaction(() => {
@@ -658,6 +673,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
     const source = validateReferenceSource(value, options.project.id);
     const room = validateReferenceRoom(activeState(), actor, source);
     ensure(hostOnline(room.id), 423, COLLABORATION_HOST_OFFLINE);
+    requirePublicationViewer(room, source.publicationRevision);
     const publication = store.manifest(room.id, source.publicationRevision);
     ensure(publication, 410, "The pinned source publication is unavailable");
     return { source, room, publication };
@@ -970,7 +986,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
       maxRequestBodySize: MAX_REQUEST_BYTES,
       async fetch(request, runtime) {
         try {
-          ensure(!closed, 503, "Host is closing");
+          ensure(!closed && !retiring, 503, "Host is closing for a package update");
           ensure(ingress !== "public" || publicAllowed(), 503, "Public access is disabled");
           const url = new URL(request.url);
           const scope = /^\/projects\/([a-zA-Z0-9_-]{1,100})(\/.*)?$/.exec(url.pathname);
@@ -1015,7 +1031,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
           return staticFrontend(url, request);
         } catch (error) {
           if (activeState().removal && request.method === "DELETE" && new URL(request.url).pathname.endsWith("/api/project")) return json({ error: "Project was removed", code: "project_removed" }, 410);
-          if (error instanceof HttpError) return json({ error: error.message, ...(error instanceof ProjectRemovedError ? { code: error.code } : {}) }, error.status);
+          if (error instanceof HttpError) return json({ error: error.message, ...(error instanceof ProjectRemovedError || error instanceof PublicationViewerUnavailableError ? { code: error.code } : {}) }, error.status);
           console.warn("[collaboration] request failed", error);
           return json({ error: "Collaboration request failed" }, 500);
         }
@@ -1024,6 +1040,7 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
         maxPayloadLength: 16 * 1024,
         idleTimeout: 60,
         open(socket) {
+          if (closed || retiring) { socket.close(1012, "Authority updating"); return; }
           if (socket.data.ingress === "public" && !publicAllowed()) { socket.close(1008, "Public access disabled"); return; }
           if (activeState().removal) { socket.close(1008, "Project removed"); return; }
           if (socket.data.kind === "publisher") {
@@ -1136,6 +1153,18 @@ export async function startCollaborationHost(options: CollaborationHostOptions) 
   const address = options.hostname === "0.0.0.0" ? "127.0.0.1" : options.hostname ?? "127.0.0.1";
   authorityOrigin = `http://${options.publicHostname ?? address}:${server.port}`;
   return {
+    canControlLifecycle(token: string): boolean {
+      return identity(hash(token))?.kind === "member";
+    },
+    /** Atomically close admissions only after every participant/publisher lease has ended. */
+    retireIfIdle(): boolean {
+      const now = Date.now();
+      if ([...sockets].some((socket) => identity(socket.data.credential) && now - socket.data.lastSeen < 60_000)
+        || [...publishers].some((socket) => collaborationLeaseIsLive(socket.data.lastSeen, "publisher", now))
+        || [...internalPublisherSeen.values()].some((seen) => collaborationLeaseIsLive(seen, "publisher", now))) return false;
+      retiring = true;
+      return true;
+    },
     canManageInternetAccess(token: string): boolean {
       const actor = identity(hash(token)); return !activeState().removal && actor?.kind === "member" && actor.role === "admin";
     },

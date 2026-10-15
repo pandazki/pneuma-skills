@@ -16,7 +16,8 @@ interface LanServiceConfig {
   port: number;
   internetProvider?: CollaborationTunnelProvider;
 }
-interface LanServiceRecord { pid: number; projectId: string; origin: string; port: number; controlOrigin: string; controlKey: string }
+interface LanServiceBuild { packageRoot: string; coreVersion: string; viewerCatalogHash: string }
+interface LanServiceRecord { instanceId?: string; build?: LanServiceBuild; pid: number; projectId: string; origin: string; port: number; controlOrigin: string; controlKey: string }
 
 export function collaborationLanHostname(): string {
   const interfaces = Object.entries(networkInterfaces());
@@ -37,6 +38,29 @@ async function readOptionalJson<T>(path: string): Promise<T | null> {
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
 }
 
+async function serviceBuild(packageRoot: string, frontendDir: string): Promise<LanServiceBuild> {
+  const metadata = await Bun.file(join(packageRoot, "package.json")).json() as { version: string };
+  const catalog = Bun.file(join(frontendDir, "viewer-manifest.json"));
+  return { packageRoot: resolve(packageRoot), coreVersion: metadata.version,
+    viewerCatalogHash: await catalog.exists() ? new Bun.CryptoHasher("sha256").update(await catalog.bytes()).digest("hex") : "unbuilt" };
+}
+const sameBuild = (a: LanServiceBuild | undefined, b: LanServiceBuild) => !!a
+  && a.packageRoot === b.packageRoot && a.coreVersion === b.coreVersion && a.viewerCatalogHash === b.viewerCatalogHash;
+
+async function retireStaleService(record: LanServiceRecord, projectId: string, memberToken: string, expected: LanServiceBuild): Promise<void> {
+  const legacy = "The running LAN authority predates safe package upgrades. End its original collaboration runtime using the application or terminal that started it, or restart this computer, then reopen this Project. Its shared history and invitations will be retained.";
+  if (!record.instanceId || !record.build || !/^http:\/\/127\.0\.0\.1:\d+$/.test(record.controlOrigin) || !record.controlKey) throw new Error(legacy);
+  const response = await fetch(`${record.controlOrigin}/lifecycle`, { method: "POST",
+    headers: { Authorization: `Bearer ${record.controlKey}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(3000),
+    body: JSON.stringify({ projectId, memberToken, instanceId: record.instanceId, expectedBuild: expected }) });
+  const result = await response.json() as { error?: string; instanceId?: string; build?: LanServiceBuild; retired?: boolean };
+  if (!response.ok) throw new Error(result.error ?? legacy);
+  if (result.instanceId !== record.instanceId || !sameBuild(result.build, record.build) || !result.retired) throw new Error("The existing LAN authority could not confirm safe retirement. No replacement was started.");
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) { if (!processExists(record.pid)) return; await Bun.sleep(25); }
+  throw new Error("The old LAN authority has not confirmed its exit. No replacement was started; retry after it closes.");
+}
+
 /** One detached LAN authority per Project, independent of any private Agent Session. */
 export async function ensureLanCollaborationService(options: {
   projectRoot: string;
@@ -53,14 +77,15 @@ export async function ensureLanCollaborationService(options: {
   const configPath = join(directory, "service-config.json");
   const record = await readOptionalJson<LanServiceRecord>(recordPath);
   if (record && record.projectId !== options.project.id) throw new Error("LAN authority state belongs to another project.");
+  const expectedBuild = await serviceBuild(options.packageRoot, options.frontendDir);
   if (record && processExists(record.pid)) {
     const response = await fetch(`${record.origin}/projects/${encodeURIComponent(options.project.id)}/api/state`, {
       headers: { Authorization: `Bearer ${options.connectionToken ?? options.owner.token}` }, signal: AbortSignal.timeout(3000),
     });
     const state = await response.json() as CollaborationProjectState;
     if (!response.ok || state.project?.id !== options.project.id) throw new Error("The existing LAN authority did not validate this Project's connection.");
-    if (!record.controlOrigin || !record.controlKey) throw new Error("The running LAN authority predates public access controls. Stop its original LAN service and reopen the Project; a second authority will not be started.");
-    return record.origin;
+    if (sameBuild(record.build, expectedBuild)) return record.origin;
+    await retireStaleService(record, options.project.id, options.connectionToken ?? options.owner.token, expectedBuild);
   }
   const previous = await readOptionalJson<LanServiceConfig>(configPath);
   if (previous && previous.project.id !== options.project.id) throw new Error("LAN authority configuration belongs to another project.");
@@ -114,6 +139,8 @@ async function runService(projectRoot: string): Promise<void> {
   const recordPath = join(directory, "service.json");
   const config = await readOptionalJson<LanServiceConfig>(configPath);
   if (!config) throw new Error("Missing private Project authority configuration.");
+  const build = await serviceBuild(resolve(import.meta.dir, "../.."), config.frontendDir);
+  const instanceId = crypto.randomUUID();
   const { startCollaborationHost } = await import("./host.js");
   const host = await startCollaborationHost({
     project: config.project, stateDir: join(directory, "authority"), rooms: [], members: [config.owner],
@@ -133,10 +160,19 @@ async function runService(projectRoot: string): Promise<void> {
     async fetch(request) {
       const headers = { "Cache-Control": "no-store", "Content-Type": "application/json" };
       const json = (body: unknown, status = 200) => Response.json(body, { status, headers });
-      if (new URL(request.url).pathname !== "/internet-access" || request.method !== "POST") return json({ error: "Not found" }, 404);
+      const path = new URL(request.url).pathname;
+      if (!["/internet-access", "/lifecycle"].includes(path) || request.method !== "POST") return json({ error: "Not found" }, 404);
       if (request.headers.get("authorization") !== `Bearer ${controlKey}`) return json({ error: "Private service control credential required" }, 401);
       try {
-        const body = await request.json() as { projectId?: string; memberToken?: string; change?: CollaborationInternetAccessChange };
+        const body = await request.json() as { projectId?: string; memberToken?: string; change?: CollaborationInternetAccessChange; instanceId?: string; expectedBuild?: LanServiceBuild };
+        if (path === "/lifecycle") {
+          if (body.projectId !== config.project.id || typeof body.memberToken !== "string" || !host.canControlLifecycle(body.memberToken)) return json({ error: "Local Project membership required" }, 403);
+          if (body.instanceId !== instanceId || !body.expectedBuild) return json({ error: "Authority lifecycle identity changed; retry opening the Project" }, 409);
+          if (sameBuild(build, body.expectedBuild)) return json({ instanceId, build, retired: false });
+          if (!host.retireIfIdle()) return json({ error: "A package update is waiting for active collaboration participants and publishers. Close the Project's sharing Sessions and participant windows, then reopen it to update safely." }, 409);
+          setTimeout(() => { void stop(); }, 25);
+          return json({ instanceId, build, retired: true });
+        }
         if (body.projectId !== config.project.id || typeof body.memberToken !== "string" || !host.canManageInternetAccess(body.memberToken))
           return json({ error: "Local Project administrator required" }, 403);
         if (body.change) {
@@ -148,12 +184,23 @@ async function runService(projectRoot: string): Promise<void> {
     },
   });
   await writePrivateJson(configPath, { ...config, port: host.port });
-  await writePrivateJson(recordPath, { pid: process.pid, projectId: config.project.id, origin, port: host.port,
+  await writePrivateJson(recordPath, { instanceId, build, pid: process.pid, projectId: config.project.id, origin, port: host.port,
     controlOrigin: `http://127.0.0.1:${controlServer.port}`, controlKey } satisfies LanServiceRecord);
+  let checkingBuild = false;
+  const buildTimer = setInterval(() => {
+    if (checkingBuild || stopping) return;
+    checkingBuild = true;
+    void serviceBuild(build.packageRoot, config.frontendDir).then(async (current) => {
+      if (!sameBuild(build, current) && host.retireIfIdle()) await stop();
+    }).catch((error) => { console.warn("Could not inspect the installed collaboration build", error); })
+      .finally(() => { checkingBuild = false; });
+  }, 5000);
+  buildTimer.unref();
   let stopping = false;
-  const stop = async () => {
+  async function stop() {
     if (stopping) return;
     stopping = true;
+    clearInterval(buildTimer);
     try {
       await controlServer.stop(true);
       await internet.close();
@@ -167,7 +214,7 @@ async function runService(projectRoot: string): Promise<void> {
       // Do not report a clean stop; the provider watchdog owns crash cleanup.
       process.exit(1);
     }
-  };
+  }
   process.on("SIGTERM", () => { void stop(); });
   process.on("SIGINT", () => { void stop(); });
   console.log(`Project collaboration authority ready at ${origin}/projects/${config.project.id}`);

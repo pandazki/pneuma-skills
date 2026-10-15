@@ -1,4 +1,5 @@
-import type { CollaborationPublicationProjection, CollaborationPublishedFile } from "../../core/types/collaboration-publication.js";
+import type { CollaborationPublicationViewer, CollaborationPublicationProjection, CollaborationPublishedFile } from "../../core/types/collaboration-publication.js";
+import { canonical } from "../../core/collaboration/authority-domain.js";
 import type { CollaborationRoom } from "../../core/types/collaboration.js";
 
 export interface CollaborationPublisherSnapshot {
@@ -16,9 +17,10 @@ export interface CollaborationPublisherOptions {
   /** Reuse an existing workspace watcher when available. */
   subscribeChanges?: (changed: () => void) => (() => void);
   onStatus?: (message: string) => void;
+  viewer?: CollaborationPublicationViewer;
 }
-interface Head { room: CollaborationRoom; revision: number; fingerprint: string; hostOnline: boolean }
-interface Commit { opId: string; baseRevision: number; fingerprint: string; files: CollaborationPublishedFile[]; projection?: CollaborationPublicationProjection }
+interface Head { viewer?: CollaborationPublicationViewer; room: CollaborationRoom; revision: number; fingerprint: string; hostOnline: boolean }
+interface Commit { viewer?: CollaborationPublicationViewer; opId: string; baseRevision: number; fingerprint: string; files: CollaborationPublishedFile[]; projection?: CollaborationPublicationProjection }
 class AuthorityError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
@@ -81,14 +83,15 @@ export async function startCollaborationPublisher(options: CollaborationPublishe
     }
     const snapshot = await options.getSnapshot();
     const head = await request<Head>(`${roomPath}/state`);
-    if (head.fingerprint === snapshot.fingerprint) { await post("error", { message: "" }); return { revision: head.revision, fingerprint: head.fingerprint }; }
+    const sameViewer = !options.viewer || canonical(head.viewer) === canonical(options.viewer);
+    if (head.fingerprint === snapshot.fingerprint && sameViewer) { await post("error", { message: "" }); return { revision: head.revision, fingerprint: head.fingerprint }; }
     for (const [hash, bytes] of snapshot.blobs) {
       if (uploaded.has(hash)) continue;
       await request(`${roomPath}/blobs/${hash}`, { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: new Uint8Array(bytes).buffer });
       uploaded.add(hash);
       if (uploaded.size > 4096) uploaded.delete(uploaded.values().next().value!);
     }
-    pending = { opId: crypto.randomUUID(), baseRevision: head.revision, files: snapshot.files,
+    pending = { ...(options.viewer ? { viewer: options.viewer } : {}), opId: crypto.randomUUID(), baseRevision: head.revision, files: snapshot.files,
       fingerprint: snapshot.fingerprint, ...(snapshot.projection ? { projection: snapshot.projection } : {}) };
     let result: { revision: number; fingerprint: string };
     try { result = await commit(pending); }

@@ -22,6 +22,7 @@ const roomId = "website";
 const ownerToken = crypto.randomUUID() + crypto.randomUUID();
 const publisherToken = crypto.randomUUID() + crypto.randomUUID();
 const bootstrapSecret = crypto.randomUUID() + crypto.randomUUID();
+const upgradeCompatibility = { coreVersion: "4.1.0", modeVersion: "1.0.0", viewerHash: "f".repeat(64), publicationSchema: "upgrade-v1" };
 const frameScript = "window.__pneumaCloudFrame = true;";
 const bootstrap = {
   project: { id: projectId, name: "Cloud collaboration acceptance" },
@@ -245,7 +246,7 @@ async function startRuntime(): Promise<void> {
       },
       {
         name: "test-static-assets", modules: true, compatibilityDate: "2026-10-13",
-        script: 'export default { fetch(request) { return new URL(request.url).pathname === "/" ? new Response("<!doctype html><html><body>Public shell</body></html>", { headers: { "Content-Type": "text/html" } }) : new Response("Not found", { status: 404 }); } };',
+        script: `export default { fetch(request) { if (new URL(request.url).pathname === "/viewer-manifest.json") return Response.json(${JSON.stringify({ coreVersion: "4.1.0", modes: [{ mode: "webcraft", ...upgradeCompatibility }] })}); return new URL(request.url).pathname === "/" ? new Response("<!doctype html><html><body>Public shell</body></html>", { headers: { "Content-Type": "text/html" } }) : new Response("Not found", { status: 404 }); } };`,
       },
     ],
   });
@@ -505,12 +506,17 @@ describe("cloud project collaboration with real workerd and R2", () => {
   test("publisher leases exclude duplicate connections and report recoverable publication failures", async () => {
     const observer = await connect(reader.token);
     const state = await publisherState();
-    const duplicate = await request(null, `/publisher/ws?token=${publisherToken}`, "GET", undefined, { Upgrade: "websocket" });
+    const duplicate = await request(null, `/publisher/ws?token=${publisherToken}`, "GET", undefined, { Upgrade: "websocket", Connection: "close" });
     expect(duplicate.status).toBe(409);
-    expect((await request(publisherToken, "/api/publisher/commit", "POST", {
+    expect((await duplicate.json() as { error: string }).error).toContain("publisher");
+    const unleasedCommit = await request(publisherToken, "/api/publisher/commit", "POST", {
       opId: crypto.randomUUID(), baseRevision: state.revision, files: originalPublication.files, fingerprint: originalPublication.fingerprint,
-    })).status).toBe(409);
-    expect((await request(publisherToken, "/api/publisher/error", "POST", { message: "Wrong lease" }, { "X-Publisher-Id": "outdated" })).status).toBe(409);
+    });
+    expect(unleasedCommit.status).toBe(409);
+    expect((await unleasedCommit.json() as { error: string }).error).toContain("Publisher connection changed");
+    const wrongLease = await request(publisherToken, "/api/publisher/error", "POST", { message: "Wrong lease" }, { "X-Publisher-Id": "outdated" });
+    expect(wrongLease.status).toBe(409);
+    expect((await wrongLease.json() as { error: string }).error).toContain("Publisher connection changed");
     await json(publisherToken, "/api/publisher/error", "POST", { message: "Resource upload interrupted" }, { "X-Publisher-Id": publisherLease });
     await observer.wait("error", (message) => message.message.includes("Resource upload interrupted"));
     const late = await connect(reader.token);
@@ -772,6 +778,32 @@ describe("cloud project collaboration with real workerd and R2", () => {
       await Promise.all([host.connection.close(), guest.connection.close()]);
     }
     await connectHost();
+  }, 15000);
+
+  test("a current cloud viewer rebuild creates a new revision and fences retired pinned publications", async () => {
+    const base = `/projects/${projectId}`;
+    const workspaceId = `upgrade-${crypto.randomUUID()}`;
+    await json(ownerToken, `${base}/api/workspaces`, "POST", { id: workspaceId, name: workspaceId, placement: "local" });
+    const compatibility = { ...upgradeCompatibility, coreVersion: "4.0.0", viewerHash: "e".repeat(64) };
+    const registration = await json<{ room: { id: string }; publisherToken: string }>(ownerToken, `${base}/api/rooms`, "POST", { opId: crypto.randomUUID(), workspaceId, modeInstanceId: crypto.randomUUID(), mode: "webcraft", title: "Upgrade", page: "index.html", compatibility, frameScript });
+    const candidate = publication("<!doctype html><h1>Same complete content</h1>");
+    const projection: CollaborationPublicationProjection = { schema: "upgrade-v1", sources: { files: [{ path: "index.html", content: "Same complete content" }] }, entryAddress: { file: "index.html" } };
+    const snapshot = { ...candidate, blobs: candidate.bytes, projection, fingerprint: digest(canonical({ files: candidate.files, projection })) };
+    const options = { authorityBaseUrl: `${origin}${base}`, roomId: registration.room.id, publisherToken: registration.publisherToken, getSnapshot: () => snapshot };
+    const first = await startCollaborationPublisher(options); normalPublishers.push(first);
+    const ownerView = new Connection(ownerToken, `${base}/ws`); await ownerView.wait("welcome"); ownerView.send({ type: "join", roomId: registration.room.id }); await ownerView.wait("room"); ownerView.startHeartbeat(5000);
+    const pin = await json<CollaborationReference>(ownerToken, `${base}/api/references`, "POST", { opId: crypto.randomUUID(), destinationWorkspaceId: workspaceId, label: "Keep old reference", source: { projectId, workspaceId, roomId: registration.room.id, publicationRevision: 1, address: { file: "index.html" } } });
+    await first.stop();
+    const second = await startCollaborationPublisher({ ...options, viewer: { compatibility: upgradeCompatibility, frameScript } }); normalPublishers.push(second);
+    const current = await json<CollaborationRoomState>(ownerToken, `${base}/api/rooms/${registration.room.id}`);
+    expect(current.room.revision).toBe(2); expect(current.room.compatibility).toEqual(upgradeCompatibility); expect(current.room.viewerRevisionStart).toBe(2);
+    expect(current.publication?.projection).toEqual(projection);
+    const pinned = await request(ownerToken, `${base}/api/references/${pin.id}/resolve`);
+    expect(pinned.status).toBe(410); expect((await pinned.json() as { code: string }).code).toBe("publication_viewer_unavailable");
+    const oldResource = new URL(current.pageUrl, origin); oldResource.pathname = oldResource.pathname.replace("/revisions/2/", "/revisions/1/");
+    expect((await fetch(oldResource)).status).toBe(410);
+    await second.stop();
+    await expect(startCollaborationPublisher({ ...options, viewer: { compatibility, frameScript } })).rejects.toThrow("packaged viewer");
   }, 15000);
 
   test("formal multi-room publishers preserve workspace ownership, room leases and atomic Source revisions", async () => {

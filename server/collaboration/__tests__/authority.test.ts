@@ -138,6 +138,46 @@ describe("LAN authority with normal Session publication protocol", () => {
     expect((await service.request(owner, `/api/rooms/${first.room.id}`)).status).toBe(404);
   }, 20000);
 
+  test("a packaged viewer upgrade republishes a new revision while preserving identities, invitations and discussion", async () => {
+    const service = await setup();
+    const registration = await service.register(owner, "upgrade-workspace");
+    await service.register(writer, "reference-workspace");
+    const current = snapshot("<!doctype html><h1>Unchanged content</h1>");
+    const first = await startCollaborationPublisher({ authorityBaseUrl: service.base, roomId: registration.room.id,
+      publisherToken: registration.publisherToken, getSnapshot: () => current });
+    cleanups.push(() => first.stop());
+    const host = new View(service.base, owner); const before = await host.join(registration.room.id);
+    const invitation = await service.json<{ token: string }>(owner, `/api/rooms/${registration.room.id}/links`, "POST", { access: "comment" });
+    const guest = await service.json<{ token: string }>(null, "/api/invitations/redeem", "POST", { token: invitation.token, name: "Guest" });
+    await service.json(guest.token, `/api/rooms/${registration.room.id}/comments`, "POST", { opId: "comment-before-upgrade", body: "Keep feedback", anchor: { revision: 1, address: { file: "index.html" }, x: 0, y: 0 } });
+    await service.json(guest.token, `/api/rooms/${registration.room.id}/chat`, "POST", { opId: "chat-before-upgrade", body: "Keep chat" });
+    const reference = await service.json<CollaborationReference>(writer, "/api/references", "POST", { opId: "pin-before-upgrade", label: "Old publication", destinationWorkspaceId: "reference-workspace",
+      source: { projectId: "project", workspaceId: "upgrade-workspace", roomId: registration.room.id, publicationRevision: 1, address: { file: "index.html" } } });
+    const nextCompatibility = { ...compatibility, coreVersion: "4.1.0", viewerHash: "b".repeat(64) };
+    await Bun.write(join(service.fixture, "viewer-manifest.json"), JSON.stringify({ coreVersion: "4.1.0", modes: [{ mode: "webcraft", ...nextCompatibility, entry: "/viewer/new.js", styles: [] }] }));
+    await first.stop();
+    const second = await startCollaborationPublisher({ authorityBaseUrl: service.base, roomId: registration.room.id,
+      publisherToken: registration.publisherToken, getSnapshot: () => current, viewer: { compatibility: nextCompatibility, frameScript: "// new viewer" } });
+    cleanups.push(() => second.stop());
+    const after = await service.json<CollaborationRoomState>(owner, `/api/rooms/${registration.room.id}`);
+    expect(after.room.id).toBe(before.room.id); expect(after.room.revision).toBe(2);
+    expect(after.room.compatibility).toEqual(nextCompatibility); expect(after.room.viewerRevisionStart).toBe(2);
+    expect(after.comments.map((comment) => comment.messages[0]!.body)).toEqual(["Keep feedback"]);
+    expect(after.messages.map((message) => message.body)).toEqual(["Keep chat"]);
+    expect((await service.json<CollaborationProjectState>(guest.token, "/api/state")).self.id).toBeDefined();
+    expect((await service.request(null, "/api/invitations/redeem", "POST", { token: invitation.token, name: "Another guest" })).status).toBe(200);
+    expect((await service.json<{ references: CollaborationReference[] }>(writer, "/api/references")).references).toEqual([reference]);
+    const unavailable = await service.request(writer, `/api/references/${reference.id}/resolve`);
+    expect(unavailable.status).toBe(410); expect((await unavailable.json() as { code: string }).code).toBe("publication_viewer_unavailable");
+    const oldResource = new URL(after.pageUrl, service.base); oldResource.pathname = oldResource.pathname.replace("/revisions/2/", "/revisions/1/");
+    expect((await fetch(oldResource)).status).toBe(410);
+    const store = new CollaborationStore(join(service.fixture, "state"));
+    expect(store.manifest(registration.room.id, 1)?.projection).toEqual(current.projection); store.close();
+    await second.stop();
+    await expect(startCollaborationPublisher({ authorityBaseUrl: service.base, roomId: registration.room.id,
+      publisherToken: registration.publisherToken, getSnapshot: () => current, viewer: { compatibility, frameScript: "// stale viewer" } })).rejects.toThrow("packaged viewer");
+  }, 15000);
+
   test("admin removal tombstones both rooms, their sockets and every grant across restart", async () => {
     const service = await setup();
     await Bun.write(join(service.fixture, "index.html"), "<!doctype html><html><body>Public shell</body></html>");
