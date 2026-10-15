@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.58.0] - 2026-10-15
+
+### Added
+- **Collaboration Beta** — Share Webcraft workspaces over LAN or optional Internet access. Invite Project members or room guests with viewing or commenting access, follow another participant's view, see shared pointers, and discuss the work in room chat.
+- **Anchored feedback and Send to AI** — Control-click an element to start an anchored comment with a preview when available. Hosts can stage comment threads or chat messages in the private AI composer, including captured comment locations, before adding instructions and sending.
+- **Collaboration setup guidance** — Settings explains connection options in all seven interface languages, checks local prerequisites, and provides a setup request to copy into Claude Code or Codex.
+
+### Improved
+- **Shared presence and image previews** — Keep pointers and following aligned through viewer navigation and reconnects, and capture selected images for comment previews while retaining the selected location if an image cannot be captured.
+- **Safe viewer upgrades** — Republish current content as a new viewer revision while retaining rooms, members, invitations, comments, chat, and pinned-reference metadata. Retired viewer revisions report their unavailability, and active collaboration sessions defer authority replacement until they close.
+
 ## [3.57.3] - 2026-10-13
 
 ### Fixed
