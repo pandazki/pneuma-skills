@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useStore } from "../store.js";
 import type { ToolTab } from "../store/ui-slice.js";
+import { SessionCollaborationButton } from "../collaboration/SessionCollaboration.js";
 import { getApiBase } from "../utils/api.js";
 import ContentSetSelector from "./ContentSetSelector.js";
 import ModeLabel from "./ModeLabel.js";
@@ -566,6 +567,7 @@ export default function TopBar() {
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             <EditingToggle />
+            <SessionCollaborationButton />
             <ShareDropdown />
           </div>
         )

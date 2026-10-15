@@ -1,3 +1,4 @@
+import { isSessionStatePath } from "../core/session-state.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
@@ -13,9 +14,12 @@ import type { SocketData } from "./ws-bridge.js";
 import type { TerminalSocketData } from "./ws-bridge-types.js";
 import type { ServerWebSocket } from "bun";
 import { TerminalManager } from "./terminal-manager.js";
-import { registerModeViewerRoutes } from "./mode-viewer-routes.js";
+import { registerHostAbiRoutes, registerModeViewerRoutes } from "./mode-viewer-routes.js";
 import type { ModeInfo } from "../core/types/mode-viewer.js";
 import { resolveSessionTitle, type SessionInfo } from "../core/types/session-info.js";
+import { isPrivateViewerInstanceId } from "../core/types/private-viewer.js";
+import { mountSessionCollaborationRoutes } from "./collaboration/session-routes.js";
+import { registerCollaborationSetupRoutes } from "./collaboration/setup-routes.js";
 import { registerModeMakerRoutes } from "./mode-maker-routes.js";
 import { hostAbiImportMap } from "../snapshot/mode-build.js";
 import { registerEvolutionRoutes } from "./evolution-routes.js";
@@ -479,6 +483,8 @@ export async function startServer(options: ServerOptions) {
         bundleDir: options.modeBundleDir,
       })
     : undefined;
+  const hasHostAbi = !!modeViewerRuntime || !!options.pneumaProjectRoot;
+  if (hasHostAbi && !modeViewerRuntime) registerHostAbiRoutes(app);
 
   // ── Shared child-process helpers ────────────────────────────────────────
   // These live above the launcher branch so both launcher mode and per-session
@@ -1271,6 +1277,11 @@ export async function startServer(options: ServerOptions) {
       return c.json({ ok: true, theme: normalized });
     });
   };
+
+  // Setup help belongs to both private server flavours, never the public authority.
+  registerCollaborationSetupRoutes(app, {
+    packageRoot: options.projectRoot || resolve(import.meta.dir, ".."),
+  });
 
   // ── Launcher Mode (lightweight — no workspace, no agent, no watcher) ────
   if (options.launcherMode) {
@@ -2425,6 +2436,13 @@ export async function startServer(options: ServerOptions) {
   // Per-session state dir resolution: explicit options.stateDir wins (project
   // sessions); falls back to <workspace>/.pneuma for legacy quick sessions.
   const stateDirForSession = options.stateDir ?? join(workspace, ".pneuma");
+  const sessionCollaboration = mountSessionCollaborationRoutes(app, {
+    projectRoot: options.pneumaProjectRoot,
+    packageRoot: options.projectRoot ?? resolve(import.meta.dir, ".."),
+    workspace, stateDir: stateDirForSession, sessionId: options.sessionId,
+    manifest: options.modeManifest, modeDir: options.modeSourceDir,
+    initParams: options.initParams, watcher: options.workspaceWatcher,
+  });
   const sessionInfo = {
     sessionId: (() => {
       try {
@@ -3747,11 +3765,14 @@ export async function startServer(options: ServerOptions) {
   // ── Viewer Action API ───────────────────────────────────────────────
   app.post("/api/viewer/action", async (c) => {
     try {
-      const body = await c.req.json<{ actionId: string; params?: Record<string, unknown> }>();
+      const body = await c.req.json<{ actionId: string; params?: Record<string, unknown>; viewerInstanceId?: string }>();
       if (!body.actionId) {
         return c.json({ success: false, message: "actionId is required" }, 400);
       }
-      const result = await wsBridge.dispatchViewerAction(body.actionId, body.params);
+      if (body.viewerInstanceId !== undefined && !isPrivateViewerInstanceId(body.viewerInstanceId)) {
+        return c.json({ success: false, message: "viewerInstanceId must identify a private viewer instance" }, 400);
+      }
+      const result = await wsBridge.dispatchViewerAction(body.actionId, body.params, body.viewerInstanceId);
       return c.json(result);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -3963,32 +3984,14 @@ export async function startServer(options: ServerOptions) {
     // user doesn't need them in the file tree alongside actual content.
     // Dot-prefixed paths (.pneuma, .claude, .agents, .git, etc.) are
     // already filtered by the leading-dot rule below.
-    const PNEUMA_STATE_FILES = new Set([
-      "CLAUDE.md",
-      "AGENTS.md",
-      "session.json",
-      "history.json",
-      "config.json",
-      "skill-version.json",
-      "skill-dismissed.json",
-      "checkpoints.jsonl",
-      "thumbnail.png",
-      "viewer-state.json",
-      "deploy.json",
-      "resumed-context.xml",
-    ]);
-    const PNEUMA_STATE_DIRS = new Set([
-      "shadow.git",
-      "replay-checkout",
-      "evolution",
-    ]);
     function buildTree(dir: string, relBase: string): TreeNode[] {
       const entries = readdirSync(dir, { withFileTypes: true })
         .filter((e) => {
           if (e.name.startsWith(".")) return false;
           if (e.name === "node_modules") return false;
-          if (e.isDirectory() && PNEUMA_STATE_DIRS.has(e.name)) return false;
-          if (!e.isDirectory() && PNEUMA_STATE_FILES.has(e.name)) return false;
+          const rel = relBase ? `${relBase}/${e.name}` : e.name;
+          if (e.name === "CLAUDE.md" || e.name === "AGENTS.md") return false;
+          if (isSessionStatePath(rel, resolve(stateDirForSession) === resolve(workspace))) return false;
           return true;
         })
         .sort((a, b) => {
@@ -4322,12 +4325,12 @@ export async function startServer(options: ServerOptions) {
   // ── Built frontend serving (production) ─────────────────────────────
   if (options.distDir) {
     const distDir = options.distDir;
-    const hasModeViewerRuntime = !!modeViewerRuntime;
 
     // Serve static assets (JS/CSS bundles + public files like logo.png, favicon)
     // Skip paths handled by dedicated routes (/content/*, /api/*, /ws/*, /export/*)
     app.get("*", async (c, next) => {
       const p = c.req.path;
+      if (p === "/index.html") return next();
       if (p.startsWith("/content/") || p.startsWith("/api/") || p.startsWith("/ws/") || p.startsWith("/export/") || p.startsWith("/mode-assets/") || p.startsWith("/vendor/")) {
         return next();
       }
@@ -4346,12 +4349,12 @@ export async function startServer(options: ServerOptions) {
       }
       let html = await Bun.file(join(distDir, "index.html")).text();
 
-      if (hasModeViewerRuntime) {
+      if (hasHostAbi) {
         const importMap = `<script type="importmap">
 ${JSON.stringify(hostAbiImportMap())}
 </script>`;
-        const viewerBuild = modeViewerRuntime!.getState();
-        const cssLinks = viewerBuild.status === "ready"
+        const viewerBuild = modeViewerRuntime?.getState();
+        const cssLinks = viewerBuild?.status === "ready"
           ? viewerBuild.stylesheets.map((url) => `<link rel="stylesheet" href="${url}">`).join("\n")
           : "";
         html = html.replace("<head>", `<head>\n${importMap}\n${cssLinks}`);
@@ -4368,7 +4371,8 @@ ${JSON.stringify(hostAbiImportMap())}
     ({ server, port: serverPort } = await bindFirstFreePort(port, MAX_PORT_ATTEMPTS, (candidate) =>
       Bun.serve<SocketData>({
         port: candidate,
-        hostname: "0.0.0.0",
+        // Project sharing has a separate public authority; its Agent API stays private.
+        hostname: options.pneumaProjectRoot ? "127.0.0.1" : "0.0.0.0",
         async fetch(req, server) {
           const url = new URL(req.url);
 
@@ -4474,6 +4478,7 @@ ${JSON.stringify(hostAbiImportMap())}
    * to the caller that created it.
    */
   const cleanup = async (opts: { exiting?: boolean } = {}) => {
+    await sessionCollaboration.stop();
     if (handoffRoutesContext) handoffRoutesContext.stop();
     if (borrowRoutesContext) borrowRoutesContext.stop();
     await hookBus.emit("session:end", { sessionId: sessionInfo.sessionId, mode: sessionInfo.mode, workspace }, sessionInfo).catch(() => {});

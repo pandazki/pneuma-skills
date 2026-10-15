@@ -3,6 +3,7 @@ import path from "node:path";
 import { getLauncherUrl } from "./bun-process.js";
 import { showLogWindow } from "./log-window.js";
 import { trayIndicator } from "./update-state.js";
+import { desktopBuildPolicy } from "./build-policy.js";
 
 let tray: Tray | null = null;
 
@@ -155,11 +156,12 @@ async function buildTrayMenu(): Promise<Electron.Menu> {
     },
     {
       label: "Check for Updates…",
+      enabled: desktopBuildPolicy.updatesEnabled,
       click: () => callbacks.onCheckUpdates(),
     },
     { type: "separator" },
     {
-      label: "Quit Pneuma Skills",
+      label: `Quit ${app.name}`,
       click: () => callbacks.onQuit(),
     },
   ]);

@@ -48,6 +48,11 @@ Pneuma 3.0 引入。`<projectRoot>/.pneuma/project.json` 的存在 = "这个目�
 | 路径 | 含义 | Owner | 生命周期 |
 |------|------|-------|---------|
 | `project.json` | `ProjectManifest`: project identity, description, creation and onboarding metadata | Project routes / `pneuma project add` | Created or registered explicitly; onboarding and project updates can rewrite it |
+| `collaboration/local.json` | Portable shared Project/workspace/owner IDs, selected authority, and private member credential | Private Session collaboration routes | Created by explicit setup/connect; local paths and credentials are never part of public Project state |
+| `collaboration/pending-setup.json` | Original provisioning request and credential for uncertain setup recovery | Private Session collaboration routes | Written before provisioning; removed after the accepted binding is persisted |
+| `collaboration/setup-lease.sqlite`, `service-lease.sqlite` | Process-scoped setup and authority exclusivity | Collaboration runtime | SQLite OS locks release on process death; files alone do not imply a live lease |
+| `collaboration/service-config.json`, `service.json`, `service.log`, `authority/` | LAN authority configuration and optional Tunnel selection, private process/control discovery, log and accepted shared state | Detached LAN collaboration service | Private files; independent of any one Session. Restart retains shared state, requires fresh hosting leases and leaves public access off. The control credential and named Tunnel credentials path are never published |
+| `collaboration/authority/authority-identity.json` | Stable LAN authority signing key and public identity | LAN authority only | Private file; binds explicit reconnect across LAN/public entry URLs without moving authority state |
 | `preferences/profile.md` | 项目作用域跨模式偏好 | Agent (`pneuma-preferences` skill, project scope) | 启动时 `pneuma-critical` 块抽出，注入到 `pneuma:project` 块 |
 | `preferences/mode-{name}.md` | 项目作用域单模式偏好 | Agent | 同上 |
 | `project-atlas.md` | Project briefing: scope, audience, conventions, decisions, and open threads | Project onboarding / `project-evolve` | Onboarding seeds it; reviewed project evolution can update it |
@@ -76,7 +81,11 @@ metadata. They are equal only for project sessions:
 | Inbound handoff | `<sessionDir>/.pneuma/inbound-handoff.json` | `<sessionDir>/.pneuma/inbound-handoff.json` |
 
 Definition: [`SessionPaths` and `resolveSessionPaths`](../../core/path-resolver-pneuma.ts).
-The runtime-state paths in the following table are relative to **`stateDir`**:
+The runtime-state paths in the following table are relative to **`stateDir`**.
+[`core/session-state.ts`](../../core/session-state.ts) classifies these runtime-owned
+entries for workspace emptiness and the file tree. Flat root names are state only
+when `stateDir` is the workspace root; a Quick Session root `config.json` and
+`site/config.json` remain user content. This classification does not define publication safety:
 
 | 路径 | 含义 | Owner | 生命周期 |
 |------|------|-------|---------|
@@ -91,6 +100,22 @@ The runtime-state paths in the following table are relative to **`stateDir`**:
 | `resumed-context.xml` | 从 replay 包继续工作时的上下文注入 | History 模块 | 仅在 "Continue Work" 时存在 |
 | `evolution/` | Personal skill-evolution proposals, backups, and instruction snapshots | `evolve` | Project-evolution proposals use the project scope described below |
 | `deploy.json` | Deploy 绑定（按 contentSet 索引）：`{ vercel: {...}, cfPages: {...} }` | Deploy plugin | 每次 deploy 成功后更新 |
+| `collaboration-room.json` | Private running-instance registration, publisher credential and explicit sharing scope | Session collaboration routes | Explicit share/stop; Session restart resumes an enabled registration; excluded from publication |
+| `collaboration-registration.json` | Original pending room-registration operation and receipt key | Session collaboration routes | Persisted before remote registration and retained for uncertain-outcome recovery |
+| `collaboration-imports/<requestId>.json` | Private import operation and original copy receipt | Reference import route | Written before materialization; retry recovers the original result without overwriting later local edits |
+
+Explicit reference imports create `imports/<referenceId>-r<revision>/` under the
+Session workspace. `.pneuma-import.json` records attribution and the original
+manifest; it is excluded from publication. A workspace-scoped
+`.pneuma/collaboration-import-lease.sqlite` serializes copy commits across Session
+processes. Shared source revocation does not remove an already imported copy.
+
+Private browser tabs keep viewer navigation and pending reference operations in
+`sessionStorage`. Reference keys include authority, Project, destination workspace,
+target and action; revision is included for import and selected-location actions.
+The original operation ID and request survive panel remount and tab reload until
+an accepted response is confirmed. These records contain identity and address
+metadata, not resource grants or credentials; they are not cross-device storage.
 
 Skills and instructions are relative to **`sessionDir`**, using the selected
 `BackendModule`'s `skillsDir` and `instructionsFile`:

@@ -3230,6 +3230,8 @@ async function main() {
       ...process.env as Record<string, string>,
       // Tell frontend which port the backend API server is on
       VITE_API_PORT: String(actualPort),
+      // Do not expose the private API through Vite's proxy on the LAN.
+      PNEUMA_PRIVATE_PROJECT_SESSION: startup.paths.projectRoot ? "1" : "0",
     };
     if (resolved.type !== "builtin") {
       viteEnv.PNEUMA_EXTERNAL_MODE_PATH = resolved.path;

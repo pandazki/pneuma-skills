@@ -1,0 +1,75 @@
+{
+  "title": "协作配置 (Beta)",
+  "intro": "分享 Webcraft 工作区，邀请他人实时查看、评论和聊天；你的 Agent 对话保持私密。",
+  "path_label": "访客如何连接？",
+  "paths": {
+    "lan": "同一网络",
+    "temporary": "临时跨网",
+    "named": "自有域名"
+  },
+  "descriptions": {
+    "lan": "大家在同一 Wi-Fi 或局域网时，从这里开始；无需安装 cloudflared。",
+    "temporary": "使用免费的临时公网地址，无需域名或 Cloudflare 账号；每次重新开启公网访问时，地址都会变化。",
+    "named": "使用你在 Cloudflare 管理的域名提供固定 HTTPS 地址；需要 Cloudflare 账号和命名隧道。"
+  },
+  "hostname_label": "你的主机名（可选）",
+  "hostname_placeholder": "collaboration.example.com",
+  "hostname_error": "请输入主机名或 HTTPS 地址，不含端口、路径、凭据、查询参数或邀请信息。",
+  "steps": {
+    "lan": [
+      "打开一个 Project，再打开其中的 Webcraft Session。",
+      "选择 Collaborate → Project，输入你的名字，保留 Local network，然后选择 Create collaboration。",
+      "在要分享的网站或内容集中，选择 Share this workspace。",
+      "打开 Links，创建 Comment & chat 邀请，复制其 Local network 链接。",
+      "请访客在同一网络的浏览器中打开邀请、输入名字，并尝试评论和聊天。"
+    ],
+    "temporary": [
+      "打开 Project 中的 Webcraft Session，选择 Collaborate → Project，保留 Local network 并创建协作。",
+      "先检查 cloudflared；若尚未安装，复制配置请求让 Agent 安装，再点击“重新检查”，然后再开启公网访问。",
+      "选择 Share this workspace，然后在 Public access 中选择 Free temporary address → Enable public access。",
+      "等待公网访问显示 Active，再打开 Links，创建 Comment & chat 邀请并选择 Internet 链接。",
+      "请访客从其他网络的浏览器中打开邀请，并尝试评论和聊天。"
+    ],
+    "named": [
+      "打开 Project 中的 Webcraft Session，选择 Collaborate → Project，保留 Local network 并创建协作。",
+      "使用配置请求安装 cloudflared、创建命名隧道，并在 Cloudflare 创建指向该隧道的主机名 DNS 路由。",
+      "选择 Share this workspace，然后在 Public access 中选择 Your own Tunnel。",
+      "填写全部三项：HTTPS 公网 URL、隧道 UUID、本机凭据 JSON 文件的绝对路径，然后选择 Enable public access。",
+      "显示 Active 后，打开 Links，创建 Comment & chat 邀请并选择 Internet 链接，发给访客。",
+      "请访客从其他网络的浏览器中打开邀请，并尝试评论和聊天。"
+    ]
+  },
+  "keep_online": "访客使用期间，请让主机、Pneuma 和正在分享的 Session 标签页保持在线。",
+  "public_lifecycle": "连续 10 分钟没有已认证的公网访客时，公网访问会停止；重启后默认关闭，需要时请重新开启。",
+  "checking": "正在检查本机…",
+  "check_error": "无法读取配置状态，请重新检查后生成配置请求。",
+  "cloudflared_found": "本机检测到 cloudflared",
+  "cloudflared_missing": "本机尚未安装 cloudflared",
+  "check_again": "重新检查",
+  "install_hint": "配置请求可让 Agent 为本机安装 cloudflared；检查本身不会修改配置。",
+  "copy_request": "复制配置请求",
+  "copied": "已复制配置请求",
+  "copying": "正在复制…",
+  "paste_hint": "将这一句话粘贴到本机的 Claude Code 或 Codex，让它执行并验证配置。",
+  "copy_error": "复制失败，下方已选中请求文本，请手动复制。",
+  "show_request": "查看配置请求",
+  "hide_request": "收起配置请求",
+  "request_label": "给 Claude Code 或 Codex 的配置请求",
+  "advanced_title": "进阶：使用自托管云端协作服务",
+  "advanced_body": "Cloud host 用于连接你自行部署和管理的协作服务，部署说明位于仓库的 cloud/collaboration；需要其 HTTPS URL 和部署密钥，不会创建托管服务账号。工作区内容仍要求主机和 Session 保持在线。",
+  "entry": "需要帮助？查看协作配置指南",
+  "request_paths": {
+    "lan": "同一网络内协作",
+    "temporary": "通过免费的 Cloudflare Quick Tunnel 临时跨网协作",
+    "named": "通过自有域名和 Cloudflare 命名隧道跨网协作"
+  },
+  "request_hostname": "（https://{{hostname}}）",
+  "request_missing": {
+    "lan": "Project 信息",
+    "temporary": "Project 信息",
+    "named": "Project、域名或 Cloudflare 账号信息"
+  },
+  "request": "请为 {{platform}} 上的 Pneuma Skills {{appVersion}} 配置并验证{{scenario}}{{hostnameClause}}，先阅读本机完整配置指南 {{guidePath}}（若无法读取则从当前运行的私有 Pneuma 应用获取 {{guideUrl}}），询问缺失的{{missing}}后实际执行配置，并验证访客可在浏览器中打开共享的 Webcraft 工作区并使用评论和聊天，同时保持我的 Agent 对话私密。",
+  "lan_ready": "同一网络内协作无需隧道。",
+  "public_recovery": "若公网访问失败，请先修复错误原因，点击 Retry stopping public access 清理失败状态，再重新 Enable public access；“重新检查”仅检测安装情况。"
+}

@@ -1,0 +1,7 @@
+digraph collaboration { graph [bgcolor="#F8F7F3", pad="0.25", nodesep="0.3", ranksep="0.45"]; node [shape=box, style="rounded,filled", fillcolor="#f6f5ef", color="#d4dbd7", fontname="Helvetica", fontsize=13, margin="0.18,0.12"]; edge [fontname="Helvetica", fontsize=10, color="#58736a", arrowsize=0.7]; rankdir=TB; m [label="Mode declaration
+manifest.viewerApi.collaboration",fillcolor="#f5dfd1"]; v [label="Mounted Viewer implementation
+View state + pointer mapping + anchors"]; r [label="Runtime
+Identity + ACL + room + transport + persistence",fillcolor="#dcebe3"]; s [label="Source / FileChannel
+Content channel"]; ad [label="ViewerAddress
+One object vocabulary"]; ai [label="Private Agent session
+Targeted actions + context"]; m -> r [label="declared capabilities"]; r -> v [label="instance binding + permitted operations"]; v -> r [label="public view state + results"]; s -> v; ad -> v; ai -> v [label="authorized viewerInstanceId",color="#365e99"]; }

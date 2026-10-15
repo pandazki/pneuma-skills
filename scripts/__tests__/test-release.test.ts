@@ -214,6 +214,32 @@ describe("release test scope", () => {
     expect(command.env.PNEUMA_TEST_LIVE).toBe("1");
   });
 
+  test("cloud contracts run on every release and cloud-owned changes retain their own scope", () => {
+    const root = fixture();
+    write(root, "cloud/collaboration/tests/contract.test.ts", 'import { test, expect } from "bun:test"; test("cloud contract", () => expect(1).toBe(2));');
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "Add cloud contract");
+    const base = git(root, "rev-parse", "HEAD");
+    const plan = buildReleaseTestPlan(root, { base });
+    expect(plan.paths).toContain("./cloud/collaboration/tests");
+    const { command, env } = releaseTestCommand(plan);
+    const result = Bun.spawnSync(command, { cwd: root, env, stdout: "pipe", stderr: "pipe" });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain("cloud contract");
+
+    for (const path of ["src/worker.ts", "package.json", "bun.lock", "wrangler.jsonc", "tests/acceptance.test.ts"]) {
+      write(root, `cloud/collaboration/${path}`, "changed cloud input");
+      const changed = buildReleaseTestPlan(root, { base });
+      expect(changed.scope).toBe("affected");
+      expect(changed.paths).toContain("./cloud/collaboration/tests");
+      expect(changed.modes).toEqual([]);
+      expect(changed.mediaModes).toEqual([]);
+      expect(changed.live).toBe(false);
+    }
+    write(root, "cloud/unknown/worker.ts", "unknown cloud surface");
+    expect(buildReleaseTestPlan(root, { base }).scope).toBe("full");
+  });
+
   test("selected runner keeps failing-test exit status and overrides inherited tier flags", () => {
     const root = fixture();
     write(root, "core/__tests__/contract.test.ts", 'import { test, expect } from "bun:test"; test("failed contract", () => expect(1).toBe(2));');

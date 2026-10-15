@@ -1,0 +1,18 @@
+{
+  "name": "pneuma-collaboration-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "types": "wrangler types worker-configuration.d.ts --env-interface Env",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test tests",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/check"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261014.1",
+    "miniflare": "5.20261006.2-beta",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.150.0"
+  }
+}

@@ -1,0 +1,8 @@
+digraph collaboration { graph [bgcolor="#F8F7F3", pad="0.25", nodesep="0.3", ranksep="0.45"]; node [shape=box, style="rounded,filled", fillcolor="#f6f5ef", color="#d4dbd7", fontname="Helvetica", fontsize=13, margin="0.18,0.12"]; edge [fontname="Helvetica", fontsize=10, color="#58736a", arrowsize=0.7]; rankdir=TB; a [label="1. Create Project
+Invite members"]; b [label="2. Work independently
+Private Agents + local workspaces"]; c [label="3. Open a room
+Host remains online"]; d [label="4. Follow + discuss
+Shared ViewerAddress"]; e [label="5. Act on feedback
+Owner chooses Agent instruction"]; f [label="6. Reference a result
+Pinned revision + source permissions"]; g [label="7. End hosting
+Visitors exit; other rooms continue"]; a -> b -> c -> d -> e -> f -> g;  }

@@ -14,7 +14,7 @@ import { createWorkspaceSlice } from "./workspace-slice.js";
 import { createReplaySlice } from "./replay-slice.js";
 import { createPluginSlice } from "./plugin-slice.js";
 import { createProjectSlice } from "./project-slice.js";
-import { normalizeViewerState } from "../utils/viewer-state.js";
+import { normalizeViewerState, saveTabViewerState, viewerStateStorageKey } from "../utils/viewer-state.js";
 
 export const useStore = create<AppState>()((...a) => ({
   ...createUiSlice(...a),
@@ -42,6 +42,7 @@ function tryFlushPendingQueue() {
   const state = useStore.getState();
   if (state.sessionStatus !== "idle" || state.turnInProgress) return;
   if (state.pendingMessages.length === 0) return;
+  if (state.pendingMessages[0].kind === "user" && state.pendingMessages[0].deliveryError) return;
   // A steer RPC can resolve a few milliseconds after the active turn's
   // `result`. Do not let that idle edge auto-flush the same queue item as a
   // brand-new turn while its steer acknowledgement is still in flight.
@@ -61,8 +62,10 @@ function tryFlushPendingQueue() {
     if (store.sessionStatus !== "idle" || store.turnInProgress) return;
     if (store.connectionStatus !== "connected") return;
     if (store.pendingSteerIds.size > 0) return;
+    if (store.pendingMessages[0]?.kind === "user" && store.pendingMessages[0].deliveryError) return;
     const next = store.shiftPendingMessage();
     if (!next) return;
+    const queuedSessionId = store.sessionId;
 
     // Mark busy immediately to prevent double-flush
     store.setSessionStatus("running");
@@ -72,16 +75,18 @@ function tryFlushPendingQueue() {
     // async (context enrichment + transport); if it throws or rejects we must
     // NOT leave the turn stranded as "busy" forever — settle back to idle so
     // the queue keeps moving and the user isn't stuck behind a frozen Stop
-    // button. We deliberately don't requeue `next`: a message that
-    // deterministically fails to serialize would otherwise hot-loop.
+    // button. Failed collaboration feedback remains visible with an explicit
+    // Retry action; the failed-head gate prevents serialization hot-loops.
     import("../ws.js")
       .then(async ({ sendUserMessage, sendViewerNotification }) => {
+        if (next.kind === "user" && next.collaborationFeedback?.length && useStore.getState().sessionId !== queuedSessionId) return;
         let delivered: boolean;
         if (next.kind === "user") {
           delivered = await sendUserMessage(next.text, next.selection, next.images, next.annotations, next.files);
         } else {
           delivered = sendViewerNotification(next.notification, next.images);
         }
+        if (next.kind === "user" && next.collaborationFeedback?.length && useStore.getState().sessionId !== queuedSessionId) return;
 
         if (!delivered) {
           // The socket closed between the connection check and the actual
@@ -122,10 +127,14 @@ function tryFlushPendingQueue() {
         }
       })
       .catch((err) => {
+        if (next.kind === "user" && next.collaborationFeedback?.length && useStore.getState().sessionId !== queuedSessionId) return;
         // Hard failure (context enrichment / serialization threw). Don't
-        // requeue — a message that deterministically fails would hot-loop —
-        // but DO settle to idle so the composer isn't frozen on Stop.
+        // automatically retry — a deterministic failure would hot-loop.
+        // Preserve feedback for manual retry and settle the turn to idle.
         console.error("[pneuma] failed to flush queued message; settling to idle", err);
+        if (next.kind === "user" && next.collaborationFeedback?.length) {
+          store.unshiftPendingMessage({ ...next, deliveryError: "Feedback could not be sent. Retry when ready." });
+        }
         store.setSessionStatus("idle");
         store.setTurnInProgress(false);
       });
@@ -142,7 +151,11 @@ useStore.subscribe(
     const queueGrew = state.pendingMessages.length > prevState.pendingMessages.length;
     const reconnected = state.connectionStatus === "connected" && prevState.connectionStatus !== "connected";
     const steerSettled = state.pendingSteerIds.size < prevState.pendingSteerIds.size;
-    if (becameIdle || turnCleared || queueGrew || reconnected || steerSettled) {
+    const feedbackRetried = prevState.pendingMessages.some((message) => message.kind === "user" && message.deliveryError
+      && state.pendingMessages.some((next) => next.id === message.id && next.kind === "user" && !next.deliveryError));
+    const failedHeadRemoved = prevState.pendingMessages[0]?.kind === "user" && !!prevState.pendingMessages[0].deliveryError
+      && state.pendingMessages[0]?.id !== prevState.pendingMessages[0].id;
+    if (becameIdle || turnCleared || queueGrew || reconnected || steerSettled || feedbackRetried || failedHeadRemoved) {
       tryFlushPendingQueue();
     }
   },
@@ -156,16 +169,12 @@ function saveViewerState() {
     const { activeContentSet, activeFile, contentSets, staticPlayer } = useStore.getState();
     // The hosted static player has no backend to persist to — a POST here
     // can only 404 against the static host, once per content-set switch.
-    if (staticPlayer) return;
+    if (staticPlayer || typeof sessionStorage === "undefined" || typeof location === "undefined") return;
     const normalized = normalizeViewerState(
       { contentSet: activeContentSet, file: activeFile },
       contentSets,
     );
-    fetch(`${getApiBase()}/api/viewer-state`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(normalized),
-    }).catch(() => { /* ignore */ });
+    saveTabViewerState(viewerStateStorageKey(getApiBase(), location.href), normalized);
   }, 500);
 }
 

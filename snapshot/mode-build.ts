@@ -12,7 +12,7 @@
  * bundles that *look* fine and then quietly run a second React, a second
  * Zustand store or a second i18next instance. The externals, the vendor URLs
  * the importmap resolves them to, and the shim sources the server serves are
- * all derived from the tables in this file so they cannot drift apart.
+ * all derived from `host-abi.ts` so they cannot drift apart.
  */
 
 import { join, resolve, dirname } from "node:path";
@@ -20,21 +20,15 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-
-/**
- * Specifier a bundle emits for the host's Zustand store. Mode-maker's fork
- * route rewrites escaping imports into this `pneuma-skills/...` form; a mode
- * that reaches the store by relative path (`../../../src/store.js`, which is
- * how every first-party mode writes it) is rewritten to it at build time.
- */
-export const HOST_STORE_EXTERNAL_SPECIFIER = "pneuma-skills/src/store.js";
+import { HOST_STORE_EXTERNAL_SPECIFIER, HOST_ABI_VENDOR_URLS, HOST_ABI_EXTERNALS } from "./host-abi.js";
+export { HOST_STORE_EXTERNAL_SPECIFIER, HOST_ABI_VENDOR_URLS, HOST_ABI_EXTERNALS, hostAbiImportMap } from "./host-abi.js";
 
 /** Bundler namespace holding the generated host-store stub (see the plugin). */
 const HOST_ABI_NAMESPACE = "pneuma-host-abi";
 
 /**
  * The host ABI: bare specifier → URL of the shim that provides it at runtime.
- * This map is the importmap the server injects into `index.html` for a session
+ * `host-abi.ts` supplies the importmap injected into `index.html` for a session
  * that serves an external mode bundle, so the browser resolves the bare
  * specifiers a bundle emits to the host's own singletons.
  *
@@ -47,20 +41,6 @@ const HOST_ABI_NAMESPACE = "pneuma-host-abi";
  *   An inlined react-i18next has no initialised instance behind it, so every
  *   translated string renders as its raw key.
  */
-export const HOST_ABI_VENDOR_URLS: Readonly<Record<string, string>> = {
-  react: "/vendor/react.js",
-  "react-dom": "/vendor/react-dom.js",
-  "react/jsx-runtime": "/vendor/react-jsx-runtime.js",
-  "react/jsx-dev-runtime": "/vendor/react-jsx-dev-runtime.js",
-  i18next: "/vendor/i18n.js",
-  "react-i18next": "/vendor/react-i18n.js",
-  [HOST_STORE_EXTERNAL_SPECIFIER]: "/vendor/pneuma-store.js",
-  // Modes written before the `.js` convention settled emit the `.ts` form.
-  "pneuma-skills/src/store.ts": "/vendor/pneuma-store.js",
-};
-
-/** Bare specifiers `Bun.build` must leave alone. */
-export const HOST_ABI_EXTERNALS: readonly string[] = Object.keys(HOST_ABI_VENDOR_URLS);
 
 // ── Vendor shims ────────────────────────────────────────────────────────
 // ES modules served by the session server at the URLs above. They re-export
@@ -377,11 +357,6 @@ export function findUnresolvedHostAbiImports(
     unresolved.push({ file, specifier: match[1], name: "require() of a host-ABI module" });
   }
   return unresolved;
-}
-
-/** The importmap body the host injects so a bundle's bare specifiers resolve. */
-export function hostAbiImportMap(): { imports: Record<string, string> } {
-  return { imports: { ...HOST_ABI_VENDOR_URLS } };
 }
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs"];
@@ -740,7 +715,8 @@ const INCOMPLETE_BUILD_FILE = ".incomplete";
  *  dependencies are not the viewer's sources; skill scripts can be (a viewer
  *  may import a script's pure module), so they count. */
 const STAMP_SOURCES = new Bun.Glob("**/*.{ts,tsx,js,jsx,mjs,cjs,css,json}");
-const STAMP_EXCLUDED = ["node_modules/", ".build/", "seed/", "showcase/", "__tests__/"];
+// Development harnesses are omitted from both npm and desktop mode packages.
+const STAMP_EXCLUDED = ["node_modules/", ".build/", "seed/", "showcase/", "__tests__/", "harness/"];
 
 /**
  * A content hash of a mode's viewer sources — path and bytes of every file a

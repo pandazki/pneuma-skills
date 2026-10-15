@@ -1,0 +1,5 @@
+digraph collaboration { graph [bgcolor="#F8F7F3", pad="0.25", nodesep="0.3", ranksep="0.45"]; node [shape=box, style="rounded,filled", fillcolor="#f6f5ef", color="#d4dbd7", fontname="Helvetica", fontsize=13, margin="0.18,0.12"]; edge [fontname="Helvetica", fontsize=10, color="#58736a", arrowsize=0.7]; rankdir=LR; off [label="Unavailable
+Sharing off / no live host"]; on [label="Hosted
+Publisher + joined owner view",fillcolor="#dcebe3"]; kicked [label="Visitors ejected
+Clear shared view + stop retries",fillcolor="#f5dfd1"]; off -> on [label="host joins with publisher"]; on -> kicked [label="last host view leaves / lease expires"]; kicked -> off [label="remain blocked"]; kicked -> on [label="host returns + visitor explicitly rejoins"]; note [shape=note,label="Per-room scope. Other rooms continue.
+Prototype lease deadlines: 15 s owner / 45 s publisher."]; }

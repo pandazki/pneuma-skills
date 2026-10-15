@@ -20,6 +20,10 @@ export interface BrowserSocketData {
   sessionId: string;
   subscribed?: boolean;
   lastAckSeq?: number;
+  /** Registration is private to this socket and invalidated on unmount/close. */
+  viewerInstanceId?: string;
+  /** Uncertain execution fences these mount generations for this connection. */
+  fencedViewerInstanceIds?: Set<string>;
 }
 
 export interface TerminalSocketData {
@@ -61,11 +65,22 @@ export interface Session {
   state: SessionState;
   pendingPermissions: Map<string, PermissionRequest>;
   pendingControlRequests: Map<string, PendingControlRequest>;
-  pendingViewerActions: Map<string, { resolve: (result: ViewerActionResult) => void }>;
+  pendingViewerActions: Map<string, {
+    resolve: (result: ViewerActionResult) => void;
+    reject: (error: Error) => void;
+    socket: ServerWebSocket<SocketData>;
+    viewerInstanceId: string;
+    dispatched: boolean;
+    dispatch: () => void;
+  }>;
+  /** FIFO of accepted normal turns; a committed steer replaces its head. */
+  viewerTurnTargets?: Array<string | null>;
+  /** Recent normalized result UUIDs prevent duplicate completion from advancing the FIFO. */
+  viewerResultIds?: Set<string>;
   /** Whether CLI is idle (not processing a turn). Used to gate viewer notifications. */
   cliIdle: boolean;
   /** Queued viewer notifications to send when CLI becomes idle. */
-  pendingNotifications: Array<{ type: string; message: string; severity: "info" | "warning"; images?: { media_type: string; data: string }[] }>;
+  pendingNotifications: Array<{ type: string; message: string; severity: "info" | "warning"; images?: { media_type: string; data: string }[]; viewerInstanceId?: string | null }>;
   /**
    * Queued server-originated system tags (e.g. `<pneuma:borrow-returned>`) to
    * deliver to the agent when the CLI next becomes idle. Sibling to

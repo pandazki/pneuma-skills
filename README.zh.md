@@ -331,6 +331,51 @@ Pneuma 支持在 session 之上的可选 Project 层 —— 用来锚定**一件
 - 前端按 session state 里的 `agent_capabilities` 做能力门控。Schedules、后端上报的会话费用统计等 Claude 独有能力对其它后端会自动隐藏。Mode 自身的素材费用（例如 Lucid 的 OpenRouter 图片回执）独立统计。
 - Agent 正在工作时，只要当前后端支持 steering，排队中的用户消息就能直接加入这一轮，而不用先打断它。Claude Code 与 Codex 目前支持；Kimi 的 ACP 连接会禁用这个控件，不用“取消后重发”来近似模拟。
 
+## 项目协作（Beta）
+
+协作功能目前处于 Beta，首批支持 Webcraft。可分享工作区进行实时查看和反馈，
+每个人仍保留自己的文件和私有 Agent 对话。
+
+**设置 → 协作配置** 提供局域网、临时公网和自有域名的完整配置引导，检测本机
+`cloudflared`，并可一键复制配置请求给 Claude Code 或 Codex。请求会带上随客户端
+提供的操作说明；复制不会自动开启分享或发送 AI 消息。协作面板内也能打开同一份引导。
+
+在 Project 内打开 Webcraft Session，点击 **Collaborate**。可以创建局域网项目，
+连接已配置的云端服务，或粘贴项目成员邀请链接。点击 **Share this workspace** 发布当前站点。
+每个人保留自己的文件和私有 Agent 对话；共享 viewer 支持独立浏览、跟随、指针、定位批注和房间聊天。
+管理员管理成员，只读成员不能修改共享状态；访客链接只授予一个房间的观看或评论权限。
+
+分享期间，View、Select 和 Annotate 显示最近完整发布的快照，图片和样式也使用该版本；
+本地修改发布完成后才会出现。**Edit locally** 切换到本地文件，暂停共享评论和实时指针、跟随，
+返回 View、Select 或 Annotate 后恢复；访客仍可查看已发布的版本。已有讨论仍可发送给私有 AI。
+
+按住 **Control** 并点击 viewer 中的元素即可开始评论，松开后恢复原来的工具。
+评论引用会在可用时显示捕获的预览，点击即可定位并高亮目标。主持人的 Session 中，
+**Send to AI** 会将聊天消息或整个评论线程挂到私有 Agent 输入框上方；可以追加说明，
+也可以直接发送反馈。添加引用本身不会自动发给 Agent。
+
+定位批注始终关联创建时捕获的版本。后续修改可能使原目标无法定位，不会自动将批注
+重新锚定到新内容。升级时应保留原有 Project 和协作状态，让评论、聊天、成员、
+邀请和引用继续可用。
+
+本机托管的项目可以通过 **Public access** 同时提供局域网和公网入口。默认使用免费的
+Cloudflare 临时隧道，也可配置自己已有的命名隧道；本机需要安装 `cloudflared`。
+公网可手动关闭，连续 10 分钟没有公网参与者连接时也会自动关闭，设置页面关闭后计时仍然有效，
+服务重启后默认关闭。局域网访问继续保留。临时链接重新开启后会变化，Quick Tunnel 不保证可用性；
+托管电脑和共享工作区仍需保持在线。
+临时地址变化后，已加入的成员可将主持人提供的新项目 URL 粘贴到 **Reconnect to Project**，
+继续使用原有身份和工作区。
+
+**References** 将其他工作区的发布地址和版本固定下来。打开引用仍需当前访问权限和源主持人在线；
+**Import a local copy** 会明确创建带来源信息的本地副本，供自己的 Agent 继续处理。
+主持人的 Session 页面和同步服务必须同时在线；断线后参与者需要主动重新加入，项目里的其他房间可继续在线。
+
+首批支持 Webcraft，局域网与云端使用同一个 mode viewer 和协作协议。
+云端目前需要独立配置 Cloudflare 部署，并使用预先发放的成员凭证；尚不包含账号登录和托管 SaaS 服务。
+契约见[协作服务说明](docs/reference/project-collaboration-authority.md)和[导入行为](docs/reference/collaboration-reference-import.md)。
+独立的 `bun run dev:collab`、`dev:collab:cloud` 实验入口仍保留，配置和测量方法见
+[实验说明](docs/reference/project-collaboration-experiment.md)。
+
 ## 用 Claude Code 或 Codex 开发
 
 在任一 Harness 中打开仓库，从 [AGENTS.md](AGENTS.md) 开始。

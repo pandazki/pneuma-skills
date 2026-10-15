@@ -1,0 +1,23 @@
+import { afterEach, expect, test } from "bun:test";
+import { Window } from "happy-dom";
+import { buildWebcraftPublicPageScript } from "../viewer/page-runtime.js";
+const pages: Window[] = [];
+afterEach(async () => { for (const page of pages.splice(0)) await page.happyDOM.close(); });
+test("opaque page navigation highlights an addressed target without producing Agent selection", () => {
+  const page = new Window({ url: "http://host/content/site/index.html" }); pages.push(page);
+  page.document.write('<html><body><h1 id="heading">Heading</h1></body></html>'); page.document.close();
+  page.HTMLElement.prototype.scrollIntoView = () => {};
+  const messages: Record<string, unknown>[] = [];
+  page.postMessage = (message) => messages.push(message as Record<string, unknown>);
+  page.eval(buildWebcraftPublicPageScript());
+  const nonce = messages.find((message) => message.type === "ready")!.nonce;
+  const send = (data: Record<string, unknown>) => page.eval(`dispatchEvent(new MessageEvent("message", { source: parent, data: ${JSON.stringify(data)} }));`);
+  send({ channel: "pneuma-webcraft-page", nonce, type: "configure", address: { contentSet: "site", page: "index.html" }, root: "http://host/content/site/" });
+  send({ type: "pneuma:selectMode", doc: nonce, enabled: false });
+  send({ channel: "pneuma-webcraft-page", nonce, type: "navigate", requestId: "locate", cause: "follow", address: { contentSet: "site", page: "index.html", selector: "#heading" } });
+  expect(page.document.querySelector("[data-pneuma-navigation-highlight]")).not.toBeNull();
+  expect(messages.find((message) => message.requestId === "locate")).toMatchObject({ result: { success: true } });
+  expect(messages.filter((message) => message.type === "pneuma:select")).toHaveLength(0);
+  send({ channel: "pneuma-webcraft-page", nonce, type: "navigate", requestId: "wrong-site", address: { contentSet: "other-site", page: "index.html", selector: "#heading" } });
+  expect(messages.find((message) => message.requestId === "wrong-site")).toMatchObject({ result: { success: false } });
+});

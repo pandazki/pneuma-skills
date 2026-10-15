@@ -53,7 +53,11 @@
   },
   "scripts": {
     "dev": "bun bin/pneuma.ts --dev",
-    "build": "vite build",
+    "dev:collab": "bun modes/webcraft/harness/collab-lab.ts",
+    "dev:collab:cloud": "bun modes/webcraft/harness/collab-cloud.ts",
+    "build:collab:cloud": "bun cloud/collaboration/build.ts",
+    "bench:collab": "bun modes/webcraft/harness/collab-benchmark.ts",
+    "build": "vite build && bun run build:collaboration",
     "start": "bun bin/pneuma.ts",
     "typecheck": "tsc --noEmit",
     "check:guidance": "bun scripts/check-agent-guidance.ts",
@@ -68,7 +72,8 @@
     "test:server": "bun test core server bin snapshot plugins scripts/__tests__",
     "test:modes": "bun test modes",
     "test:backends": "PNEUMA_TEST_LIVE=1 bun test backends",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "build:collaboration": "bun snapshot/collaboration-build.ts"
   },
   "dependencies": {
     "@babel/standalone": "^7.27.0",

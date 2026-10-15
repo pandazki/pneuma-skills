@@ -55,7 +55,11 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
     set((s) => ({
       session: s.session ? { ...s.session, ...updates } : null,
     })),
-  setSessionId: (id) => set({ sessionId: id }),
+  setSessionId: (id) => set((state) => ({ sessionId: id, ...(state.sessionId !== id ? {
+    collaborationFeedback: [],
+    collaborationFeedbackFocus: 0,
+    pendingMessages: state.pendingMessages.filter((message) => message.kind !== "user" || !message.collaborationFeedback?.length),
+  } : {}) })),
   setSessionWorkspace: (path) => set({ sessionWorkspace: path }),
   setConnectionStatus: (status) => set({ connectionStatus: status }),
   setCliConnected: (connected) => set({ cliConnected: connected }),

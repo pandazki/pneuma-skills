@@ -7,8 +7,9 @@ const sent: string[] = [];
 // `delivered` models whether the socket carried the message. The flush relies
 // on the boolean return to recover (requeue) when a send is dropped.
 let delivered = true;
+let sendFailure: Error | null = null;
 mock.module("../../ws.js", () => ({
-  sendUserMessage: (text: string) => { if (delivered) sent.push(text); return delivered; },
+  sendUserMessage: (text: string) => { if (sendFailure) throw sendFailure; if (delivered) sent.push(text); return delivered; },
   sendViewerNotification: () => delivered,
 }));
 
@@ -21,6 +22,7 @@ describe("pending-queue flush with multiple queued messages", () => {
   beforeEach(() => {
     sent.length = 0;
     delivered = true;
+    sendFailure = null;
     useStore.setState({
       pendingMessages: [],
       sessionStatus: "idle",
@@ -105,5 +107,44 @@ describe("pending-queue flush with multiple queued messages", () => {
 
     expect(sent).toEqual(["A"]);
     expect(useStore.getState().pendingMessages).toHaveLength(0);
+  });
+
+  test("failed queued feedback remains visible without auto-retry until an explicit retry", async () => {
+    const { createChatFeedback, serializeCollaborationFeedback } = await import("../../collaboration/forward-to-agent.js");
+    const feedback = createChatFeedback({ sessionId: "queue-session", projectId: "project", contentSet: null,
+      room: { id: "room", title: "Site", mode: "webcraft", ownerId: "owner", enabled: true, revision: 1, page: "index.html", updatedAt: 1 },
+      message: { id: "message", roomId: "room", authorId: "guest", authorName: "Guest", body: "Make the title larger", createdAt: 2 },
+    });
+    useStore.setState({ sessionId: "queue-session", sessionStatus: "running", turnInProgress: true });
+    const text = serializeCollaborationFeedback("Keep its color", [feedback]);
+    sendFailure = new Error("enrichment failed");
+    useStore.getState().addPendingMessage({ text, collaborationFeedback: [feedback] });
+    useStore.getState().setTurnInProgress(false);
+    useStore.getState().setSessionStatus("idle");
+    await tick();
+    const failed = useStore.getState().pendingMessages[0];
+    expect(failed.kind).toBe("user");
+    if (failed.kind !== "user") throw new Error("Expected queued user feedback");
+    expect(failed.text).toBe(text);
+    expect(failed.collaborationFeedback?.[0].messages[0].body).toBe("Make the title larger");
+    expect(failed.deliveryError).toBeTruthy();
+    sendFailure = null;
+    useStore.getState().addPendingMessage({ text: "behind failed feedback" });
+    await tick();
+    expect(sent).toEqual([]);
+    useStore.getState().retryPendingMessage(failed.id);
+    await tick();
+    expect(sent).toEqual([text]);
+    expect(useStore.getState().pendingMessages).toHaveLength(1);
+  });
+
+  test("removing failed feedback unblocks the following user message", async () => {
+    useStore.setState({ pendingMessages: [
+      { id: "failed", kind: "user", text: "feedback", deliveryError: "Retry" },
+      { id: "next", kind: "user", text: "next message" },
+    ] });
+    useStore.getState().removePendingMessage("failed");
+    await tick();
+    expect(sent).toEqual(["next message"]);
   });
 });

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
+import { SessionCollaborationProvider, SessionViewerOverlays } from "./collaboration/SessionCollaboration.js";
 import ToolDock from "./components/ToolDock.js";
 import AgentSurfaceLayer from "./components/AgentSurfaceLayer.js";
 import ChatPanel from "./components/ChatPanel.js";
@@ -23,8 +24,9 @@ import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 import { useCaptureAction } from "./hooks/useCaptureAction.js";
 import { useBackgroundStatusReporter } from "./hooks/useBackgroundStatusReporter.js";
 import { useWindowTitle } from "./hooks/useWindowTitle.js";
-import { normalizeViewerState } from "./utils/viewer-state.js";
+import { normalizeViewerState, loadTabViewerState, viewerStateStorageKey } from "./utils/viewer-state.js";
 import { ViewerErrorBoundary } from "./components/ViewerErrorBoundary.js";
+import { countUserWorkspaceFiles } from "./utils/workspace-content.js";
 
 const Launcher = lazy(() => import("./components/Launcher.js"));
 const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
@@ -52,6 +54,10 @@ function LazyFallback() {
 // read-only player (PlayerApp) mounts viewers through the identical code path.
 
 export default function App() {
+  return <SessionCollaborationProvider><SessionApp/></SessionCollaborationProvider>;
+}
+
+function SessionApp() {
   // Launcher mode — lightweight marketplace UI
   const [isLauncher] = useState(() => {
     const params = new URLSearchParams(location.search);
@@ -105,6 +111,7 @@ export default function App() {
   // "workspace state is now known" signal — before it, `files: []` cannot
   // distinguish "still fetching" from "genuinely empty".
   const filesFetched = useStore((s) => s.filesHydrated);
+  const [stateAtWorkspaceRoot, setStateAtWorkspaceRoot] = useState<boolean | null>(null);
   // User-driven dismissal of the gallery / no-seed overlay. Persists for
   // the lifetime of the session. Auto-dismiss-on-content-production is
   // still handled by `userContentCount` / `hasSeedsDeclared`; this lets
@@ -152,9 +159,9 @@ export default function App() {
           const d = await fetch(`${getApiBase()}/api/files`, { signal: controller.signal }).then((r) => r.json());
           if (d.files?.length) useStore.getState().setFiles(d.files);
           useStore.getState().markFilesHydrated();
-          // Restore persisted viewer position (content set + active file)
+          // Restore this tab's position without reading another browser's view.
           try {
-            const vs = await fetch(`${getApiBase()}/api/viewer-state`, { signal: controller.signal }).then((r) => r.json());
+            const vs = loadTabViewerState(viewerStateStorageKey(getApiBase(), location.href));
             const store = useStore.getState();
             const normalized = normalizeViewerState(vs, store.contentSets);
             if (normalized.contentSet && store.contentSets.some((cs: { prefix: string }) => cs.prefix === normalized.contentSet)) {
@@ -186,8 +193,12 @@ export default function App() {
     // Also fetch /api/session to discover project paths (Pneuma 3.0) so the
     // store knows whether this session belongs to a project surface.
     fetch(`${getApiBase()}/api/session`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Could not load Session paths (HTTP ${r.status}).`);
+        return r.json();
+      })
       .then((d) => {
+        setStateAtWorkspaceRoot(typeof d?.workspace === "string" && d?.project?.sessionDir === d.workspace);
         if (d?.project?.projectRoot) {
           useStore.getState().setProjectContext({
             projectRoot: d.project.projectRoot,
@@ -208,7 +219,11 @@ export default function App() {
           connect(d?.sessionId || "default");
         }
       })
-      .catch(() => {
+      .catch((error) => {
+        console.warn("[app] Could not determine Session state placement:", error);
+        // Preserve Quick Session behavior after a failed metadata request; never
+        // hold the viewer indefinitely or guess that a user's root config is state.
+        setStateAtWorkspaceRoot(false);
         if (!explicitSession) connect("default");
       });
     if (explicitSession) {
@@ -307,26 +322,11 @@ export default function App() {
   // historical view) and in non-editing sessions (viewing-only modes
   // don't author seeds either).
   //
-  // The store's `files` includes framework-owned state files surfaced by
-  // the file watcher (`.pneuma/session.json`, `.pneuma/history.json`,
-  // the installed skill under `.claude/`) — those are *not* user
-  // content and must be filtered out before the empty check. Filtering
-  // here, not in the watcher, because other call sites (e.g. share
-  // export) want those files included.
+  // The snapshot also contains Session state. Its placement comes from
+  // /api/session: Quick state is nested, Project state shares the workspace root.
+  // Classify here without removing files needed by other snapshot consumers.
   const filesForGallery = useStore((s) => s.files);
-  const userContentCount = filesForGallery.filter((f) => {
-    const p = f.path;
-    if (p === "CLAUDE.md" || p === "AGENTS.md") return false;
-    if (p.startsWith(".pneuma/") || p.startsWith(".claude/") || p.startsWith(".agents/")) return false;
-    if (p.startsWith(".kimi-code/")) return false;
-    if (p === ".gitignore") return false;
-    // `_`-prefixed top-level dirs are framework-managed seeds (e.g. kami's
-    // `_shared/` design-system bundle resynced on every boot). They are
-    // not user content — they live in the workspace but the gallery still
-    // counts as "empty" if those are the only files present.
-    if (p.startsWith("_")) return false;
-    return true;
-  }).length;
+  const userContentCount = countUserWorkspaceFiles(filesForGallery, stateAtWorkspaceRoot);
   const modeManifestForGallery = useStore((s) => s.modeManifest);
   // Must mirror `resolveSeedCatalog` on the server (seed-installer.ts):
   // a mode "has seeds" iff either init.seeds is non-empty, OR the
@@ -368,7 +368,7 @@ export default function App() {
   // undefined under the new contract). Hold the preview behind a loading
   // state so the empty/gallery branches get a chance to take over.
   const previewWaitingForFiles =
-    !replayMode && editing !== false && !filesFetched && !!PreviewComponent;
+    !replayMode && editing !== false && (!filesFetched || userContentCount === null) && !!PreviewComponent;
   // Session shell theming — the launcher's choice (saved in
   // ~/.pneuma/settings.json) propagates here via `pneuma:theme-changed`.
   // The session root flips `.cc-theme-light` to swap the cc-* token surface.
@@ -403,6 +403,7 @@ export default function App() {
     return (
       <div className={`h-screen w-screen bg-cc-bg text-cc-fg relative overflow-hidden ${themeClass}`}>
         <div ref={previewRef} className="h-full w-full relative">
+          <SessionViewerOverlays/>
           {modeLoadError ? (
             <ModeLoadError error={modeLoadError} retrying={modeLoadPending} onRetry={() => setModeLoadAttempt((n) => n + 1)} />
           ) : showGallery ? (
@@ -446,7 +447,7 @@ export default function App() {
   // ── Editor layout: split panel (2.x default) ──────────────────────────
 
   return (
-    <div className={`flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-hidden p-4 sm:p-6 md:p-8 ${themeClass}`}>
+    <div className={`flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-clip p-4 sm:p-6 md:p-8 ${themeClass}`}>
       {/* Immersive mesh gradient — dark-mode atmospherics; hidden in light. */}
       <div className="session-shell-mesh absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-cc-primary/10 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
       <div className="session-shell-mesh absolute top-[20%] right-[-10%] w-[50%] h-[60%] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
@@ -467,6 +468,7 @@ export default function App() {
           )}
           <Panel key="viewer" id="viewer" defaultSize={68} minSize={30}>
             <div ref={previewRef} className="h-full w-full relative">
+          <SessionViewerOverlays/>
               {modeLoadError ? (
                 <ModeLoadError error={modeLoadError} retrying={modeLoadPending} onRetry={() => setModeLoadAttempt((n) => n + 1)} />
               ) : showGallery ? (

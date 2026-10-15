@@ -1,0 +1,7 @@
+digraph collaboration { graph [bgcolor="#F8F7F3", pad="0.25", nodesep="0.3", ranksep="0.45"]; node [shape=box, style="rounded,filled", fillcolor="#f6f5ef", color="#d4dbd7", fontname="Helvetica", fontsize=13, margin="0.18,0.12"]; edge [fontname="Helvetica", fontsize=10, color="#58736a", arrowsize=0.7]; rankdir=TB; p [label="Project
+Stable identity + memberships + roles", fillcolor="#dcebe3"]; a [label="Member A
+Local workspace + private Agent session"]; b [label="Member B
+Local workspace + private Agent session"]; c [label="Member C
+Authorized project participant"]; ra [label="Room A / Webcraft
+Explicit public projection + host lease"]; rb [label="Room B / Draw
+Explicit public projection + host lease"]; p -> {a b c}; a -> ra [label="opens"]; b -> rb [label="opens"]; c -> ra [label="joins if allowed"]; c -> rb [label="joins if allowed"]; ra -> rb [label="pinned reference; source ACL still applies",style=dashed]; }

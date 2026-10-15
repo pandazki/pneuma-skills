@@ -56,7 +56,7 @@ import {
   handleSessionAck,
   handlePermissionResponse,
 } from "./ws-bridge-browser.js";
-import { handleViewerActionResponse } from "./ws-bridge-viewer.js";
+import { handleViewerActionResponse, registerPrivateViewer, unregisterPrivateViewer } from "./ws-bridge-viewer.js";
 import { stampFileRefs } from "./file-ref.js";
 import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
 import { CodexBridge } from "./ws-bridge-codex.js";
@@ -77,6 +77,8 @@ export class WsBridge {
     "interrupt",
   ]);
   private sessions = new Map<string, Session>();
+  /** Socket-authored provenance, retained through backend ingest without trusting payload IDs. */
+  private viewerMessageOrigins = new WeakMap<object, { instanceId: string | null; steer: boolean }>();
   /**
    * Per-session bridge backend handlers — currently codex and kimi-cli;
    * Claude Code uses the legacy CLI-WebSocket path instead. Replaces the
@@ -170,6 +172,7 @@ export class WsBridge {
    */
   injectGreeting(sessionId: string, content: string): void {
     const session = this.getOrCreateSession(sessionId);
+    (session.viewerTurnTargets ??= []).push(null);
     session.cliIdle = false;
 
     const backend = this.streamingBackends.get(sessionId);
@@ -333,6 +336,7 @@ export class WsBridge {
   async dispatchViewerAction(
     actionId: string,
     params?: Record<string, unknown>,
+    viewerInstanceId?: string,
   ): Promise<import("../core/types/viewer-contract.js").ViewerActionResult> {
     const sessionId = this.getActiveSessionId();
     if (!sessionId) {
@@ -347,7 +351,7 @@ export class WsBridge {
       session,
       actionId,
       params,
-      (msg) => this.broadcastToBrowsers(session, msg),
+      viewerInstanceId,
     );
   }
 
@@ -405,6 +409,10 @@ export class WsBridge {
   }
 
   removeSession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      for (const socket of session.browserSockets) unregisterPrivateViewer(session, socket);
+    }
     this.sessions.delete(sessionId);
   }
 
@@ -684,6 +692,7 @@ export class WsBridge {
     if (!session) return;
 
     session.browserSockets.delete(ws);
+    unregisterPrivateViewer(session, ws);
     console.log(`[ws-bridge] Browser disconnected for session ${sessionId} (${session.browserSockets.size} browsers)`);
     // Clean up native bridge if the desktop renderer disconnected
     setBridgeSocket(null);
@@ -1321,9 +1330,9 @@ export class WsBridge {
     // this same idle gate so neither starves the other (design §13.2).
     if (session.pendingNotifications?.length > 0) {
       const next = session.pendingNotifications.shift()!;
-      const { images, ...notification } = next;
+      const { images, viewerInstanceId, ...notification } = next;
       console.log(`[ws-bridge] Flushing queued viewer notification: ${next.type} (${session.pendingNotifications.length} remaining)`);
-      this.sendViewerNotificationToCLI(session, notification, images);
+      this.sendViewerNotificationToCLI(session, notification, images, viewerInstanceId);
     } else if (session.pendingSystemSignals?.length > 0) {
       const tag = session.pendingSystemSignals.shift()!;
       console.log(`[ws-bridge] Flushing queued system signal (${session.pendingSystemSignals.length} remaining)`);
@@ -1518,6 +1527,16 @@ export class WsBridge {
     msg: BrowserOutgoingMessage,
     ws?: ServerWebSocket<SocketData>,
   ) {
+    if (msg.type === "viewer_instance_register") {
+      if (ws) this.sendToBrowser(ws, registerPrivateViewer(session, ws, msg.viewer_instance_id));
+      return;
+    }
+    if (msg.type === "viewer_instance_unregister") {
+      if (ws && (ws.data as BrowserSocketData).viewerInstanceId === msg.viewer_instance_id) {
+        unregisterPrivateViewer(session, ws);
+      }
+      return;
+    }
     if (msg.type === "session_subscribe") {
       handleSessionSubscribe(
         session,
@@ -1571,6 +1590,12 @@ export class WsBridge {
     //   - `"passthrough"` → bridge-internal types (viewer_action_response,
     //     viewer_notification, session_subscribe, etc.) — fall through to
     //     the bridge's own handlers below.
+    if (msg.type === "user_message" || msg.type === "steer_message") {
+      this.viewerMessageOrigins.set(msg, {
+        instanceId: ws ? (ws.data as BrowserSocketData).viewerInstanceId ?? null : null,
+        steer: msg.type === "steer_message",
+      });
+    }
     const streamingBackend = this.streamingBackends.get(session.id);
     if (streamingBackend) {
       const result = streamingBackend.routeBrowserMessage(msg);
@@ -1579,10 +1604,10 @@ export class WsBridge {
       // Bridge-internal viewer messages — same handling for every backend.
       switch (msg.type) {
         case "viewer_action_response":
-          handleViewerActionResponse(session, msg);
+          handleViewerActionResponse(session, msg, ws);
           return;
         case "viewer_notification":
-          this.handleViewerNotification(session, msg);
+          this.handleViewerNotification(session, msg, ws);
           return;
       }
     }
@@ -1636,11 +1661,11 @@ export class WsBridge {
       }
 
       case "viewer_action_response":
-        handleViewerActionResponse(session, msg);
+        handleViewerActionResponse(session, msg, ws);
         break;
 
       case "viewer_notification":
-        this.handleViewerNotification(session, msg);
+        this.handleViewerNotification(session, msg, ws);
         break;
 
       case "end_session": {
@@ -1863,10 +1888,17 @@ export class WsBridge {
       : [];
 
     let settled = false;
+    const viewerOrigin = this.viewerMessageOrigins.get(msg);
     const commit = () => {
       if (settled) return;
       settled = true;
       session.messageHistory.push(historyEntry);
+      const targets = session.viewerTurnTargets ??= [];
+      if (viewerOrigin?.steer) {
+        if (targets.length) targets[0] = viewerOrigin.instanceId;
+      } else {
+        targets.push(viewerOrigin?.instanceId ?? null);
+      }
     };
     const rollback = () => {
       if (settled) return;
@@ -2045,6 +2077,7 @@ export class WsBridge {
       notification: { type: string; message: string; severity: "info" | "warning" };
       images?: { media_type: string; data: string }[];
     },
+    ws?: ServerWebSocket<SocketData>,
   ) {
     // Only handle warning-level notifications
     if (msg.notification.severity !== "warning") return;
@@ -2052,12 +2085,12 @@ export class WsBridge {
     if (!session.cliIdle) {
       // CLI busy — queue for delivery when CLI becomes idle
       if (!session.pendingNotifications) session.pendingNotifications = [];
-      session.pendingNotifications.push({ ...msg.notification, images: msg.images });
+      session.pendingNotifications.push({ ...msg.notification, images: msg.images, viewerInstanceId: ws ? (ws.data as BrowserSocketData).viewerInstanceId ?? null : null });
       console.log(`[ws-bridge] Viewer notification queued (CLI busy): ${msg.notification.type} (${session.pendingNotifications.length} in queue)`);
       return;
     }
 
-    this.sendViewerNotificationToCLI(session, msg.notification, msg.images);
+    this.sendViewerNotificationToCLI(session, msg.notification, msg.images, ws ? (ws.data as BrowserSocketData).viewerInstanceId ?? null : null);
   }
 
   /** Send a viewer notification to CLI as a user message (not recorded in messageHistory). */
@@ -2065,17 +2098,17 @@ export class WsBridge {
     session: Session,
     notification: { type: string; message: string; severity: "info" | "warning" },
     images?: { media_type: string; data: string }[],
+    viewerInstanceId: string | null = null,
   ) {
     session.cliIdle = false;
 
     const streamingBackend = this.streamingBackends.get(session.id);
+    const input: BrowserOutgoingMessage = { type: "user_message", content: notification.message, images };
+    this.viewerMessageOrigins.set(input, { instanceId: viewerInstanceId, steer: false });
+    if (!images?.length) (session.viewerTurnTargets ??= []).push(viewerInstanceId);
     if (streamingBackend) {
       if (images?.length) {
-        streamingBackend.routeBrowserMessage({
-          type: "user_message",
-          content: notification.message,
-          images,
-        });
+        streamingBackend.routeBrowserMessage(input);
       } else {
         streamingBackend.injectUserMessage(notification.message);
       }
@@ -2085,11 +2118,7 @@ export class WsBridge {
 
     if (images?.length) {
       // Use the same path as regular user messages so images get converted to content blocks
-      this.handleUserMessage(session, {
-        type: "user_message",
-        content: notification.message,
-        images,
-      });
+      this.handleUserMessage(session, input);
     } else {
       const ndjson = JSON.stringify({
         type: "user",
@@ -2119,6 +2148,16 @@ export class WsBridge {
   }
 
   private broadcastToBrowsers(session: Session, msg: BrowserIncomingMessage) {
+    // A normalized result closes exactly one accepted turn for every backend.
+    if (msg.type === "result") {
+      const ids = session.viewerResultIds ??= new Set();
+      const id = msg.data.uuid;
+      if (!id || !ids.has(id)) session.viewerTurnTargets?.shift();
+      if (id) {
+        ids.add(id);
+        if (ids.size > 512) ids.delete(ids.values().next().value!);
+      }
+    }
     const json = JSON.stringify(
       sequenceEvent(
         session,

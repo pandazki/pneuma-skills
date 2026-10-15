@@ -1,0 +1,14 @@
+.comment-reference.thread-anchor { appearance: none; display: flex; flex-direction: column; align-items: stretch; gap: 9px; width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--color-cc-border); border-radius: 7px; background: var(--color-cc-primary-muted); color: var(--color-cc-fg); text-align: left; cursor: pointer; }
+.comment-reference.thread-anchor:hover { border-color: var(--color-cc-primary); background: var(--color-cc-hover); }
+.comment-reference.thread-anchor:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--color-cc-primary); }
+.comment-reference .comment-reference-image { display: block; max-width: 100%; max-height: 120px; width: auto; height: auto; align-self: flex-start; object-fit: contain; border: 1px solid var(--color-cc-border); border-radius: 4px; background: var(--color-cc-bg); }
+.comment-reference > .comment-reference-details { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow: visible; white-space: normal; }
+.comment-reference-heading { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--color-cc-primary); font-size: 11px; line-height: 1.5; }
+.comment-reference-heading > svg { flex-shrink: 0; }
+.comment-reference-label { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.comment-reference-file { display: block; min-width: 0; color: var(--color-cc-muted); font-size: 10px; overflow-wrap: anywhere; }
+.comment-reference-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; color: var(--color-cc-muted); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+.new-thread > .comment-reference { width: calc(100% - 22px); margin: 10px 11px 0; }
+.comment-create { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px 0; }
+.comment-create > span { color: var(--color-cc-muted); font-size: 10px; }
+.session-collaboration .comment-create { padding: 0 0 12px; }

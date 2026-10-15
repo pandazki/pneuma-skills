@@ -1,0 +1,6 @@
+digraph collaboration { graph [bgcolor="#F8F7F3", pad="0.25", nodesep="0.3", ranksep="0.45"]; node [shape=box, style="rounded,filled", fillcolor="#f6f5ef", color="#d4dbd7", fontname="Helvetica", fontsize=13, margin="0.18,0.12"]; edge [fontname="Helvetica", fontsize=10, color="#58736a", arrowsize=0.7]; rankdir=TB; subgraph cluster_local {label="Host device (private)"; color="#d4dbd7"; agent [label="Agent + workspace files"]; pub [label="Mode-owned public projection
+Single publisher"]; agent -> pub;} lan [label="LAN project authority
+SQLite + public resources",fillcolor="#dcebe3"]; cloud [label="Cloud project authority
+Worker + Project DO + private R2",fillcolor="#dde5f1"]; viewers [label="Authorized participant viewers"]; cdn [label="Public CDN
+Versioned viewer code only"]; pub -> lan [label="LAN selection"]; pub -> cloud [label="cloud selection"]; lan -> viewers [label="authorized content + events"]; cloud -> viewers [label="authorized content + events"]; cdn -> viewers [label="immutable runtime assets"]; note [shape=note,label="One authority per project.
+No automatic LAN/cloud failover."]; }

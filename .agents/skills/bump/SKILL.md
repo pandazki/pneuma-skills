@@ -114,8 +114,11 @@ chore: bump version to X.Y.Z — <brief milestone description>
 Before pushing, run the same checks as CI:
 
 ```
+bun install --frozen-lockfile
+bun install --frozen-lockfile --cwd cloud/collaboration
 bun run check:guidance
 bun run typecheck
+bun run --cwd cloud/collaboration typecheck
 bun run test:release
 bun run build
 ```

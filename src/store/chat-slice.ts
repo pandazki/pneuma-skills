@@ -3,6 +3,7 @@ import type { ChatMessage, PermissionRequest, Annotation } from "../types.js";
 import type { AppState, Activity, AnsweredQuestion, ElementSelection } from "./types.js";
 import { mergeAssistantMessage } from "./helpers.js";
 import { isPneumaMarkerOnly } from "../../core/utils/pneuma-markers.js";
+import type { CollaborationFeedbackAttachment } from "../collaboration/forward-to-agent.js";
 
 export interface PendingUserPayload {
   text: string;
@@ -10,6 +11,9 @@ export interface PendingUserPayload {
   images?: { media_type: string; data: string }[];
   files?: { name: string; media_type: string; data: string; size: number }[];
   annotations?: Annotation[];
+  collaborationFeedback?: CollaborationFeedbackAttachment[];
+  /** Failed queued feedback requires an explicit retry, never an auto-loop. */
+  deliveryError?: string;
 }
 
 /** Unified pending message — user text, viewer notification, or notification with image */
@@ -33,6 +37,15 @@ export interface ChatSlice {
   pendingPermissions: Map<string, PermissionRequest>;
   answeredQuestions: Map<string, AnsweredQuestion>;
   promptSuggestions: string[];
+  /** Explicit user insertion into the editable composer; never a queued send. */
+  composerInsertion: { id: string; text: string } | null;
+  collaborationFeedback: CollaborationFeedbackAttachment[];
+  collaborationFeedbackFocus: number;
+  stageCollaborationFeedback: (attachment: CollaborationFeedbackAttachment) => boolean;
+  removeCollaborationFeedback: (key: string) => void;
+  consumeCollaborationFeedback: (snapshots: CollaborationFeedbackAttachment[]) => void;
+  retryPendingMessage: (id: string) => void;
+  setComposerInsertion: (insertion: { id: string; text: string } | null) => void;
   setPromptSuggestions: (suggestions: string[]) => void;
   clearPromptSuggestions: () => void;
 
@@ -65,6 +78,28 @@ export const createChatSlice: StateCreator<AppState, [], [], ChatSlice> = (set, 
   pendingPermissions: new Map(),
   answeredQuestions: new Map(),
   promptSuggestions: [],
+  composerInsertion: null,
+  collaborationFeedback: [],
+  collaborationFeedbackFocus: 0,
+  stageCollaborationFeedback: (attachment) => {
+    if (!get().sessionId || get().sessionId !== attachment.sessionId) return false;
+    const snapshot = structuredClone(attachment);
+    set((state) => {
+      const existing = state.collaborationFeedback.findIndex((item) => item.key === snapshot.key);
+      const collaborationFeedback = [...state.collaborationFeedback];
+      if (existing < 0) collaborationFeedback.push(snapshot);
+      else collaborationFeedback[existing] = snapshot;
+      return { collaborationFeedback, collaborationFeedbackFocus: state.collaborationFeedbackFocus + 1 };
+    });
+    return true;
+  },
+  removeCollaborationFeedback: (key) => set((state) => ({ collaborationFeedback: state.collaborationFeedback.filter((item) => item.key !== key) })),
+  consumeCollaborationFeedback: (snapshots) => {
+    const ids = new Set(snapshots.map((item) => item.snapshotId));
+    set((state) => ({ collaborationFeedback: state.collaborationFeedback.filter((item) => !ids.has(item.snapshotId)) }));
+  },
+  retryPendingMessage: (id) => set((state) => ({ pendingMessages: state.pendingMessages.map((item) => item.id === id && item.kind === "user" ? { ...item, deliveryError: undefined } : item) })),
+  setComposerInsertion: (composerInsertion) => set({ composerInsertion }),
   setPromptSuggestions: (suggestions) => set({ promptSuggestions: suggestions }),
   clearPromptSuggestions: () => set({ promptSuggestions: [] }),
 

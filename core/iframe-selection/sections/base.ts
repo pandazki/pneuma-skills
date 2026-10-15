@@ -6,6 +6,8 @@
  * target element styles, avoiding CSS compatibility issues.
  */
 export const SECTION_BASE = `
+  // Extensions use this marker only for editability introduced by the viewer.
+  var INLINE_EDIT_MARK = 'data-pneuma-inline-edit';
   var active = false;
   var hovered = null;
   var selectedEl = null;

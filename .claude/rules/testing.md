@@ -26,6 +26,13 @@ paths:
   | Explicit full validation | `bun run test:all --timeout 60000` |
   | Experimental parallel run; not a release gate | `bun run test:shard` |
 
+- **Cloud collaboration dependencies are isolated.** Before release or full
+  discovery, install both lockfiles: `bun install --frozen-lockfile` at the root
+  and `bun install --frozen-lockfile --cwd cloud/collaboration`. Release tests
+  always include `cloud/collaboration/tests` against local workerd; those tests
+  require no account credentials and must not be hidden behind live/media gates.
+  Run `bun run --cwd cloud/collaboration typecheck` as a separate release gate;
+  the root TypeScript project does not include the Worker package.
 - **Release selection is deterministic.** `test:release` always runs common
   checks and mode declaration checks plus affected mode directories, using all changes since the nearest
   reachable stable release tag older than the target version, including local

@@ -5,6 +5,34 @@ export interface PersistedViewerState {
   file?: string | null;
 }
 
+/** Browser tab storage owns view position; Session files never coordinate it. */
+export function viewerStateStorageKey(apiBase: string, href: string): string {
+  const url = new URL(href);
+  const session = url.searchParams.get("session") ?? "";
+  const mode = url.searchParams.get("mode") ?? "";
+  return `pneuma:viewer-state:${JSON.stringify([apiBase, session, mode])}`;
+}
+
+export function loadTabViewerState(key: string, storage: Pick<Storage, "getItem"> = sessionStorage): PersistedViewerState {
+  try {
+    const value: unknown = JSON.parse(storage.getItem(key) ?? "null");
+    if (!value || typeof value !== "object") return {};
+    const state = value as PersistedViewerState;
+    return {
+      contentSet: typeof state.contentSet === "string" ? state.contentSet : null,
+      file: typeof state.file === "string" ? state.file : null,
+    };
+  } catch (error) {
+    console.warn("[viewer-state] Could not restore tab position", error);
+    return {};
+  }
+}
+
+export function saveTabViewerState(key: string, state: PersistedViewerState, storage: Pick<Storage, "setItem"> = sessionStorage): void {
+  try { storage.setItem(key, JSON.stringify(state)); }
+  catch (error) { console.warn("[viewer-state] Could not persist tab position", error); }
+}
+
 /**
  * Normalize persisted viewer state so content-set modes always store:
  * - `contentSet`: the selected top-level content set prefix

@@ -30,7 +30,7 @@ export interface SelectionContext {
   /** Mode-defined machine handle for the selected object (see ViewerAddress) —
    *  round-trippable into the `capture` action or a `<viewer-locator>` card. */
   address?: ViewerAddress;
-  /** SVG data URL thumbnail of the selected element */
+  /** Image data URL preview: PNG/WebP for selected images, SVG for other selections. */
   thumbnail?: string;
   /** Human-readable element name (e.g. 'button "Submit"', 'h2 "Our Solution"') */
   label?: string;

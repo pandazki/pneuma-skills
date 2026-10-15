@@ -1,0 +1,75 @@
+{
+  "title": "Zusammenarbeit einrichten (Beta)",
+  "intro": "Teile einen Webcraft-Arbeitsbereich zum gemeinsamen Ansehen, Kommentieren und Chatten; dein Gespräch mit dem Agent bleibt privat.",
+  "path_label": "Wie verbinden sich Besucher?",
+  "paths": {
+    "lan": "Gleiches Netzwerk",
+    "temporary": "Temporär über Internet",
+    "named": "Eigene Domain"
+  },
+  "descriptions": {
+    "lan": "Starte hier, wenn alle dasselbe WLAN oder lokale Netzwerk nutzen; cloudflared muss nicht installiert werden.",
+    "temporary": "Nutze eine kostenlose temporäre Internetadresse ohne Domain oder Cloudflare-Konto; die Adresse ändert sich bei jedem Neustart des öffentlichen Zugriffs.",
+    "named": "Nutze eine feste HTTPS-Adresse mit einer Domain, die du in Cloudflare verwaltest; du brauchst ein Cloudflare-Konto und einen benannten Tunnel."
+  },
+  "hostname_label": "Dein Hostname (optional)",
+  "hostname_placeholder": "collaboration.example.com",
+  "hostname_error": "Gib einen Hostnamen oder HTTPS-Origin ohne Port, Pfad, Zugangsdaten, Abfrage oder Einladung ein.",
+  "steps": {
+    "lan": [
+      "Öffne ein Project und darin eine Webcraft Session.",
+      "Wähle Collaborate → Project, gib deinen Namen ein und wähle Create collaboration bei ausgewähltem Local network.",
+      "Wähle Share this workspace für die Website oder Inhaltssammlung, die Besucher sehen sollen.",
+      "Öffne Links, erstelle eine Einladung für Comment & chat und kopiere den Link unter Local network.",
+      "Bitte deinen Besucher, die Einladung in einem Browser im selben Netzwerk zu öffnen und seinen Namen einzugeben; testet einen Kommentar und eine Chatnachricht."
+    ],
+    "temporary": [
+      "Öffne ein Project und eine Webcraft Session, wähle Collaborate → Project und erstelle die Zusammenarbeit mit ausgewähltem Local network.",
+      "Prüfe den Status von cloudflared; falls es fehlt, installiere es mit der Einrichtungsanfrage und wähle „Erneut prüfen“, bevor du den öffentlichen Zugriff aktivierst.",
+      "Wähle Share this workspace und dann Public access → Free temporary address → Enable public access.",
+      "Warte, bis der öffentliche Zugriff Active anzeigt, öffne Links und erstelle eine Einladung für Comment & chat über den Eintrag Internet.",
+      "Bitte deinen Besucher, die Einladung in einem Browser in einem anderen Netzwerk zu öffnen; testet einen Kommentar und eine Chatnachricht."
+    ],
+    "named": [
+      "Öffne ein Project und eine Webcraft Session, wähle Collaborate → Project und erstelle die Zusammenarbeit mit ausgewähltem Local network.",
+      "Nutze die Einrichtungsanfrage, um cloudflared zu installieren, einen benannten Tunnel zu erstellen und in Cloudflare die DNS-Route des Hostnamens zu diesem Tunnel anzulegen.",
+      "Wähle Share this workspace und dann Public access → Your own Tunnel.",
+      "Fülle alle drei Felder aus: öffentliche HTTPS-URL, Tunnel-UUID und absoluter Pfad zur lokalen JSON-Datei mit den Zugangsdaten; wähle dann Enable public access.",
+      "Sobald Active angezeigt wird, öffne Links, erstelle eine Einladung für Comment & chat, wähle den Eintrag Internet und sende sie deinem Besucher.",
+      "Bitte deinen Besucher, die Einladung in einem Browser in einem anderen Netzwerk zu öffnen; testet einen Kommentar und eine Chatnachricht."
+    ]
+  },
+  "keep_online": "Lass den Hostcomputer, Pneuma und den freigebenden Session-Tab online, während Besucher den Arbeitsbereich nutzen.",
+  "public_lifecycle": "Der öffentliche Zugriff endet nach 10 Minuten ohne authentifizierten öffentlichen Besucher und ist nach einem Neustart deaktiviert; aktiviere ihn bei Bedarf erneut.",
+  "checking": "Dieser Computer wird geprüft…",
+  "check_error": "Der Einrichtungsstatus konnte nicht gelesen werden. Prüfe erneut, um die Einrichtungsanfrage vorzubereiten.",
+  "cloudflared_found": "cloudflared auf diesem Computer erkannt",
+  "cloudflared_missing": "cloudflared auf diesem Computer nicht gefunden",
+  "check_again": "Erneut prüfen",
+  "install_hint": "Die Einrichtungsanfrage kann cloudflared auf diesem Computer installieren; die Prüfung ändert deine Konfiguration nicht.",
+  "copy_request": "Einrichtungsanfrage kopieren",
+  "copied": "Einrichtungsanfrage kopiert",
+  "copying": "Wird kopiert…",
+  "paste_hint": "Füge diese Anfrage aus einem Satz auf diesem Computer in Claude Code oder Codex ein, um die Einrichtung auszuführen und zu prüfen.",
+  "copy_error": "Kopieren fehlgeschlagen. Die Anfrage ist unten markiert; kopiere sie manuell.",
+  "show_request": "Einrichtungsanfrage lesen",
+  "hide_request": "Einrichtungsanfrage ausblenden",
+  "request_label": "Einrichtungsanfrage für Claude Code oder Codex",
+  "advanced_title": "Erweitert: selbst gehostete Cloud-Autorität nutzen",
+  "advanced_body": "Cloud host verbindet sich mit einer Autorität für die Zusammenarbeit, die du nach der Anleitung unter cloud/collaboration im Repository selbst bereitstellst und verwaltest; dafür brauchst du deren HTTPS-URL und Bereitstellungsschlüssel, ein Konto bei einem gehosteten Dienst wird nicht erstellt. Für die Inhalte des Arbeitsbereichs müssen Host und Session weiterhin online bleiben.",
+  "entry": "Brauchst du Hilfe? Anleitung zur Zusammenarbeit",
+  "request_paths": {
+    "lan": "die Zusammenarbeit im selben Netzwerk",
+    "temporary": "die temporäre Zusammenarbeit über das Internet mit einem kostenlosen Cloudflare Quick Tunnel",
+    "named": "die Zusammenarbeit über das Internet mit meiner eigenen Domain und einem benannten Cloudflare Tunnel"
+  },
+  "request_hostname": " unter https://{{hostname}}",
+  "request_missing": {
+    "lan": "Project",
+    "temporary": "Project",
+    "named": "Project, Domain oder Cloudflare-Konto"
+  },
+  "request": "Richte {{scenario}}{{hostnameClause}} für Pneuma Skills {{appVersion}} auf {{platform}} ein und prüfe sie, indem du die vollständige lokale Anleitung unter {{guidePath}} liest (falls sie nicht verfügbar ist, rufe {{guideUrl}} aus dieser laufenden privaten Pneuma-App ab), mich nach fehlenden Angaben zu {{missing}} fragst, die Einrichtung ausführst und prüfst, ob Besucher den geteilten Webcraft-Arbeitsbereich im Browser öffnen und Comment & chat nutzen können, während mein Gespräch mit dem Agent privat bleibt.",
+  "lan_ready": "Für die Zusammenarbeit im selben Netzwerk ist kein Tunnel nötig.",
+  "public_recovery": "Falls der öffentliche Zugriff fehlschlägt, behebe die gemeldete Ursache, wähle Retry stopping public access zum Bereinigen des fehlgeschlagenen Versuchs und dann erneut Enable public access; „Erneut prüfen“ prüft nur die Installation."
+}

@@ -144,6 +144,7 @@ export function useCaptureAction(
   captureViewport?: (() => Promise<{ data: string; media_type: string } | null>) | null,
 ): void {
   const actionRequest = useStore((s) => s.actionRequest);
+  const viewerInstanceId = useStore((s) => s.viewerInstanceId);
   const setActionRequest = useStore((s) => s.setActionRequest);
   const setNavigateRequest = useStore((s) => s.setNavigateRequest);
 
@@ -153,9 +154,11 @@ export function useCaptureAction(
     let cancelled = false;
 
     const respond = (result: ActionResult) => {
-      if (cancelled) return;
+      const current = useStore.getState();
+      if (cancelled || current.viewerInstanceId !== viewerInstanceId
+        || current.actionRequest?.requestId !== requestId) return;
       import("../ws.js").then(({ sendViewerActionResponse }) => {
-        sendViewerActionResponse(requestId, result);
+        sendViewerActionResponse(requestId, result, viewerInstanceId);
       });
       setActionRequest(null);
     };
@@ -230,5 +233,5 @@ export function useCaptureAction(
     })();
 
     return () => { cancelled = true; };
-  }, [actionRequest, setActionRequest, setNavigateRequest, previewRef, captureViewport]);
+  }, [actionRequest, viewerInstanceId, setActionRequest, setNavigateRequest, previewRef, captureViewport]);
 }

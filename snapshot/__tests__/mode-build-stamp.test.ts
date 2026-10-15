@@ -16,7 +16,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -77,6 +77,31 @@ describe("the prebuilt viewer", () => {
     expect(modeSourceStamp(modeDir)).toBe(first);
     writeFileSync(join(modeDir, "viewer", "Preview.tsx"), `export default function Preview() { return <span>two</span>; }\n`);
     expect(modeSourceStamp(modeDir)).not.toBe(first);
+  });
+
+  test("packaging away a development harness preserves viewer reuse", () => {
+    const modeDir = fixture("packaging-source");
+    publishedBuild(modeDir);
+    mkdirSync(join(modeDir, "harness"));
+    writeFileSync(join(modeDir, "harness", "lab.ts"), "export const experiment = 1;\n");
+    writeModeSourceStamp(modeDir);
+    const original = modeSourceStamp(modeDir);
+
+    writeFileSync(join(modeDir, "harness", "benchmark.ts"), "export const experiment = 2;\n");
+    expect(modeSourceStamp(modeDir)).toBe(original);
+
+    const packaged = join(root, "packaging-output");
+    cpSync(modeDir, packaged, { recursive: true,
+      filter: (path) => !path.startsWith(join(modeDir, "harness")),
+    });
+    expect(modeSourceStamp(packaged)).toBe(original);
+    expect(prebuiltViewer(packaged, { projectRoot: root })).toEqual({ reuse: true, reason: "current" });
+    rmSync(join(modeDir, "harness"), { recursive: true });
+    expect(modeSourceStamp(modeDir)).toBe(original);
+
+    writeFileSync(join(packaged, "viewer", "Preview.tsx"), "export default function Preview() { return <span>changed</span>; }\n");
+    expect(modeSourceStamp(packaged)).not.toBe(original);
+    expect(prebuiltViewer(packaged, { projectRoot: root })).toEqual({ reuse: false, reason: "stale" });
   });
 
   test("a build records the stamp of what it was built from", async () => {
