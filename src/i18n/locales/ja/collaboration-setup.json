@@ -1,6 +1,6 @@
 {
   "title": "共同作業の設定 (Beta)",
-  "intro": "Webcraft ワークスペースを共有し、リアルタイムの閲覧、コメント、チャットに招待します。Agent との会話は非公開のままです。",
+  "intro": "共有閲覧、コメント、チャットを設定します。Agent との会話は非公開です。",
   "path_label": "訪問者の接続方法",
   "paths": {
     "lan": "同じネットワーク",
@@ -8,9 +8,9 @@
     "named": "独自ドメイン"
   },
   "descriptions": {
-    "lan": "全員が同じ Wi-Fi またはローカルネットワークを使う場合はこちらから始めます。cloudflared のインストールは不要です。",
-    "temporary": "ドメインや Cloudflare アカウントなしで、無料の一時的な公開アドレスを使えます。公開アクセスを再開するとアドレスが変わります。",
-    "named": "Cloudflare で管理するドメインで固定の HTTPS アドレスを使います。Cloudflare アカウントと名前付き Tunnel が必要です。"
+    "lan": "同じ Wi-Fi やローカルネットワーク向け。トンネルは不要です。",
+    "temporary": "無料の公開アドレス。ドメインや Cloudflare アカウントは不要です。",
+    "named": "Cloudflare のドメインと名前付き Tunnel で固定 HTTPS アドレスを使います。"
   },
   "hostname_label": "ホスト名 (任意)",
   "hostname_placeholder": "collaboration.example.com",
@@ -18,24 +18,24 @@
   "steps": {
     "lan": [
       "Project を開き、その中の Webcraft Session を開きます。",
-      "Collaborate → Project を選び、名前を入力し、Local network を選択したまま Create collaboration を選びます。",
+      "Collaborate → Share を開き、名前を入力して Start collaboration を選びます。",
       "訪問者に見せるサイトまたはコンテンツセットで Share this workspace を選びます。",
-      "Links を開き、Comment & chat の招待を作成して、その Local network リンクをコピーします。",
+      "Share で Comment & chat の招待を作成し、Local network リンクをコピーします。",
       "訪問者に同じネットワークのブラウザーで招待を開いて名前を入力してもらい、コメントとチャットを試します。"
     ],
     "temporary": [
-      "Project とその中の Webcraft Session を開き、Collaborate → Project で Local network を選択したまま共同作業を作成します。",
+      "Project の Webcraft Session を開き、Collaborate → Share で名前を入力して Start collaboration を選びます。",
       "cloudflared を確認し、ない場合は設定リクエストでインストールします。公開アクセスを有効にする前に「再確認」を選びます。",
-      "Share this workspace を選び、Public access → Free temporary address → Enable public access に進みます。",
-      "公開アクセスが Active になったら Links を開き、Comment & chat の招待を作成して Internet の項目を選びます。",
+      "Share this workspace を選び、Collaboration settings → Public access を開きます。Connection options で Free temporary address を選び、Enable public access を選びます。",
+      "公開アクセスが Active になったら Share を開き、Comment & chat の招待を作成して Internet の項目を選びます。",
       "訪問者に別のネットワークのブラウザーで招待を開いてもらい、コメントとチャットを試します。"
     ],
     "named": [
-      "Project とその中の Webcraft Session を開き、Collaborate → Project で Local network を選択したまま共同作業を作成します。",
+      "Project の Webcraft Session を開き、Collaborate → Share で名前を入力して Start collaboration を選びます。",
       "設定リクエストで cloudflared をインストールし、名前付き Tunnel と、その Tunnel に向けたホスト名の DNS ルートを Cloudflare に作成します。",
-      "Share this workspace を選び、Public access → Your own Tunnel に進みます。",
+      "Share this workspace を選び、Collaboration settings → Public access → Connection options → Your own Tunnel を開きます。",
       "HTTPS 公開 URL、Tunnel UUID、ローカルの認証情報 JSON ファイルの絶対パスの 3 項目をすべて入力し、Enable public access を選びます。",
-      "Active になったら Links を開き、Comment & chat の招待を作成し、Internet の項目を選んで訪問者に送ります。",
+      "Active になったら Share を開き、Comment & chat の招待を作成し、Internet の項目を選んで訪問者に送ります。",
       "訪問者に別のネットワークのブラウザーで招待を開いてもらい、コメントとチャットを試します。"
     ]
   },
@@ -50,13 +50,13 @@
   "copy_request": "設定リクエストをコピー",
   "copied": "設定リクエストをコピーしました",
   "copying": "コピー中…",
-  "paste_hint": "この 1 文のリクエストを、このコンピューターの Claude Code または Codex に貼り付けて、設定と検証を実行します。",
+  "paste_hint": "このコンピューターの Claude Code または Codex に貼り付けて、設定と検証を実行します。",
   "copy_error": "コピーに失敗しました。下で選択されているリクエストを手動でコピーしてください。",
   "show_request": "設定リクエストを表示",
   "hide_request": "設定リクエストを隠す",
   "request_label": "Claude Code または Codex 向けの設定リクエスト",
   "advanced_title": "詳細：自分でホストするクラウド共同作業サービスを使う",
-  "advanced_body": "Cloud host は、リポジトリの cloud/collaboration の手順に従って自分でデプロイ・管理する共同作業サービスに接続します。HTTPS URL とプロビジョニングキーが必要で、ホスト型サービスのアカウントは作成しません。ワークスペースのコンテンツには、ホストと Session がオンラインである必要があります。",
+  "advanced_body": "Collaboration settings → Advanced から Cloud host に接続します。Cloud host は、リポジトリの cloud/collaboration の手順に従って自分でデプロイ・管理する共同作業サービスに接続します。HTTPS URL とプロビジョニングキーが必要で、ホスト型サービスのアカウントは作成しません。ワークスペースのコンテンツには、ホストと Session がオンラインである必要があります。",
   "entry": "お困りですか？共同作業の設定ガイド",
   "request_paths": {
     "lan": "同じネットワーク内での共同作業",
@@ -71,5 +71,6 @@
   },
   "request": "{{platform}} 上の Pneuma Skills {{appVersion}} で{{scenario}}{{hostnameClause}}を設定・検証するため、まずローカルの完全な設定ガイド {{guidePath}} を読み (読めない場合は実行中の非公開 Pneuma アプリから {{guideUrl}} を取得)、不足している{{missing}}を私に確認してから設定を実行し、Agent との会話を非公開に保ったまま、訪問者がブラウザーで共有 Webcraft ワークスペースを開き、Comment & chat を使えることを検証してください。",
   "lan_ready": "同じネットワーク内での共同作業にトンネルは不要です。",
-  "public_recovery": "公開アクセスに失敗したら、表示された原因を解消し、Retry stopping public access で失敗した試行を整理してから、再度 Enable public access を選んでください。「再確認」はインストール状況のみを確認します。"
+  "public_recovery": "公開アクセスに失敗したら、表示された原因を解消し、Retry stopping public access で失敗した試行を整理してから、再度 Enable public access を選んでください。「再確認」はインストール状況のみを確認します。",
+  "steps_title": "手順を確認する"
 }

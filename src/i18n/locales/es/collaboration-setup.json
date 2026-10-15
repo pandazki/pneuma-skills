@@ -1,6 +1,6 @@
 {
   "title": "Configurar la colaboración (Beta)",
-  "intro": "Comparte un espacio de trabajo de Webcraft para verlo en directo, comentar y chatear; tu conversación con el Agent sigue siendo privada.",
+  "intro": "Configura la visualización compartida, los comentarios y el chat. Tu conversación con el Agent sigue siendo privada.",
   "path_label": "¿Cómo se conectarán los visitantes?",
   "paths": {
     "lan": "Misma red",
@@ -8,34 +8,34 @@
     "named": "Dominio propio"
   },
   "descriptions": {
-    "lan": "Empieza aquí si todos usan la misma red Wi-Fi o local; no hace falta instalar cloudflared.",
-    "temporary": "Usa una dirección temporal gratuita en internet sin dominio ni cuenta de Cloudflare; la dirección cambia al reiniciar el acceso público.",
-    "named": "Usa una dirección HTTPS fija con un dominio que administres en Cloudflare; necesitas una cuenta de Cloudflare y un Tunnel con nombre."
+    "lan": "Para la misma red Wi-Fi o local. No hace falta un túnel.",
+    "temporary": "Una dirección de internet gratuita, sin dominio ni cuenta de Cloudflare.",
+    "named": "Una dirección HTTPS fija con tu dominio de Cloudflare y un Tunnel con nombre."
   },
   "hostname_label": "Tu nombre de host (opcional)",
   "hostname_placeholder": "collaboration.example.com",
   "hostname_error": "Introduce un nombre de host o un origen HTTPS sin puerto, ruta, credenciales, consulta ni invitación.",
   "steps": {
     "lan": [
-      "Abre un Project y, dentro de él, una Webcraft Session.",
-      "Selecciona Collaborate → Project, introduce tu nombre y elige Create collaboration con Local network seleccionado.",
-      "Selecciona Share this workspace para el sitio o conjunto de contenido que quieras mostrar a los visitantes.",
-      "Abre Links, crea una invitación Comment & chat y copia su enlace Local network.",
-      "Pide al visitante que abra la invitación en un navegador de la misma red e introduzca su nombre; probad un comentario y un mensaje de chat."
+      "Abre un Project y una Webcraft Session dentro de él.",
+      "Abre Collaborate → Share, introduce tu nombre y elige Start collaboration.",
+      "Selecciona Share this workspace para el sitio o contenido que quieras mostrar.",
+      "En Share, crea una invitación de Comment & chat y copia su enlace Local network.",
+      "Pide a la otra persona que abra la invitación en un navegador de la misma red, introduzca su nombre y pruebe un comentario y un mensaje de chat."
     ],
     "temporary": [
-      "Abre un Project y una Webcraft Session, selecciona Collaborate → Project y crea la colaboración con Local network seleccionado.",
+      "Abre una Webcraft Session en un Project; abre Collaborate → Share, introduce tu nombre y elige Start collaboration.",
       "Comprueba cloudflared; si falta, usa la solicitud de configuración para instalarlo y selecciona «Comprobar de nuevo» antes de activar el acceso público.",
-      "Selecciona Share this workspace y después Public access → Free temporary address → Enable public access.",
-      "Espera a que el acceso público indique Active, abre Links y crea una invitación Comment & chat con su opción Internet.",
+      "Selecciona Share this workspace y abre Collaboration settings → Public access. En Connection options, mantén Free temporary address y elige Enable public access.",
+      "Cuando el acceso público muestre Active, abre Share y crea una invitación de Comment & chat con su entrada Internet.",
       "Pide al visitante que abra la invitación en un navegador de otra red y probad un comentario y un mensaje de chat."
     ],
     "named": [
-      "Abre un Project y una Webcraft Session, selecciona Collaborate → Project y crea la colaboración con Local network seleccionado.",
+      "Abre una Webcraft Session en un Project; abre Collaborate → Share, introduce tu nombre y elige Start collaboration.",
       "Usa la solicitud de configuración para instalar cloudflared, crear un Tunnel con nombre y crear en Cloudflare la ruta DNS del nombre de host hacia ese Tunnel.",
-      "Selecciona Share this workspace y después Public access → Your own Tunnel.",
+      "Selecciona Share this workspace y abre Collaboration settings → Public access → Connection options → Your own Tunnel.",
       "Rellena los tres campos: la URL pública HTTPS, el UUID del Tunnel y la ruta absoluta de su archivo JSON de credenciales local; después selecciona Enable public access.",
-      "Cuando indique Active, abre Links, crea una invitación Comment & chat, elige su opción Internet y envíasela al visitante.",
+      "Cuando muestre Active, abre Share, crea una invitación de Comment & chat, elige Internet y envíala a la otra persona.",
       "Pide al visitante que abra la invitación en un navegador de otra red y probad un comentario y un mensaje de chat."
     ]
   },
@@ -50,13 +50,13 @@
   "copy_request": "Copiar solicitud de configuración",
   "copied": "Solicitud de configuración copiada",
   "copying": "Copiando…",
-  "paste_hint": "Pega esta solicitud de una sola frase en Claude Code o Codex en este equipo para realizar y verificar la configuración.",
+  "paste_hint": "Pega la solicitud en Claude Code o Codex en este equipo para configurar y verificar la colaboración.",
   "copy_error": "No se pudo copiar. La solicitud está seleccionada abajo; cópiala manualmente.",
   "show_request": "Leer la solicitud de configuración",
   "hide_request": "Ocultar la solicitud de configuración",
   "request_label": "Solicitud de configuración para Claude Code o Codex",
   "advanced_title": "Avanzado: usar una autoridad en la nube propia",
-  "advanced_body": "Cloud host conecta con una autoridad de colaboración que despliegas y administras siguiendo las instrucciones de cloud/collaboration del repositorio; requiere su URL HTTPS y su clave de aprovisionamiento, y no crea una cuenta de servicio alojado. El contenido del espacio sigue dependiendo de que su anfitrión y la Session estén conectados.",
+  "advanced_body": "Conecta un Cloud host desde Collaboration settings → Advanced. Cloud host conecta con una autoridad de colaboración que despliegas y administras siguiendo las instrucciones de cloud/collaboration del repositorio; requiere su URL HTTPS y su clave de aprovisionamiento, y no crea una cuenta de servicio alojado. El contenido del espacio sigue dependiendo de que su anfitrión y la Session estén conectados.",
   "entry": "¿Necesitas ayuda? Guía de configuración de colaboración",
   "request_paths": {
     "lan": "la colaboración en la misma red",
@@ -71,5 +71,6 @@
   },
   "request": "Configura y verifica {{scenario}}{{hostnameClause}} para Pneuma Skills {{appVersion}} en {{platform}} leyendo la guía local completa en {{guidePath}} (si no está disponible, obtén {{guideUrl}} desde esta aplicación privada de Pneuma en ejecución), pregúntame los datos que falten sobre {{missing}}, realiza la configuración y verifica que el visitante pueda abrir el espacio de trabajo compartido de Webcraft en su navegador y usar Comment & chat, manteniendo privada mi conversación con el Agent.",
   "lan_ready": "La colaboración en la misma red no necesita ningún túnel.",
-  "public_recovery": "Si falla el acceso público, corrige la causa indicada, selecciona Retry stopping public access para limpiar el intento fallido y vuelve a seleccionar Enable public access; «Comprobar de nuevo» solo comprueba la instalación."
+  "public_recovery": "Si falla el acceso público, corrige la causa indicada, selecciona Retry stopping public access para limpiar el intento fallido y vuelve a seleccionar Enable public access; «Comprobar de nuevo» solo comprueba la instalación.",
+  "steps_title": "Configuración paso a paso"
 }

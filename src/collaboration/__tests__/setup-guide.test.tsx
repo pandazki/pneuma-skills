@@ -44,7 +44,12 @@ describe("collaboration setup guide", () => {
     await render();
     expect(button("Same network").getAttribute("aria-pressed")).toBe("true");
     expect(win.document.querySelectorAll("li")).toHaveLength(5);
-    expect(win.document.body.textContent).toContain("Share this workspace");
+    const manual = [...win.document.querySelectorAll("details")].find((item) => item.querySelector("summary")?.textContent === en.steps_title)!;
+    expect(manual).toBeDefined(); expect(manual.open).toBe(false);
+    expect(win.document.querySelector("textarea")).toBeNull();
+    expect(manual.textContent).toContain("Share this workspace");
+    expect(manual.textContent).toContain("Start collaboration");
+    expect(manual.textContent).not.toContain("Collaborate → Project");
     expect(win.document.body.textContent).not.toContain("10 minutes");
     await act(async () => button("Temporary internet").click());
     expect(win.document.body.textContent).toContain("10 minutes");
@@ -74,6 +79,8 @@ describe("collaboration setup guide", () => {
     await act(async () => button("Copied setup request").click());
     const input = win.document.querySelector("textarea")!;
     expect(win.document.querySelector('[role="alert"]')?.textContent).toContain("Copy failed");
+    expect(button(en.hide_request).getAttribute("aria-expanded")).toBe("true");
+    expect(win.document.querySelector("details")?.open).toBe(false);
     expect(input.readOnly).toBe(true); expect(input.selectionStart).toBe(0); expect(input.selectionEnd).toBe(input.value.length);
   });
 
