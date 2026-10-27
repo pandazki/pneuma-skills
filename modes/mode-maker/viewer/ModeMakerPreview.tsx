@@ -8,6 +8,7 @@
  * - Files: File tree + CodeMirror read-only preview
  */
 
+import { AppWindowLink } from "../../../src/components/AppWindowLink.js";
 import { useState, useMemo, useCallback, useEffect, useRef, Component } from "react";
 import type { ComponentType, ErrorInfo, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
@@ -743,14 +744,15 @@ function OverviewTab({ files, parsed, onSelectFile, onTabChange }: {
             {playState.running ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <a
+                  {playState.url && <AppWindowLink
+                    kind="session"
                     href={playState.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-3 py-1.5 text-xs bg-cc-primary hover:bg-cc-primary-hover text-cc-bg font-medium rounded-md transition-colors shadow-[0_0_10px_rgba(249,115,22,0.2)]"
                   >
                     Open
-                  </a>
+                  </AppWindowLink>}
                   <button
                     className="px-3 py-1.5 text-xs border border-cc-border bg-cc-surface hover:border-cc-primary/50 hover:text-cc-primary text-cc-fg rounded-md transition-colors cursor-pointer"
                     onClick={stopPlay}

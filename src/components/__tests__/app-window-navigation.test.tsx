@@ -183,4 +183,28 @@ if (process.env.PNEUMA_APP_WINDOW_UI_TEST !== "1") {
     });
   }
 
+  test("Mode Maker's running test session opens explicitly and reports native failure", async () => {
+    const Preview = (await import("../../../modes/mode-maker/viewer/ModeMakerPreview.js")).default;
+    const { BrowserFileChannel } = await import("../../runtime/file-channel.js");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+      expect(String(input)).toBe("/api/mode-maker/play/status");
+      return Response.json({ running: true, pid: 123, port: 17008, url: "http://localhost:17008/" });
+    }, { preconnect: originalFetch.preconnect });
+    try {
+      await act(async () => root.render(createElement(Preview, {
+        sources: {}, fileChannel: new BrowserFileChannel(), selection: null, onSelect: () => {},
+        mode: "view", imageVersion: 0, theme: "dark", locale: "en",
+      })));
+      const link = host.querySelector<HTMLAnchorElement>('a[href="http://localhost:17008/"]');
+      expect(link).not.toBeNull();
+      await act(async () => { link!.click(); });
+      expect(nativeRequests).toEqual([{ kind: "session", url: "http://localhost:17008/" }]);
+      rejection = new Error("Test session window refused");
+      await act(async () => { link!.click(); });
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe("Test session window refused");
+      expect(browserRequests).toEqual([]);
+    } finally { await act(async () => root.unmount()); globalThis.fetch = originalFetch; }
+  });
+
 }
