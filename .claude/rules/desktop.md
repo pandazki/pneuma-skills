@@ -13,6 +13,8 @@ paths:
 
 ## Gotchas
 
+- **Viewer popups do not own sessions** (2026-10-27 Electron reproduction): a local content popup used to become a mode window, and closing it killed the original conversation by port. Keep ordinary popups in the system browser. App session/project and export controls use the explicit `AppWindowRequest` bridge; do not restore localhost-based popup routing. The shared handler covers launcher, mode, detached-chat, and export windows, including a launcher that navigates into a session.
+
 - **Release uploads must select `latest*.yml`, never every `*.yml`.** All platform builds emit `builder-debug.yml`. Concurrent `gh release upload --clobber` calls race on that shared name (delete/create is not atomic), returning HTTP 422 before the updater manifest is uploaded. This interrupted the v3.46.3 Windows x64 upload after its installer had already succeeded. Select installer files plus updater manifests explicitly; recover an interrupted upload by rerunning the failed job once the other uploads finish.
 
 - **Background mode**(`pneuma://handoff` 默认):session 跑在隐藏 `BrowserWindow({ show: false, backgroundThrottling: false })`。完成自动揭示:渲染端 `useBackgroundStatusReporter` 经 IPC push `running`/`idle`,`background-sessions.ts` 按 `webContents.id` 关联;首个 `running → idle`(≥1 turn)触发 `revealModeWindow`。容错:60s watchdog 强制 reveal、`did-fail-load` 重试 `loadURL`、renderer crash 也 reveal。逃生口 `&background=0`。服务端零改动——纯桌面表现层。

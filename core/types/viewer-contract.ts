@@ -283,7 +283,7 @@ export interface ViewerPreviewProps {
   onPreviewModeChange?: (mode: "view" | "edit" | "select" | "annotate") => void;
   onAnnotate?: (annotation: NonNullable<ViewerSelectionContext["annotations"]>[number]) => void;
   onUserAction?: (action: { actionId: string; description: string }) => void;
-  onExport?: () => void;
+  onExport?: () => void | Promise<void>;
   /**
    * Source map. Keys come from `manifest.sources` (or the synthesized
    * default `{ files: file-glob }` for unmigrated modes). Viewers

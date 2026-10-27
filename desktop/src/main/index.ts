@@ -305,11 +305,7 @@ async function showLauncher() {
     return;
   }
 
-  const win = createLauncherWindow(launcherUrl);
-
-  win.on("closed", () => {
-    // Dock stays visible — managed by window-all-closed handler
-  });
+  createLauncherWindow(launcherUrl);
 }
 
 function showSetupWizard() {
