@@ -5,6 +5,7 @@
  * Uses JIT compilation (Babel) to compile user TSX in real-time.
  */
 
+import { openAppWindow } from "../../../src/utils/window-navigation.js";
 import { useCallback, useEffect, useRef, useState, type ErrorInfo, Component, type ReactNode, type ComponentType } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import type {
@@ -170,6 +171,7 @@ export default function RemotionPreview({
   const playerRef = useRef<PlayerRef | null>(null);
   const { compositions, components, errors, recompile } = useRemotionCompiler(files);
 
+  const [exportError, setExportError] = useState("");
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -538,6 +540,7 @@ export default function RemotionPreview({
 
   return (
     <div className="flex flex-col h-full" style={{ background: "var(--color-cc-bg, #09090b)" }}>
+      {exportError && <p role="alert" className="text-xs text-cc-error">{exportError}</p>}
       {/* Info bar — resolution + duration + export (composition switching is in TopBar) */}
       <div className="flex items-center justify-between px-3 h-7 shrink-0"
         style={{ background: "var(--color-cc-bg, #09090b)" }}>
@@ -545,10 +548,15 @@ export default function RemotionPreview({
           {activeComp.width}×{activeComp.height} · {activeComp.fps}fps · {(activeComp.durationInFrames / activeComp.fps).toFixed(1)}s
         </span>
         {!readonly && <button
-          onClick={() => {
-            const base = getApiBase();
-            const compId = activeComp?.id;
-            window.open(`${base}/export/remotion${compId ? `?composition=${encodeURIComponent(compId)}` : ""}`, "_blank");
+          onClick={async () => {
+            setExportError("");
+            try {
+              const base = getApiBase();
+              const compId = activeComp?.id;
+              await openAppWindow({ kind: "export", url: `${base}/export/remotion${compId ? `?composition=${encodeURIComponent(compId)}` : ""}` });
+            } catch (error) {
+              setExportError(error instanceof Error ? error.message : String(error));
+            }
           }}
           className="flex items-center gap-1 px-2 h-5 rounded text-[10px] font-medium transition-colors cursor-pointer"
           style={{ color: "var(--color-cc-muted, #52525b)", background: "transparent" }}

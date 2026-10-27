@@ -1,3 +1,4 @@
+import { AppWindowLink } from "../../../src/components/AppWindowLink.js";
 import { useEffect, useRef, useState } from "react";
 import type { Source } from "../../../core/types/source.js";
 import type { ViewerAddress, ViewerActionResult, ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
@@ -125,7 +126,7 @@ export default function BrandPreview(props: ViewerPreviewProps) {
 
   return <div className="brand-studio">
     {projectsNav}
-    <header className="brand-header"><div><h1>{project.title}</h1><p>{project.description}</p></div><button onClick={() => setRulesOpen(!rulesOpen)} aria-expanded={rulesOpen}>Brand brief</button>{!staticPlayer && <a className="brand-export" href={`/export/brand?contentSet=${encodeURIComponent(activeSet)}`} target="_blank" rel="noreferrer">Export book</a>}</header>
+    <header className="brand-header"><div><h1>{project.title}</h1><p>{project.description}</p></div><button onClick={() => setRulesOpen(!rulesOpen)} aria-expanded={rulesOpen}>Brand brief</button>{!staticPlayer && <AppWindowLink kind="export" className="brand-export" href={`/export/brand?contentSet=${encodeURIComponent(activeSet)}`} target="_blank" rel="noreferrer">Export book</AppWindowLink>}</header>
     {rulesOpen && <section className="brand-brief" aria-label="Brand brief"><div><h2>{project.brief.promise || "Define your promise"}</h2><p>{project.brief.audience}</p><p>{project.brief.personality.join(" · ")}</p></div><ul>{project.brief.rules.map((rule, i) => <li key={i}>{rule}</li>)}</ul></section>}
     <div className="brand-palette">{project.palette.map((color) => <span key={color.name}><i style={{ background: color.value }} />{color.name}<code>{color.value}</code></span>)}</div>
     {project.contexts.length > 0 && <section className="brand-contexts" aria-label="Application contexts"><span>Designed for</span><button aria-pressed={context === "all"} onClick={() => { setContext("all"); setSelected(null); props.onSelect(null); }}>Every context</button>{project.contexts.map((c) => <button key={c.id} aria-pressed={context === c.id} onClick={() => { setContext(c.id); setSelected(null); setStage("all"); props.onSelect(null); }}>{c.title}</button>)}{context !== "all" && <p>{project.contexts.find((c) => c.id === context)?.purpose}<br />{project.contexts.find((c) => c.id === context)?.guidance}</p>}</section>}

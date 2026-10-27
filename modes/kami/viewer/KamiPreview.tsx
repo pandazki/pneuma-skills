@@ -8,6 +8,7 @@
  * paper-info + Print-to-PDF helper panel.
  */
 
+import { openAppWindow } from "../../../src/utils/window-navigation.js";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type {
   ViewerPreviewProps,
@@ -1960,17 +1961,24 @@ body { margin: 0 !important; padding: ${DESK_INSET}px !important; }
   //
   // Relative URL so Vite's /export proxy picks it up regardless of which
   // backend port the server ended up on.
-  const handleExport = useCallback(() => {
-    const cs = useStore.getState().activeContentSet;
-    const qs = new URLSearchParams();
-    if (cs) qs.set("contentSet", cs);
-    window.open(`/export/kami${qs.toString() ? "?" + qs.toString() : ""}`, "_blank");
+  const [exportError, setExportError] = useState("");
+  const handleExport = useCallback(async () => {
+    setExportError("");
+    try {
+      const cs = useStore.getState().activeContentSet;
+      const qs = new URLSearchParams();
+      if (cs) qs.set("contentSet", cs);
+      await openAppWindow({ kind: "export", url: `/export/kami${qs.toString() ? "?" + qs.toString() : ""}` });
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    }
   }, []);
 
   return (
     <div style={{ display: "flex", height: "100%", width: "100%", overflow: "hidden" }}>
       {/* Main Preview Area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {exportError && <p role="alert" className="text-xs text-cc-error">{exportError}</p>}
         {/* Viewport Toolbar */}
         <ViewportToolbar
           presets={VIEWPORT_PRESETS}

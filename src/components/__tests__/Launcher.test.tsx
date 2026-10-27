@@ -22,6 +22,10 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
   let act: typeof import("react").act;
   let prepareResponse: Promise<Response> | undefined;
   let selectedDirectory = "";
+  let nativeRequests: Array<{ kind: string; url: string }> = [];
+  let browserRequests: unknown[][] = [];
+  let openFailure: Error | undefined;
+  let closed = false;
   let checkedPaths: string[] = [];
   let launches: Array<{ workspace: string; backendType: string; initParams: Record<string, unknown> }> = [];
   const workspaceResponses = new Map<string, Promise<Response>>();
@@ -45,8 +49,9 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     act = (await import("react")).act;
     (win as unknown as { pneumaDesktop: unknown }).pneumaDesktop = {
       showOpenDialog: async () => selectedDirectory,
+      openAppWindow: async (request: { kind: string; url: string }) => { nativeRequests.push(request); if (openFailure) throw openFailure; },
     };
-    win.open = (() => null) as typeof win.open;
+    win.open = (...args) => { browserRequests.push(args); return null; };
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname === "/api/launch/prepare") {
@@ -66,6 +71,7 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
   });
 
   beforeEach(() => {
+    nativeRequests = []; browserRequests = []; openFailure = undefined; closed = false;
     prepareResponse = undefined;
     selectedDirectory = "";
     checkedPaths = [];
@@ -89,7 +95,7 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     unmount = async () => { await act(async () => root.unmount()); };
     await act(async () => root.render(createElement(LaunchDialog, {
       specifier: "doc", displayName: "Document", homeDir: "/home/test", defaultWorkspace,
-      defaultBackendType: "claude-code", onClose: () => {},
+      defaultBackendType: "claude-code", onClose: () => { closed = true; },
       backendOptions: [
         { type: "claude-code", label: "Claude Code", description: "Claude", implemented: true, available: true },
         { type: "codex", label: "Codex", description: "Codex", implemented: true, available: true },
@@ -127,6 +133,21 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
       await act(async () => { response.resolve(Response.json(body, { status })); });
     };
   }
+
+  test("session launch waits for native opening and displays IPC failures without browser fallback", async () => {
+    await mountDialog("/workspace");
+    openFailure = new Error("Session window refused");
+    await click("Launch");
+    expect(nativeRequests).toEqual([{ kind: "session", url: "http://localhost/started" }]);
+    expect(host.textContent).toContain("Session window refused");
+    expect(closed).toBe(false);
+    expect(browserRequests).toEqual([]);
+    openFailure = undefined;
+    await click("Launch");
+    expect(closed).toBe(true);
+    expect(nativeRequests).toHaveLength(2);
+    expect(browserRequests).toEqual([]);
+  });
 
   test("a fresh folder result preserves the explicitly selected Codex backend", async () => {
     await mountDialog();

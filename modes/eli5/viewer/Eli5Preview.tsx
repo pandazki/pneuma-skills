@@ -25,6 +25,7 @@
  * own CSS inline, so there is no CDN flash to hide.
  */
 
+import { openAppWindow } from "../../../src/utils/window-navigation.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Source } from "../../../core/types/source.js";
 import type {
@@ -429,9 +430,13 @@ export default function Eli5Preview({
   // Opens the server's export page for the topic in view: ladder preview,
   // per-rung downloads, whole-topic zip, deploy. New tab — it is a
   // standalone page served by the backend, not a viewer state.
-  const handleExport = useCallback(() => {
-    window.open(exportUrl(apiBase, activeContentSet), "_blank");
-  }, [apiBase, activeContentSet]);
+  const handleExport = useCallback(async () => {
+    try {
+      await openAppWindow({ kind: "export", url: exportUrl(apiBase, activeContentSet) });
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error));
+    }
+  }, [apiBase, activeContentSet, showNotice]);
 
   // ── Compare ───────────────────────────────────────────────────────────
   const toggleCompare = useCallback(() => {

@@ -1000,6 +1000,7 @@ export default function WebPreview({
   const controllerRef = useRef<WebcraftCollaborationController | null>(null);
   const loadedFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [documentReady, setDocumentReady] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [interactionError, setInteractionError] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
@@ -2058,13 +2059,21 @@ export default function WebPreview({
 
       {/* Main Preview Area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {exportError && <p role="alert" className="text-xs text-cc-error">{exportError}</p>}
         {/* Viewport Toolbar */}
         <ViewportToolbar
           activePreset={viewport}
           onPresetChange={(value) => { controllerRef.current?.localInput(); setViewport(value); }}
           previewMode={previewMode}
           onSetPreviewMode={setPreviewMode}
-          onExport={onExport}
+          onExport={onExport ? async () => {
+            setExportError("");
+            try {
+              await onExport();
+            } catch (error) {
+              setExportError(error instanceof Error ? error.message : String(error));
+            }
+          } : undefined}
           readonly={readonly}
           permissions={permissions}
           requestLocalEdit={!!onPreviewModeChange}

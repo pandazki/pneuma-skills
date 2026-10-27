@@ -5,15 +5,11 @@
  * - "featured" (large, top tier): cover area + name + description + meta row
  * - "compact"  (list, lower tier): small cover thumbnail + name/path + meta
  *
- * Both variants open `/?project=<root>` in a new window (target="_blank") —
- * in Electron the launcher's `setWindowOpenHandler` routes this to a fresh
- * mode window, so the launcher keeps its main-window role; in a browser it's
- * a new tab.
- *
  * Cover + meta line live in `ProjectCover.tsx` so the Project Panel (3.0
  * pivot) can reuse them.
  */
 
+import { AppWindowLink } from "./AppWindowLink.js";
 import { useTranslation } from "react-i18next";
 import { shortenPath } from "../utils/string.js";
 import { timeAgo } from "../utils/timeAgo.js";
@@ -116,7 +112,7 @@ function FeaturedCard({
   const path = shortenPath(project.root, homeDir);
   const canResume = !!onQuickResume && project.sessionCount > 0;
   return (
-    <a
+    <AppWindowLink kind="session"
       href={`/?project=${encodeURIComponent(project.root)}`}
       target="_blank"
       rel="noopener"
@@ -157,7 +153,7 @@ function FeaturedCard({
           </span>
         </div>
       </div>
-    </a>
+    </AppWindowLink>
   );
 }
 
@@ -173,7 +169,7 @@ function CompactCard({
   const path = shortenPath(project.root, homeDir);
   const canResume = !!onQuickResume && project.sessionCount > 0;
   return (
-    <a
+    <AppWindowLink kind="session"
       href={`/?project=${encodeURIComponent(project.root)}`}
       target="_blank"
       rel="noopener"
@@ -201,7 +197,7 @@ function CompactCard({
           {timeAgo(project.lastAccessed)}
         </span>
       </div>
-    </a>
+    </AppWindowLink>
   );
 }
 

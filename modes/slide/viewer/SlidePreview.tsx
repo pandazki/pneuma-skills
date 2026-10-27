@@ -5,6 +5,7 @@
  * Two-part layout: SlideNavigator (configurable position) + SlideViewer (iframe).
  */
 
+import { openAppWindow } from "../../../src/utils/window-navigation.js";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -2079,11 +2080,17 @@ function SlideToolbar({
       { value: "annotate", label: "Annotate", icon: <AnnotateIcon /> },
     ];
 
-  const handleExport = useCallback(() => {
-    const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
-    const cs = useStore.getState().activeContentSet;
-    const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
-    window.open(`${baseUrl}/export/slides${qs}`, "_blank");
+  const [exportError, setExportError] = useState("");
+  const handleExport = useCallback(async () => {
+    setExportError("");
+    try {
+      const baseUrl = import.meta.env.DEV ? `http://${location.hostname}:${import.meta.env.VITE_API_PORT || "17007"}` : "";
+      const cs = useStore.getState().activeContentSet;
+      const qs = cs ? `?contentSet=${encodeURIComponent(cs)}` : "";
+      await openAppWindow({ kind: "export", url: `${baseUrl}/export/slides${qs}` });
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    }
   }, []);
 
   const navTitle =
@@ -2095,6 +2102,7 @@ function SlideToolbar({
 
   return (
     <div className="flex items-center justify-between px-3 py-1.5 border-b border-cc-border bg-cc-card/50 shrink-0">
+      {exportError && <p role="alert" className="text-xs text-cc-error">{exportError}</p>}
       {/* Left: nav toggle + slide navigation */}
       <div className="flex items-center gap-1.5">
         <button

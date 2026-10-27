@@ -5,6 +5,7 @@
 // what lets the player be "the same code in a different state": identical source
 // instantiation + prop assembly, with readonly driven by replayMode.
 
+import { openAppWindow } from "../utils/window-navigation.js";
 import { useEffect, useState } from "react";
 import { useStore } from "../store.js";
 import type { SelectionType } from "../types.js";
@@ -132,7 +133,7 @@ export function useViewerProps(prefs: { theme: "light" | "dark"; locale: string 
       const modeName = useStore.getState().modeManifest?.name;
       if (!modeName) return;
       const qs = activeContentSet ? `?contentSet=${encodeURIComponent(activeContentSet)}` : "";
-      window.open(`${getApiBase()}/export/${modeName}${qs}`, "_blank");
+      return openAppWindow({ kind: "export", url: `${getApiBase()}/export/${modeName}${qs}` });
     },
     resolveResourceUrl: collaboration?.publishedView?.resolveResourceUrl ?? ((path) => `/content/${path.replace(/^\//, "").split("/").map(encodeURIComponent).join("/")}`),
     files: collaboration?.publishedView ? [...collaboration.publishedView.channels.fileChannel.snapshot()] : filesCompat,

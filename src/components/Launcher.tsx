@@ -1,3 +1,4 @@
+import { openAppWindow } from "../utils/window-navigation.js";
 import { CollaborationSetupGuide } from "../collaboration/CollaborationSetupGuide.js";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -1410,6 +1411,7 @@ function AllSessions({
   const { t } = useTranslation("launcher");
   const isLight = className?.includes("cc-theme-light") ?? false;
   const [search, setSearch] = useState("");
+  const [windowError, setWindowError] = useState("");
   const query = search.toLowerCase().trim();
   const filtered = query
     ? items.filter((i) => {
@@ -1429,6 +1431,7 @@ function AllSessions({
         animation: `${closing ? "overlayFadeOut" : "overlayFadeIn"} 0.2s ease-out${closing ? " forwards" : ""}`,
       }}
     >
+      {windowError && <p role="alert" className="px-6 py-2 text-sm text-cc-error">{windowError}</p>}
       <div className="sticky top-0 z-10 bg-cc-bg/80 backdrop-blur-sm border-b border-cc-border/30">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center gap-4">
           <h1 className="font-display text-lg text-cc-fg">{t("all_sessions.title")}</h1>
@@ -1476,7 +1479,10 @@ function AllSessions({
                       (window as any).pneumaDesktop.closeModeWindow(item.process!.url);
                     }
                   } : undefined}
-                  onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
+                  onOpen={item.process ? () => {
+                    setWindowError("");
+                    void openAppWindow({ kind: "session", url: item.process!.url }).catch((error) => setWindowError(error instanceof Error ? error.message : String(error)));
+                  } : undefined}
                 />
               ))}
             </div>
@@ -2960,7 +2966,7 @@ export function LaunchDialog({
             urlToOpen = u.toString();
           } catch { /* fallback to original url on URL parse failure */ }
         }
-        window.open(urlToOpen, "_blank");
+        await openAppWindow({ kind: "session", url: urlToOpen });
         setLoading(false);
         onClose();
       }
@@ -4810,10 +4816,13 @@ function ImportDialog({
       });
       const data = await resp.json();
       if (data.url) {
-        window.open(data.url, "_blank");
+        await openAppWindow({ kind: "session", url: data.url });
         onClose();
       }
-    } catch {}
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+      setStatus("error");
+    }
   };
 
   return (
@@ -4960,6 +4969,7 @@ function ImportDialog({
 // ── Main Launcher ────────────────────────────────────────────────────────
 
 export default function Launcher() {
+  const [windowError, setWindowError] = useState("");
   const { t } = useTranslation("launcher");
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useAppTheme();
   const isLight = theme === "light";
@@ -5161,10 +5171,7 @@ export default function Launcher() {
 
   const quickResumeProject = useCallback(
     async (project: ProjectCardEntry) => {
-      // Skip the empty-shell intermediate. Pull the project's sessions, take
-      // the most-recently accessed one, and POST /api/launch directly. If
-      // anything fails, fall through to the default `<a href>` behavior on
-      // next click — no aggressive error UI for a "shortcut" affordance.
+      setWindowError("");
       try {
         const res = await fetch(
           `${getApiBase()}/api/projects/${encodeURIComponent(project.root)}/sessions`,
@@ -5200,12 +5207,10 @@ export default function Launcher() {
         });
         const launchData = (await launchRes.json()) as { url?: string };
         if (launchData.url) {
-          // Open in a new window — keep the launcher as the main window.
-          // In Electron, `setWindowOpenHandler` routes this to a mode window.
-          window.open(launchData.url, "_blank");
+          await openAppWindow({ kind: "session", url: launchData.url });
         }
-      } catch {
-        // tolerate transient failures — the card's main link still works
+      } catch (error) {
+        setWindowError(error instanceof Error ? error.message : String(error));
       }
     },
     [],
@@ -5310,6 +5315,7 @@ export default function Launcher() {
   }, [refreshSessions]);
 
   const handleReplaySession = useCallback(async (session: RecentSession) => {
+    setWindowError("");
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
         method: "POST",
@@ -5323,10 +5329,11 @@ export default function Launcher() {
       });
       const data = await res.json();
       if (data.url) {
-        // New window — keep the launcher as the main window.
-        window.open(data.url, "_blank");
+        await openAppWindow({ kind: "session", url: data.url });
       }
-    } catch { }
+    } catch (error) {
+      setWindowError(error instanceof Error ? error.message : String(error));
+    }
   }, []);
 
   const stopProcess = useCallback(async (pid: number, url?: string) => {
@@ -5360,6 +5367,7 @@ export default function Launcher() {
     skipSkill?: boolean,
     viewing?: boolean,
   ) => {
+    setWindowError("");
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
         method: "POST",
@@ -5374,12 +5382,13 @@ export default function Launcher() {
       });
       const data = await res.json();
       if (data.url) {
-        // Refresh first so the running card animates in, then open after animation
         refreshSessions();
         refreshRunning();
-        setTimeout(() => window.open(data.url, "_blank"), 400);
+        await openAppWindow({ kind: "session", url: data.url });
       }
-    } catch { }
+    } catch (error) {
+      setWindowError(error instanceof Error ? error.message : String(error));
+    }
   }, [refreshSessions, refreshRunning]);
 
   // Build icon lookup
@@ -5563,6 +5572,7 @@ export default function Launcher() {
 
   return (
     <div className={`min-h-screen bg-cc-bg text-cc-fg font-body relative ${isLight ? "cc-theme-light launcher-light" : ""}`}>
+      {windowError && <p role="alert" className="px-6 py-2 text-sm text-cc-error">{windowError}</p>}
       {/* Light mode texture overlay */}
       {isLight && <div className="fixed inset-0 pointer-events-none launcher-light-texture" />}
       {/* Subtle warm ambient */}
@@ -5678,7 +5688,10 @@ export default function Launcher() {
                       onClick={() => {
                         if (isAppRunning) {
                           const proc = running.find((r) => r.workspace === s.workspace);
-                          if (proc?.url) window.open(proc.url, "_blank");
+                          if (proc?.url) {
+                            setWindowError("");
+                            void openAppWindow({ kind: "session", url: proc.url }).catch((error) => setWindowError(error instanceof Error ? error.message : String(error)));
+                          }
                         } else {
                           directLaunch(s.mode, s.workspace, s.backendType, false, true);
                         }
@@ -5884,7 +5897,10 @@ export default function Launcher() {
                                 onReplay={item.session?.hasReplayData ? () => handleReplaySession(item.session!) : undefined}
                                 onRename={item.session ? (name) => renameSession(item.session!.id, name) : undefined}
                                 onStop={item.process ? () => stopProcess(item.process!.pid, item.process!.url) : undefined}
-                                onOpen={item.process ? () => window.open(item.process!.url, "_blank") : undefined}
+                                onOpen={item.process ? () => {
+                                  setWindowError("");
+                                  void openAppWindow({ kind: "session", url: item.process!.url }).catch((error) => setWindowError(error instanceof Error ? error.message : String(error)));
+                                } : undefined}
                               />
                             </motion.div>
                           ))}
@@ -6146,7 +6162,8 @@ export default function Launcher() {
             // launcher keeps its main-window role. Saves the user a
             // "click your new tile" step and matches the button copy
             // "Create & discover".
-            window.open(`/?project=${encodeURIComponent(root)}`, "_blank");
+            setWindowError("");
+            void openAppWindow({ kind: "session", url: `/?project=${encodeURIComponent(root)}` }).catch((error) => setWindowError(error instanceof Error ? error.message : String(error)));
           }
           // skipOnboard path — stay on the launcher, the new tile
           // joins the grid via reloadProjects().
