@@ -1,5 +1,7 @@
-import { BrowserWindow, shell, screen } from "electron";
+import { BrowserWindow, shell, screen, dialog } from "electron";
 import path from "node:path";
+import { parseExternalPopupUrl } from "./window-policy.js";
+import { logEntry } from "./logger.js";
 import { getLauncherUrl } from "./bun-process.js";
 
 let launcherWindow: BrowserWindow | null = null;
@@ -9,6 +11,23 @@ const modeWindows: Set<BrowserWindow> = new Set();
 const urlToWindow = new Map<string, BrowserWindow>();
 
 const PRELOAD_PATH = path.join(__dirname, "..", "preload", "index.js");
+
+function installPopupHandler(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void openPopupInBrowser(url);
+    return { action: "deny" };
+  });
+}
+
+async function openPopupInBrowser(url: string): Promise<void> {
+  try {
+    await shell.openExternal(parseExternalPopupUrl(url));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logEntry("error", "window-manager", `Unable to open popup ${url}: ${message}`);
+    dialog.showErrorBox("Unable to open link", message);
+  }
+}
 
 // ── Launcher Window ──────────────────────────────────────────────────────────
 
@@ -47,6 +66,7 @@ export function createLauncherWindow(url: string): BrowserWindow {
     launcherWindow?.show();
   });
 
+  installPopupHandler(launcherWindow);
   launcherWindow.loadURL(url);
 
   // External links → system browser
@@ -147,24 +167,8 @@ export function createModeWindow(
     });
   }
 
+  installPopupHandler(win);
   win.loadURL(url);
-
-  // Intercept child window.open (mode pages might open sub-windows)
-  win.webContents.setWindowOpenHandler(({ url: openUrl }) => {
-    if (openUrl.startsWith("http://localhost:") || openUrl.startsWith("http://127.0.0.1:")) {
-      // Export/utility pages served by the same session server should open
-      // in a lightweight window WITHOUT the kill-on-close behavior.
-      const urlPath = new URL(openUrl).pathname;
-      if (urlPath.startsWith("/export/")) {
-        openExportWindow(openUrl);
-      } else {
-        createModeWindow(openUrl);
-      }
-      return { action: "deny" };
-    }
-    shell.openExternal(openUrl);
-    return { action: "deny" };
-  });
 
   // External links → system browser
   win.webContents.on("will-navigate", (event, navUrl) => {
@@ -235,6 +239,7 @@ export function createChatWindow(url: string, owner?: Electron.WebContents): Bro
 
   chatWindows.set(url, win);
   win.once("ready-to-show", () => win.show());
+  installPopupHandler(win);
   win.loadURL(url);
 
   // External links → system browser (same policy as mode windows).
@@ -329,7 +334,7 @@ async function killSessionsByUrls(urls: Iterable<string>) {
  * Open an export/utility page in a lightweight window that does NOT
  * kill the session process when closed.
  */
-function openExportWindow(url: string): BrowserWindow {
+export function openExportWindow(url: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -349,6 +354,7 @@ function openExportWindow(url: string): BrowserWindow {
     win.show();
   });
 
+  installPopupHandler(win);
   win.loadURL(url);
 
   // External links → system browser

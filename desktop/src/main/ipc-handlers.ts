@@ -1,5 +1,7 @@
+import { parseAppWindowRequest } from "./window-policy.js";
+import { startBackgroundSession } from "./background-sessions.js";
 import { ipcMain, app, shell, dialog, BrowserWindow } from "electron";
-import { closeModeWindowByUrl, createChatWindow, focusChatWindow } from "./window-manager.js";
+import { closeModeWindowByUrl, createChatWindow, focusChatWindow, createModeWindow, openExportWindow } from "./window-manager.js";
 import { handleNativeInvoke, listCapabilities } from "./native-bridge.js";
 import { logEntry, tail, getCurrentLogFile, type LogLevel } from "./logger.js";
 import { showLogWindow, revealLogFile } from "./log-window.js";
@@ -15,6 +17,28 @@ export function registerIpcHandlers() {
 
   ipcMain.handle("pneuma:open-external", (_event, url: string) => {
     return shell.openExternal(url);
+  });
+
+  ipcMain.handle("pneuma:open-app-window", (event, raw: unknown) => {
+    if (event.senderFrame !== event.sender.mainFrame) {
+      throw new Error("Only the main frame can open app windows");
+    }
+    const request = parseAppWindowRequest(raw, event.senderFrame.url);
+    if (request.kind === "export") {
+      openExportWindow(request.url);
+      return;
+    }
+    const url = new URL(request.url);
+    const background = url.searchParams.get("background");
+    if (background === "1" || background === "true") {
+      startBackgroundSession({
+        url: request.url,
+        mode: url.searchParams.get("mode") ?? "",
+        reveal: false,
+      });
+    } else {
+      createModeWindow(request.url);
+    }
   });
 
   ipcMain.handle("pneuma:close-mode-window", (_event, url: string) => {

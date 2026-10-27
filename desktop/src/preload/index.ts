@@ -1,6 +1,12 @@
+import type { DesktopWindowBridge } from "../../../core/types/desktop-window.js";
 import { contextBridge, ipcRenderer } from "electron";
 
+const windowBridge: DesktopWindowBridge = {
+  openAppWindow: (request) => ipcRenderer.invoke("pneuma:open-app-window", request),
+};
+
 contextBridge.exposeInMainWorld("pneumaDesktop", {
+  ...windowBridge,
   getVersion: () => ipcRenderer.invoke("pneuma:get-app-version"),
   getPlatform: () => ipcRenderer.invoke("pneuma:get-platform"),
   openExternal: (url: string) => ipcRenderer.invoke("pneuma:open-external", url),
