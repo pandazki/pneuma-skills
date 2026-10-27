@@ -85,7 +85,7 @@ For an arbitrary local checkout outside that cache, use its explicit path.
 | Flag | Description |
 |------|-------------|
 | `--workspace <path>` | Workspace directory (default: cwd) |
-| `--port <n>` | Server port (default: auto) |
+| `--port <n>` | Server port (default: 17996 in production, 17007 in dev; advances if busy) |
 | `--backend <type>` | Startup backend selection (`claude-code` / `codex` / `kimi-cli`; locked for session) |
 | `--no-open` | Don't open browser |
 | `--no-prompt` | Non-interactive (used by launcher) |

@@ -112,6 +112,8 @@ Prefer to set things up by hand? The Create Project dialog's chevron menu offers
 
 Session windows and browser tabs display the current session title and project name; detached chat windows are marked “Chat”. Titles refresh after refinements or renames, preserving manually chosen names.
 
+Viewer links that open a new window use your system browser, including local preview URLs. Session, project, and export controls keep their desktop windows; closing a preview link does not stop the conversation.
+
 Download the latest release for your platform:
 
 | Platform | Download |
@@ -171,6 +173,7 @@ Modes:
   brand                        Brand identity and application examples
   remotion                     Code-driven video composition
   gridboard                    Interactive tile dashboards
+  cosmos                       Turn any content into a structured star map
   wordtaste                    Chinese long-form writing loop
   bansho                       Board-writing explainer
   eli5                         Explain anything to anyone

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.58.2] - 2026-10-27
+
+### Fixed
+- **Viewer links preserve the conversation** — Links opened in a new window from a desktop viewer now go to the system browser, including local preview URLs. Closing the opened page no longer stops the original session.
+- **Explicit app window routing** — Session, project, background-session, and export controls retain their desktop windows and report opening failures. Detached chat and export windows follow the same browser-link behavior without taking ownership of the session.
+
 ## [3.58.1] - 2026-10-15
 
 ### Improved
