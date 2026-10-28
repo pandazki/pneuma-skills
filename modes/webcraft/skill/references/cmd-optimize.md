@@ -30,7 +30,7 @@ Understand current performance and identify problems:
    - How bad is it? (Perceivable? Annoying? Blocking?)
    - Who's affected? (All users? Mobile only? Slow connections?)
 
-**CRITICAL**: Measure before and after. Premature optimization wastes time. Optimize what actually matters.
+Measure before and after. Optimizing without a measurement spends effort on things that do not matter.
 
 ## Optimization Strategy
 
@@ -51,7 +51,6 @@ Create systematic improvement plan:
   src="hero.webp"
   srcset="hero-400.webp 400w, hero-800.webp 800w, hero-1200.webp 1200w"
   sizes="(max-width: 400px) 400px, (max-width: 800px) 800px, 1200px"
-  loading="lazy"
   alt="Hero image"
 />
 ```
@@ -243,7 +242,7 @@ not claim their numbers.
 size, request count. Real-device and real-network measurements are what
 count; desktop Chrome on a fast connection is not representative.
 
-**NEVER**:
+**Avoid**:
 - Optimize without measuring (premature optimization)
 - Sacrifice accessibility for performance
 - Break functionality while optimizing

@@ -8,7 +8,7 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.9.0",
+  version: "1.10.0",
   displayName: {
     en: "WebCraft",
     "zh-CN": "WebCraft",
@@ -28,6 +28,13 @@ const webcraftManifest: ModeManifest = {
     de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
   },
   changelog: {
+    "1.10.0": [
+      "Synced upstream Impeccable.style skill v4.3.1 to v4.8.0",
+      "Each visitor mode now limits how far a direction's world reaches: working screens keep standard controls and get one signature move, docs keep a calm reading column inside a frame the world owns, and a landing page shows its action in working form",
+      "App screens and docs are built from code instead of an image mock, and mock prompts stay short so the world, not the prompt, decides the look",
+      "Typeset gains line-break guidance, harden covers Arabic-script text, and audit's contrast and touch-target checks follow WCAG AA",
+      "Command references lose their shouted banners, and the core verifies by looking in batches rather than a fixed pass count outside a new build",
+    ],
     "1.9.0": ["Introduce Collaboration Beta for shared Webcraft viewing, pointers, following, and anchored feedback"],
     "1.8.1": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "1.8.0": [

@@ -1,6 +1,6 @@
 # Craft floor
 
-Load this once the direction is settled and immediately before you edit UI, then build without announcing the checklist. A pinned brief or the committed visual world overrides anything here; your own habit does not.
+Load this once the direction is settled and immediately before you edit UI, then build without announcing the checklist. A pinned brief or the committed visual world overrides anything here except a line marked as a ban; your own habit does not.
 
 ## Verify
 
@@ -34,7 +34,7 @@ These are the category's defaults, not decisions: the brief's own words can earn
 
 - Gradient text (`background-clip: text` over a gradient). Emphasis comes from weight or size.
 - Glass and blur as decoration rather than as a specific effect.
-- A colored `border-left` or `border-right` above 1px on cards, list items, callouts, or alerts — hard-coded colors and CSS variables alike. Rewrite with full borders, background tints, leading numbers or icons, or nothing. Swapping to an inset box-shadow is the same stripe wearing a different property.
+- A colored `border-left` or `border-right` above 1px on cards, list items, callouts, alerts, or a table's status rows and cells — hard-coded colors and CSS variables alike. Rewrite with full borders, background tints, leading numbers or icons, or nothing. Swapping to an inset box-shadow is the same stripe wearing a different property.
 - Hard offset shadows (`box-shadow: 4px 4px 0`) outside a world that is actually neobrutalist. The zero-blur block shadow is a costume, not a depth system.
 - Radial glow halos, accent spotlights, and glowing edges painted behind a section to imply light that no material in the scene emits.
 - Marquee scrollers and infinitely sliding logo belts, and blinking terminal cursors, as decoration for "energy" or "technical".
@@ -56,7 +56,6 @@ These are the category's defaults, not decisions: the brief's own words can earn
 - **The ghost card:** `border: 1px solid X` plus `box-shadow: 0 Npx Mpx …` with blur ≥16px on the same element. Declare elevation once — a single solid border, or a defined shadow at no more than 8px blur.
 - **Over-rounding:** `border-radius: 32px+` on cards, sections, or inputs. Cards top out at 12–16px; full-pill is for small controls and tags.
 - **Sketchy SVG illustration:** `loose-sketch` / `doodle` / `wavy` class names, `feTurbulence` "paper grain" filters, crude 5-to-30-path scenes depicting a tangible subject. Real illustration or none. This bans SVG imitating pictures, never SVG doing geometry — crisp vector shapes, diagrams, animated linework, and shader-driven effects remain first-class media.
-- **Never animate an image on hover**, directly or through its parent. It is not an action target and the motion adds no information. Give the container the feedback: background, border, or shadow.
 - **Claims come from supplied truth.** Label illustrative values honestly. Naming a concept and then ironizing it is not a claim, and staging a strawman to correct it is theater — make the specific claim instead.
 
 ## The AI Slop Test
@@ -68,7 +67,7 @@ Run the category-reflex check at two altitudes; the second catches what the firs
 - **First-order:** if someone could guess the theme and palette from the category alone ("observability → dark blue", "healthcare → white + teal", "finance → navy + gold", "crypto → neon on black"), that is the first training-data reflex.
 - **Second-order:** if someone could guess the aesthetic family from category-plus-avoidance ("AI workflow tool that isn't SaaS-cream → editorial-typographic", "fintech that isn't navy-and-gold → terminal-native dark"), the trap is one tier deeper. Rework until neither answer is obvious.
 
-AI-generated interfaces cluster around a few looks regardless of subject: warm cream ground with a high-contrast serif display and a terracotta or signal-red accent; near-black with one neon accent and glowing edges; broadsheet-editorial hairlines with an italic display serif and small tracked mono labels. All are legitimate when the brief calls for them. Where the brief leaves the aesthetic free, landing in one means the self-check failed. A bookish, warm, or child-facing subject is not a license: book cloth, thread, jackets, and endpapers span the whole saturated spectrum, and cream paper is the smallest corner of that world.
+AI-generated interfaces cluster around a few looks regardless of subject: warm cream ground with a high-contrast serif display and a terracotta or signal-red accent; near-black with one neon accent and glowing edges; broadsheet-editorial hairlines with an italic display serif and small tracked mono labels; flat saturated ink with black boxes, hard offset shadows, and heavy condensed display type. All are legitimate when the brief calls for them. Where the brief leaves the aesthetic free, landing in one means the self-check failed. A bookish, warm, or child-facing subject is not a license: book cloth, thread, jackets, and endpapers span the whole saturated spectrum, and cream paper is the smallest corner of that world.
 
 Match implementation complexity to the aesthetic vision: maximalist work needs elaborate code and effects; minimalist work needs restraint, precision, and exact spacing. Vary between light and dark, different faces, different aesthetics — never converge on the same choices across generations.
 

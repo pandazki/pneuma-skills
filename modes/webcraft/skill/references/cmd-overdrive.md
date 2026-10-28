@@ -13,7 +13,7 @@ Before proceeding, consult the "Impeccable.style Design Intelligence" section of
 
 ---
 
-**EXTRA IMPORTANT FOR THIS COMMAND**: Context determines what "extraordinary" means. A particle system on a creative portfolio is impressive. The same particle system on a settings page is embarrassing. But a settings page with instant optimistic saves and animated state transitions? That's extraordinary too. Understand the project's personality and goals before deciding what's appropriate.
+Context decides what "extraordinary" means. A particle system on a creative portfolio is impressive. The same particle system on a settings page is embarrassing. But a settings page with instant optimistic saves and animated state transitions? That's extraordinary too. Understand the project's personality and goals before deciding what's appropriate.
 
 ### Propose Before Building
 
@@ -27,7 +27,7 @@ Skipping this step risks building something embarrassing that needs to be thrown
 
 ### Iterate with Live Preview
 
-Technically ambitious effects almost never work on the first try. Check them with the `capture` viewer action (SKILL.md → Live preview) in bounded rounds rather than assuming the effect looks right, and expect a round or two of refinement. Do not reach for an external browser or devtools — the Pneuma viewer is the only faithful render of a content set. The gap between "technically works" and "looks extraordinary" is closed through visual iteration, not code alone.
+Ambitious effects rarely work on the first try, so verify them in the viewer rather than from code: an effect that technically runs can still stutter, ease wrong, or land on the wrong frame. Check the frames with the `capture` viewer action (SKILL.md → Live preview) and batch the fixes between looks. A capture is a still: it shows a wrong frame, never timing, easing, or smoothness, so read those from the code's durations and curves and ask the user to watch the motion in the preview. Do not reach for an external browser or devtools — the Pneuma viewer is the only faithful render of a content set.
 
 ---
 
