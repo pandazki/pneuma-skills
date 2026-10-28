@@ -384,6 +384,12 @@ that nothing was dropped or mutated on the way into HTML:
   document **verbatim** — short atomic values are never rephrased,
   rounded, or "improved". Only prose longer than ~80 characters may be
   rewritten for flow.
+- A figure you computed from supplied ones (a growth rate, a share, an
+  "about 60% faster") sits next to its inputs or is marked derived (推算 /
+  derived) wherever it appears, captions and tables included — never a
+  standalone headline metric the source did not state.
+- Every chart was generated from its spec, and `chart.mjs --check` passes
+  on the page (Diagrams below).
 - Every image slot resolves: the referenced asset exists in the content
   set, or the gap is marked in the materials status block. Never ship a
   broken `<img>`.
@@ -491,7 +497,9 @@ A document task is done only when your closing message carries:
    final deliverable, run a `capture` pass page by page and say what you
    checked; if you did not look, say "fit verified, visuals unconfirmed",
    not "done". One visual defect found means sweeping every page for
-   that class of issue, not fixing the one spot.
+   that class of issue, not fixing the one spot. Fix the three most
+   visible defects per round, re-check, and stop after three rounds:
+   list what is still wrong rather than looping.
 5. The plan from Step 2, answered item by item — genre, page target,
    arc, diagrams, and each check you named. A plan that quietly stops
    being mentioned at the end is a plan that was abandoned.
@@ -710,7 +718,8 @@ in the same round.
 Eighteen types ship in `_shared/assets/diagrams/`. Pick the closest match,
 copy the `<svg>` block out, and drop it inside a `<figure>` on the page —
 inline, never linked through an `<iframe>`, so it paginates with the text
-around it. `references/diagrams.md` §1 «Selection» maps every type to what it
+around it. Data charts are the exception: they are generated, never drawn
+(below). `references/diagrams.md` §1 «Selection» maps every type to what it
 shows and §7 lists the AI-slop patterns; read it once before drawing.
 
 Before drawing at all, ask: **would a well-written paragraph teach the reader
@@ -723,6 +732,14 @@ Three routes inside that reference, by trigger:
 | Full-system panorama, control plane, roadmap, or owner map in one artifact | «Architecture boards». Give it its own page or content set; do not inflate the single architecture figure past its node budget. |
 | Updating a diagram someone drew earlier — a redraw, or one living in a content set across sessions | «Maintained diagrams». Evidence pass first (intent note, current source, a `capture` of the render, then the facts that define objects and boundaries), maturity encoded, never redrawn from memory. |
 | A raster illustration that needs more detail than hand-assembled SVG holds | «Illustration briefs», plus «Image generation» below. |
+
+**Charts from data are generated, never drawn.** Hand-placed bar heights and
+arc endpoints are where a bar and its label quietly disagree. Write the numbers
+as a JSON spec and run `node {SKILL_PATH}/scripts/chart.mjs spec.json -o
+chart.svg` (bar, line, hbar, donut, candlestick, waterfall — `diagrams.md` §9
+owns the spec); to change a number, edit the spec and regenerate. The chart
+carries its spec, and `node {SKILL_PATH}/scripts/chart.mjs --check
+<content-set>/index.html` fails any chart whose marks were edited afterwards.
 
 **Auto-select charts from data.** When the page carries numbers, pick the chart
 type yourself and embed it without waiting to be asked; `diagrams.md` §1 owns

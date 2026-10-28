@@ -230,6 +230,15 @@ If page 2 is too empty, fix content before touching typography:
 
 Do not fill space by padding, duplicating a number, or splitting one sentence into two lines. A sparse second page is acceptable only when the source material is genuinely thin and the user prefers restraint over padding.
 
+### Thin source
+
+Measure before tuning. Add the two page fills from `kami-fit.json` after the first render: below about 166% (both pages at the 83% floor), the source does not hold two pages, and no break placement or density row closes the gap. Upstream measured three employers with eight bullets and one open-source line at 120-135% at default type.
+
+- Keep the page boundary where the template puts it. Never move the tail of a section to the second `<div class="page">` under a continuation heading (`工作经历（续）`, `Experience (cont.)`): page 1 then ends wherever the last project ends and one shortfall becomes two half-empty pages.
+- Keep two pages. Collapsing to one page breaks the contract instead of the balance.
+- Stop at the 3-project row of «Density tuning by project count». Raising body type, line-height, or section spacing past it reaches the floor with whitespace, and the fit report passes a page that still reads empty, because it only measures where the last ink sits.
+- Remove page-2 sections the source has nothing for (AI judgment, public impact) rather than inventing content for them, mark the missing material as `[DATA NEEDED]` gaps, and say in the handoff which facts would close the shortfall. Report the two fills and their total as a thin-source balance, not as a fit failure; any other imbalance is still a layout error to fix.
+
 ---
 
 ## Recruiter pass (before shipping)

@@ -59,11 +59,66 @@ it mirrors upstream V1.7.0's "Korean Paper" without bundling the font.
 ## Tracked upstream version
 
 Diagrams and reference docs in this mode are synced against
-[tw93/kami **V1.16.0**](https://github.com/tw93/Kami/releases/tag/V1.16.0)
-("Good content deserves good paper"), plus the post-release commit
-`a489e39` that finishes V1.16.0's verified-numbers wording in
-`references/writing.md`. Upstream moved its skill into `skills/kami/` in
-V1.15.0; the file-level mapping is unchanged.
+[tw93/kami **V1.18.0**](https://github.com/tw93/Kami/releases/tag/V1.18.0)
+("Charted Pages") up to main commit `210f3bc` (2026-10-27). Upstream moved
+its skill into `skills/kami/` in V1.15.0; the file-level mapping is
+unchanged. The previous pin was V1.16.0 + `a489e39`.
+
+Adopted from V1.17.0 – V1.18.0 and the main commits after it:
+
+- **V1.18.0 charts from data.** `scripts/chart.py` is ported to
+  `skill/scripts/chart.mjs` (Node built-ins only): the six chart types
+  (bar, line, hbar, donut, candlestick, waterfall), the spec validation
+  that refuses data it cannot draw honestly, and the drift gate
+  (`--check`, upstream's `--check-charts`) that regenerates each chart from
+  its embedded `data-kami-spec`. Output is byte-identical to upstream's for
+  the same spec: the five chart demos in `_shared/assets/diagrams/` are
+  upstream's generated files, copied unchanged apart from the header
+  comment's command line, and `chart.mjs --check` passes on them. A
+  408-spec comparison run against upstream's script (CN / KO / EN labels,
+  compact size, negatives, exact rounding ties, a full-ring donut) drew
+  identical marks; the only difference is the echoed spec text for a
+  float literal such as `3532.0`, which JavaScript reads as `3532` and the
+  drift gate does not compare. `diagrams.md` §1 and §9 and SKILL.md
+  «Diagrams» route charts through the generator; anti-pattern #40 names
+  hand-placed chart geometry.
+- **Derived figures stay beside their inputs** (`3fc9837`): `writing.md`
+  §5, anti-pattern #38, and SKILL.md's post-fill fact check.
+- **Label chrome** (V1.18.0 design notes): anti-pattern #39 and
+  design.md «A choice, not the default» — why the paper look is a choice,
+  one eyebrow at most, numbering only for real sequences, the middle-dot
+  swap test, concentric corners. The screen-only bullets (four screen
+  sizes, outline-only buttons) are left out.
+- **V1.18.0 slide type scale.** design.md §8 raises titles to 32pt over
+  13pt body, the module scale with them, the cover title to 44pt, and lifts
+  the pinned `.co` to `bottom: 22mm`, clear of a running footer.
+- **Typography floor.** Labels at 500 (the weight lock), and named dense
+  exceptions (`.compact` tables, running footers, dense resume timelines)
+  may go to 8-8.5pt. design.md's section-level light/dark alternation,
+  retired upstream, is removed.
+- **Resume thin source** (`98d03af`): resume-writing.md measures the two
+  page fills from `kami-fit.json`, stops density tuning at the 3-project
+  row, and reports a thin-source balance with its gaps instead of padding.
+  Upstream's `--deliver` WARN classification has no counterpart here; the
+  rule rides the handoff.
+- **Capped visual repair loop** (`8efaecd`): three most visible defects per
+  round, at most three rounds, then list what is still wrong.
+- `n/a` in an empty table cell becomes an em dash (`writing.md` number
+  conventions).
+
+Not synced from V1.17.0 – V1.18.0, by the same reasoning as the list below:
+the `build.py --deliver` single gate and its MCP `kami_deliver` twin, the
+`content.json` IR and schema checks, the SKILL.md slimming against an eval
+suite (this SKILL.md is Pneuma's own text and already loads references on
+demand), the Korean PDF fixes (TrueType Source Han Serif K embedding and
+word-only breaking — WeasyPrint/MuPDF), the Korean fallback reorder (this
+mode's KO stack was already serif-first with no Gothic fallback), the
+check-path and false-alarm fixes, `scripts/brand_extract.py` and the brand
+profile it drafts (the brand profile is not adopted), the `--line` screen
+token, the product-site accent, button, CJK web-font and responsive
+screenshot rules (landing-page genre), and the `writing.md` «Page density»
+table, which moves the density contract upstream already keeps here in
+SKILL.md and `cmd-fit.md`.
 
 Adopted from V1.14.0 – V1.16.0:
 

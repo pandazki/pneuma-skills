@@ -27,6 +27,20 @@ This is not a UI framework. It is a constraint system for print, designed to kee
 
 This system is a fusion of Anthropic's visual language and real Chinese / English resume iteration. Details below.
 
+### A choice, not the default
+
+Anthropic's `frontend-design` skill lists "a warm cream background with a high-contrast serif display and a terracotta accent" first among the looks AI-generated design falls into, followed by hairline broadsheet layouts and template chrome (an all-caps eyebrow over every heading, `A · B · C` meta strings, numbered markers). Kami overlaps that list on purpose, so each overlap has to earn its place:
+
+- **Paper tone.** Kami's output is a page that gets printed or read as a PDF, and parchment is the color of the page, not a mood for a screen. The white-paper print recipe (§6) exists for when the sheet itself is white.
+- **Ink-blue, never clay.** The single accent is `#1B365D`, kept under 5% of the surface and spent on numbers and distinctive phrases. Terracotta and warm clay are not in the palette, and no second accent is added for warmth.
+- **Serif for reading length.** Documents are read top to bottom at length, which is what the serif and the 500 weight are for. Display contrast stays modest; hierarchy comes from size and space, not a fashion display face.
+- **Rules separate data.** A hairline appears only where it divides rows, regions, or states («Subtractive rule»); a broadsheet frame for its own sake is out.
+- **No chrome without information.** One eyebrow on a cover at most, never one over every heading. Numbering only for real sequences (chapters, slides, steps). A middle dot only between data fields of one line (author and date, phone and email), never as a decorative joiner. To test an eyebrow, cover it: if the title alone still says what the section is, cut it; keep one that adds what the title lacks (a version, a date, an error code, the slide's place in a sequence). To test a middle dot, swap its two sides: if both keep their meaning in either order they are parallel facts and take ` · `; otherwise it is a sentence and takes the language's comma.
+- **Few sizes, few rungs.** Sizes come from the pt scale in §2. Text takes two colour rungs to read (primary, secondary), one for meta and one for disabled or decoration. Hierarchy comes from weight, rung and space before a new size.
+- **Concentric corners.** A rounded shape inside another shares its centre: inner radius = outer radius - the inset between them. Radius follows role (page card, row, tag), so a new radius means a new role.
+
+When a brief asks for a different direction, follow it; when it asks for a look Kami does not do (dark, futurist, saturated multi-color), say so instead of bending the system.
+
 ---
 
 ## 1. Color
@@ -162,11 +176,11 @@ parchment metrics were tuned for.
 | Body | 10pt | 400 | 1.55 | Reading body |
 | Body Dense | 9.2pt | 400 | 1.42 | Dense body (resume, one-pager) |
 | Caption | 9pt | 400 | 1.45 | Notes, figure captions |
-| Label | 9pt | 600 | 1.35 | Small labels, corner tags |
+| Label | 9pt | 500 | 1.35 | Small labels, corner tags |
 | Tiny | 9pt | 400 | 1.40 | Footer, minor metadata |
 
 **Screen (px)** ≈ pt × 1.33 (9pt ≈ 12px, 18pt ≈ 24px).
-**Minimum floor**: web text >= 12px, PDF text >= 9pt.
+**Minimum floor**: web text >= 12px, print body text and labels >= 9pt. Named dense exceptions may go to 8-8.5pt: `.compact` tables, running footers, and dense resume timelines.
 
 **Slide caption floor**: slides 上 caption 至少 24px (不是 12px)。Print 9pt 在投影距离不可读，slide caption 用 pt x 2.67。
 
@@ -810,10 +824,6 @@ it to make an ordinary card look more important. The sheet itself sits on the
 desk with the `--ring-warm` ring in `_shared/styles.css` — that is the paper's
 edge, not a component style to copy onto content.
 
-### Section-level light/dark alternation
-
-Long docs alternate parchment `#f5f4ed` and `#141413` dark sections. This section-level light change creates the strongest contrast.
-
 **Forbidden**: `box-shadow: 0 2px 8px rgba(0,0,0,0.3)` and relatives.
 
 ---
@@ -954,26 +964,26 @@ body {
 }
 ```
 
-Heading scale:
+Heading scale (a slide is read from across a room, so body type sits near 13pt and the title well above it, not the 9-11pt of a printed page):
 
 | Element | Size | Weight | Notes |
 |---|---|---|---|
-| `h2` | 24pt | 500 | Page title; `margin-bottom: 14pt` |
-| `h3` | 15pt | 500 | Section heading; `color: var(--brand)` |
-| `.eyebrow` | 9.5pt | 400 | Mono, `letter-spacing: 2pt`, `color: var(--stone)` |
-| `.lead` | 12pt | 400 | Below `h2`; `color: var(--olive)` |
+| `h2` | 32pt | 500 | Page title; `margin-bottom: 16pt` |
+| `h3` | 18pt | 500 | Section heading; `color: var(--brand)` |
+| `.eyebrow` | 10pt | 400 | Mono, `letter-spacing: 2pt`, `color: var(--stone)` |
+| `.lead` | 16pt | 400 | Below `h2`; `color: var(--olive)` |
 
 Content element scale:
 
 | Class | Size | Notes |
 |---|---|---|
-| `.mt` | 16pt | Module title, used with `.ml` |
-| `.ml` | 24pt | Large letter prefix in `var(--brand)`, paired with `.mt` |
-| `.ms` | 7.5pt mono | Module sub-label; `border-bottom` separator |
-| `.mb` | 11pt | Module body description |
-| `.mi` | 11pt | Module line item; `padding: 8pt 0` |
-| `.mc` | 9.5pt | Delivery rhythm or cadence note; `border-top` |
-| `.co` | 11pt bold | Bottom callout; `position: absolute; bottom: 12mm` |
+| `.mt` | 19pt | Module title, used with `.ml` |
+| `.ml` | 28pt | Large letter prefix in `var(--brand)`, paired with `.mt` |
+| `.ms` | 9pt mono | Module sub-label; `border-bottom` separator |
+| `.mb` | 13pt | Module body description |
+| `.mi` | 13pt | Module line item; `padding: 8pt 0` |
+| `.mc` | 11pt | Delivery rhythm or cadence note; `border-top` |
+| `.co` | 14pt bold | Bottom callout; `position: absolute; bottom: 22mm`, clear of any running footer |
 
 ### Layout patterns
 
@@ -994,7 +1004,7 @@ Content element scale:
 </table>
 ```
 
-**Pinned callout (`.co`)**: `position: absolute; bottom: 12mm; left: 20mm; right: 20mm`. Valid only when it adds a real relationship, constraint, or conclusion; then the whitespace above it is intentional. Never pin one to fill trailing whitespace.
+**Pinned callout (`.co`)**: `position: absolute; bottom: 22mm; left: 20mm; right: 20mm`, clear of any running footer. Valid only when it adds a real relationship, constraint, or conclusion; then the whitespace above it is intentional. Never pin one to fill trailing whitespace.
 
 ### Table styles
 
@@ -1026,7 +1036,7 @@ table.data td:first-child {
 | One line per bullet | Trim until each item fits on one line; never let it wrap |
 | Empty space ≥50% | Draft defect. Order: merge with a neighbor > remove the slide and fold its useful point into another slide > convert existing evidence only when another form is clearer. Never add a callout, chart, or image just to occupy space. The page cannot shrink here. |
 | Empty space 25-50% | Acceptable when one complete assertion and its proof genuinely need the room. Otherwise merge or tighten the slide; do not add supporting matter solely for density. |
-| Cover | No horizontal rule; title centered `38pt`; subtitle on one line; bottom meta centered |
+| Cover | No horizontal rule; title centered `44pt`; subtitle on one line; bottom meta centered |
 
 ### Troubleshooting
 

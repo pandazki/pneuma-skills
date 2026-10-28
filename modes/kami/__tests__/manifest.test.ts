@@ -6,8 +6,9 @@ import kamiManifest from "../manifest.js";
 const derive = kamiManifest.init!.deriveParams!;
 const DIAGRAMS_DIR = join(import.meta.dir, "..", "seed", "_shared", "assets", "diagrams");
 
-// The 18-type catalog synced from upstream tw93/kami V1.13.0:
-// 14 hand-drawn originals + architecture-board + 3 Mermaid-sourced statics.
+// The 18-type catalog synced from upstream tw93/kami: 9 hand-drawn originals,
+// architecture-board, 3 Mermaid-sourced statics, and 5 data charts that
+// upstream V1.18.0 generates from a spec (scripts/chart.mjs here).
 const DIAGRAM_FILES = [
   "architecture",
   "architecture-board",
@@ -30,8 +31,8 @@ const DIAGRAM_FILES = [
 ];
 
 describe("kami version + changelog contract", () => {
-  it("includes the image policy update after the V1.16.0 sync", () => {
-    expect(kamiManifest.version).toBe("1.8.1");
+  it("follows the V1.18.0 sync", () => {
+    expect(kamiManifest.version).toBe("1.9.0");
   });
 
   it("carries a changelog entry for the current version", () => {
@@ -78,21 +79,22 @@ describe("kami diagram catalog (upstream V1.13.0)", () => {
     }
   });
 
-  // Upstream normalised every prose label to a CJK-first stack and deliberately
-  // left two files alone: candlestick and waterfall label their axes with
-  // numbers, so a Latin serif is the right face there. That exception is worth
-  // pinning rather than assuming — a *new* Latin-first stack in any other
-  // template is the regression, and it is invisible until someone types
-  // Chinese into it.
-  const LATIN_LABEL_DIAGRAMS = new Set(["candlestick", "waterfall"]);
+  // Upstream normalised every hand-drawn label to a CJK-first stack. The five
+  // data charts are exempt for a different reason: since V1.18.0 they are
+  // generated, and the generator picks the font chain from the labels it is
+  // given (CJK-first for Chinese, Korean-first for Hangul, Charter for Latin) —
+  // chart.test.ts pins that. Their demos carry Latin placeholders, so Charter.
+  // A Latin-first stack in any *hand-drawn* template is still the regression,
+  // invisible until someone types Chinese into it.
+  const GENERATED_CHARTS = new Set(["bar-chart", "line-chart", "donut-chart", "candlestick", "waterfall"]);
 
-  it("every prose-label stack leads with a CJK family", () => {
+  it("every hand-drawn prose-label stack leads with a CJK family", () => {
     // Matches `font-family: ...;` in CSS and `font-family="..."` on SVG nodes.
     const DECL = /font-family\s*[:=]\s*(?:"([^"]*)"|([^;{}\n]+))/g;
     const CJK_FIRST = /^(TsangerJinKai02|Source Han Serif|Noto Serif|Songti|STSong|SimSun)/;
     const offenders: string[] = [];
     for (const name of DIAGRAM_FILES) {
-      if (LATIN_LABEL_DIAGRAMS.has(name)) continue;
+      if (GENERATED_CHARTS.has(name)) continue;
       const html = readFileSync(join(DIAGRAMS_DIR, `${name}.html`), "utf8");
       for (const match of html.matchAll(DECL)) {
         const stack = (match[1] ?? match[2] ?? "").trim();
@@ -106,11 +108,19 @@ describe("kami diagram catalog (upstream V1.13.0)", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the two numeric-axis charts are the only Latin-first exceptions", () => {
+  it("only the generated charts carry a Latin-first label stack", () => {
     const stillLatin = DIAGRAM_FILES.filter((name) =>
       readFileSync(join(DIAGRAMS_DIR, `${name}.html`), "utf8").includes('font-family="Charter'),
     );
-    expect(new Set(stillLatin)).toEqual(LATIN_LABEL_DIAGRAMS);
+    expect(new Set(stillLatin)).toEqual(GENERATED_CHARTS);
+  });
+
+  it("every chart demo is generated — its marks carry their spec", () => {
+    for (const name of GENERATED_CHARTS) {
+      const html = readFileSync(join(DIAGRAMS_DIR, `${name}.html`), "utf8");
+      expect(html).toInclude("data-kami-chart=");
+      expect(html).toInclude("data-kami-spec=");
+    }
   });
 });
 

@@ -46,6 +46,7 @@ For companies, products, people, launch dates, versions, funding, financials, ma
 - Do not write "latest", "new", version numbers, or market figures before checking them
 - If sources conflict, list the conflict and ask the user instead of choosing one
 - If only the magnitude is known, write the magnitude instead of false precision
+- A number you compute from supplied figures (a growth rate, a share, an "about 60% faster") stays next to its inputs ("23 to 9 minutes, about 61% less") or is marked as derived (推算 / derived) where it appears, in captions and tables too. Never round it into a standalone headline metric the source did not state
 
 ### 6. Materials serve recognition
 
@@ -412,6 +413,7 @@ Across any document:
 | ~$10M | $9,876,543 (false precision reads fake) |
 | 2026.04 | 2026年4月 / April 2026 (when horizontal space is tight) |
 | -> | → |
+| n/a (EN), 不适用 (CN), 해당 없음 (KO) in an empty table cell | an em dash (U+2014) |
 
 ### Language-specific punctuation
 
