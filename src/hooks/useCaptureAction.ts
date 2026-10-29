@@ -113,11 +113,14 @@ export function waitForNavigation(
  * lucid, where naming a round swaps a RECORDED capture onto the stage in
  * place of the live scene, so reaching it is a navigation — lucid's `view`
  * stays fine, since Live / Target / Split re-dresses whatever is already
- * there). A mode whose coarse key is missing here does not fail loudly:
- * `capture` would silently screenshot whatever is on screen, which is why
- * new coarse keys belong in this list.
+ * there; `season`/`group`/`bible`/`episode` by anime-series, where the
+ * season overview, a group or bible card and an episode's board are separate
+ * places on the canvas — its `part`/`shot`/`time`/`take` stay fine, since
+ * they move inside the episode already on screen). A mode whose coarse key
+ * is missing here does not fail loudly: `capture` would silently screenshot
+ * whatever is on screen, which is why new coarse keys belong in this list.
  */
-const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience", "motion", "ref", "round"];
+const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience", "motion", "ref", "round", "season", "character", "group", "scene", "bible", "episode"];
 
 /**
  * Whether an address names something outside the current view, so `capture`

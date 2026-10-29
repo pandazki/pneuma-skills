@@ -26,6 +26,12 @@ describe("isCoarseAddress — coarse keys drive a navigation first", () => {
     ["sprite motion", { motion: "attack" }],
     ["sprite reference", { ref: "turnaround" }],
     ["lucid round", { round: 3 }],
+    ["anime-series season overview", { season: "overview" }],
+    ["anime-series character card (also backlot's bible character)", { character: "guang" }],
+    ["anime-series group card", { group: "stickies" }],
+    ["anime-series scene card (also backlot's script scene)", { scene: "office-night" }],
+    ["anime-series bible card", { bible: "style" }],
+    ["anime-series episode board", { episode: "ep01" }],
   ];
 
   for (const [label, address] of coarse) {
@@ -55,6 +61,15 @@ describe("isCoarseAddress — fine keys resolve in place", () => {
     // `view` only changes how what is already there is shown.
     expect(isCoarseAddress({ view: "split" })).toBe(false);
     expect(isCoarseAddress({ round: 2, view: "split" })).toBe(true);
+  });
+
+  test("anime-series' part, shot, time and take are fine — they move inside the open episode", () => {
+    // `part` is subordinate to `episode`: it never names a place on its own.
+    expect(isCoarseAddress({ part: "A" })).toBe(false);
+    expect(isCoarseAddress({ shot: 5, lane: "clip" })).toBe(false);
+    expect(isCoarseAddress({ time: 13.2 })).toBe(false);
+    expect(isCoarseAddress({ take: "ep01-a-clip-2" })).toBe(false);
+    expect(isCoarseAddress({ episode: "ep01", part: "A", shot: 5 })).toBe(true);
   });
 
   test("an empty or absent address shoots the current viewport", () => {

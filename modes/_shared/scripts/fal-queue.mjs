@@ -34,7 +34,16 @@
  *     job remotely and throws with the label; an aborted signal rejects
  *     with a real AbortError (`name` === "AbortError") *after* the remote
  *     cancel has been sent. Nothing that this module gives up on keeps
- *     running upstream.
+ *     running upstream;
+ *   - every failure after fal accepted the submit carries the job's id as
+ *     `error.requestId`: the job may already be billed, and a caller that
+ *     records the failure needs the id to reconcile it. A submit that never
+ *     became a job carries none;
+ *   - `requestId` attaches to a job fal already accepted instead of
+ *     submitting a new one: the same poll, result and cancel path, on the
+ *     request URLs fal's own client derives (`falRequestBase`). This is how
+ *     a caller lands a job whose first wait timed out or was interrupted
+ *     without paying for a second render.
  *
  * Alongside the runner live the four things every fal-backed script needs
  * around it and must not each invent: the key (`loadFalKey`), the two ways
@@ -117,6 +126,28 @@ export function toQueueUrl(url) {
   return parsed.toString();
 }
 
+/** Namespaced apps carry one more leading path segment (fal client `ENDPOINT_NAMESPACES`). */
+const ENDPOINT_NAMESPACES = ["workflows", "comfy"];
+
+/**
+ * The queue URL of one request — `<base>/status`, `<base>` for the result,
+ * `<base>/cancel` — for an endpoint URL and a `request_id`.
+ *
+ * fal's own client (`@fal-ai/client` `queue.status/result/cancel`) builds
+ * these from the app id alone, `<owner>/<alias>` (or
+ * `<namespace>/<owner>/<alias>`), dropping the endpoint's sub-path: a job
+ * submitted to `…/seedance-2.5/reference-to-video` is read back at
+ * `…/seedance-2.5/requests/<id>`. A submit's own envelope names its URLs and
+ * is preferred; this rule is for attaching to a job by id alone.
+ */
+export function falRequestBase(url, requestId) {
+  if (typeof requestId !== "string" || !requestId) throw new Error("falRequestBase needs a request id");
+  const parsed = new URL(toQueueUrl(url));
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const keep = ENDPOINT_NAMESPACES.includes(segments[0]) ? 3 : 2;
+  return `${parsed.origin}/${segments.slice(0, keep).join("/")}/requests/${encodeURIComponent(requestId)}`;
+}
+
 /** `?logs=0` on the status URL — we poll for state, never for log lines. */
 function statusUrlWithoutLogs(statusUrl) {
   const parsed = new URL(statusUrl);
@@ -144,6 +175,19 @@ function abortErrorFor(signal, label) {
 
 function throwIfAborted(signal, label) {
   if (signal?.aborted) throw abortErrorFor(signal, label);
+}
+
+/**
+ * Name the accepted job on an error thrown after submit, so a caller that
+ * records the failure can reconcile it against fal's queue — the job may
+ * already be billed. An id the error already carries is kept; an error that
+ * cannot take a property (frozen, or not an object) is thrown as it is.
+ */
+function withRequestId(error, requestId) {
+  if (requestId && error && typeof error === "object" && Object.isExtensible(error) && error.requestId === undefined) {
+    error.requestId = requestId;
+  }
+  return error;
 }
 
 /** A timer that loses the race against `signal`, rejecting when it fires. */
@@ -239,7 +283,9 @@ async function submitJob(context) {
  *
  * @param {object} options
  * @param {string} options.url          Synchronous endpoint, e.g. `https://fal.run/minimax/h3-max/image-to-video`.
- * @param {unknown} options.body        Request body, serialized as JSON.
+ * @param {unknown} [options.body]      Request body, serialized as JSON (unused with `requestId`).
+ * @param {string} [options.requestId]  Attach to this already-accepted job instead of submitting:
+ *        nothing is POSTed, the job is polled and its result fetched (`attempts` is 0).
  * @param {string} options.key          fal API key (`Authorization: Key <key>`).
  * @param {AbortSignal} [options.signal] Aborting cancels the job remotely.
  * @param {number} [options.deadlineMs] Wall clock for the whole job (default 10 min); the job is cancelled remotely when it passes.
@@ -257,6 +303,7 @@ async function submitJob(context) {
 export async function runFalJob({
   url,
   body,
+  requestId: attachTo,
   key,
   signal,
   deadlineMs = 10 * 60_000,
@@ -284,18 +331,27 @@ export async function runFalJob({
   const queueUrl = toQueueUrl(url);
   const headers = { Authorization: `Key ${key}`, "Content-Type": "application/json" };
 
-  const { queued, attempts } = await submitJob({
-    queueUrl,
-    body,
-    headers,
-    signal,
-    fetchImpl,
-    retryDelaysMs,
-    sleep,
-    onRetry,
-    label,
-    assertDeadline,
-  });
+  let queued;
+  let attempts = 0;
+  if (attachTo !== undefined) {
+    // An existing job: its URLs by fal's own rule, and no submit — sending
+    // the body again would start (and bill) a second render.
+    const base = falRequestBase(queueUrl, attachTo);
+    queued = { request_id: attachTo, status_url: `${base}/status`, response_url: base, cancel_url: `${base}/cancel` };
+  } else {
+    ({ queued, attempts } = await submitJob({
+      queueUrl,
+      body,
+      headers,
+      signal,
+      fetchImpl,
+      retryDelaysMs,
+      sleep,
+      onRetry,
+      label,
+      assertDeadline,
+    }));
+  }
 
   // The URLs fal hands back are used verbatim; the documented shape is only
   // a fallback for an envelope that omits them, and it needs the id.
@@ -417,7 +473,7 @@ export async function runFalJob({
     if (signal?.aborted) {
       cancelRemote();
       await cancelSent;
-      throw abortErrorFor(signal, label);
+      throw withRequestId(abortErrorFor(signal, label), requestId);
     }
     // A deadline, a poll that kept failing, a status the key cannot read:
     // the job is still running upstream and would be paid for in full.
@@ -426,7 +482,7 @@ export async function runFalJob({
       cancelRemote();
       await cancelSent;
     }
-    throw error;
+    throw withRequestId(error, requestId);
   } finally {
     signal?.removeEventListener("abort", cancelRemote);
   }

@@ -23,8 +23,14 @@ export interface FalRetryInfo {
 export interface RunFalJobOptions {
   /** Synchronous endpoint, e.g. `https://fal.run/minimax/h3-max/image-to-video`. */
   url: string;
-  /** Request body, serialized as JSON. */
-  body: unknown;
+  /** Request body, serialized as JSON. Unused when attaching with `requestId`. */
+  body?: unknown;
+  /**
+   * Attach to a job fal already accepted instead of submitting one: nothing
+   * is POSTed; the job is polled at {@link falRequestBase} and its result
+   * fetched, with the same deadline and cancel behaviour. `attempts` is 0.
+   */
+  requestId?: string;
   /** fal API key, sent as `Authorization: Key <key>`. */
   key: string;
   /** Aborting cancels the job remotely before the rejection surfaces. */
@@ -65,6 +71,13 @@ export interface FalJobResult<T = any> {
  */
 export function toQueueUrl(url: string): string;
 
+/**
+ * The queue URL of one request (`<base>/status`, `<base>`, `<base>/cancel`)
+ * by fal's own client rule: the app id `<owner>/<alias>` (namespaced apps
+ * keep a third segment), the endpoint's sub-path dropped.
+ */
+export function falRequestBase(url: string, requestId: string): string;
+
 /** A timer that loses the race against `signal`, rejecting when it fires. */
 export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void>;
 
@@ -72,9 +85,24 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void>;
  * Submit one job to `queue.fal.run`, poll it to completion and return its
  * result. Rejects with an `AbortError` (after PUTting `cancel_url`) when
  * `signal` fires, with the upstream message on `FAILED`, and with a
- * `<label> exceeded Ns` error on `deadlineMs`.
+ * `<label> exceeded Ns` error on `deadlineMs`. Every rejection after fal
+ * accepted the submit carries the job's id as `error.requestId`
+ * ({@link FalJobError}); a submit that never became a job carries none.
  */
 export function runFalJob<T = any>(options: RunFalJobOptions): Promise<FalJobResult<T>>;
+
+/** What `runFalJob` rejects with once fal has accepted the job. */
+export interface FalJobError extends Error {
+  /** fal's `request_id` for the job that may already be billed. */
+  requestId?: string;
+}
+
+/**
+ * Whether a thrown submit proves the request never reached fal (refused
+ * socket, unresolved name, unreachable network) — the one failure that
+ * provably created no job. Walks `cause` and `errors` a few levels deep.
+ */
+export function neverReached(error: unknown): boolean;
 
 // ---------------------------------------------------------------------------
 // The three things every fal-backed script needs around the runner.
