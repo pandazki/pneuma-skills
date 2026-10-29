@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.59.0] - 2026-10-29
+
+### Added
+- **Toon Series mode (动画单元剧)** — Lock a cast of original characters once, then make a recurring no-dialogue comedy series one episode at a time. The series bible (character look, design sheets, style lock) is the single source every storyboard and Seedance 2.5 prompt is assembled from, so the protagonists keep looking like themselves across episodes. Episodes record the bible version they were shot under and are flagged when a character changes later.
+- **A creation canvas built around consistency** — The cast wall stays beside every decision, the shot strip is the storyboard, the shot list and the timeline at once, and each picture is stamped with the sheets and model that made it. Frame-sampled review compares every shot with the sheets (matches, drifted, not in shot), and a single panel or a span of shots can be redrawn or re-shot and spliced into the final on its real cuts.
+- **Honest spend for generated media** — Every paid image or video call is recorded before it is sent and priced before you approve it; a cancelled or timed-out request is shown as possibly billed, never as free. Without API keys the mode prints prompts ready to paste into Jimeng / Dreamina.
+- **Seed series 光和牛马** — Pneuma's two soul-form mascots, with a real 30-second first episode, shot and checked. Inspired by 10291124jcjc-dotcom/ai-anime-series; see the mode's NOTICE.
+
+### Improved
+- **Shared record for generated media** — Modes can now record AIGC assets, their lineage and their cost through one shared craft project layer instead of each keeping its own ledger.
+- **Agent screenshots land on the right object** — Capturing a scene or a character first navigates to it (this also corrects Backlot's script-scene and bible-character captures).
+
 ## [3.58.2] - 2026-10-27
 
 ### Fixed
