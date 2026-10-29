@@ -19,6 +19,12 @@ import type { CraftProjectFile } from "../craft-project.mjs";
 const SCRIPT = resolve(import.meta.dir, "../craft-project-io.mjs");
 const MEDIA = mediaTierEnabled("_shared");
 announceMediaTierSkip("_shared", "craft-project-io ffprobe probing of real PNG/MP4/audio");
+// The release runner enables the media tier on machines without ffmpeg (CI has
+// none), so the tier flag alone does not prove the binaries exist.
+const HAS_FFMPEG = Bun.which("ffmpeg") !== null && Bun.which("ffprobe") !== null;
+if (MEDIA && !HAS_FFMPEG) {
+  console.warn("(skip) modes/_shared craft-project-io probeMedia fixtures — ffmpeg/ffprobe not on PATH");
+}
 
 const root = mkdtempSync(join(tmpdir(), "craft-project-io-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -339,7 +345,7 @@ describe("runRegistered — record before send", () => {
   });
 });
 
-describe.skipIf(!MEDIA)("probeMedia — real files through ffprobe [media tier]", () => {
+describe.skipIf(!MEDIA || !HAS_FFMPEG)("probeMedia — real files through ffprobe [media tier]", () => {
   let dir = "";
   beforeAll(() => {
     dir = workspace().dir;
