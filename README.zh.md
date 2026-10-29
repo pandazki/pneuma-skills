@@ -84,6 +84,7 @@
 | **sprite** | 角色动作素材，按你要做的东西分成几条路线：给游戏做一套角色动作、让你自己的一张图动起来、给网页做一段循环动画，或者给 App 做个吉祥物。角色只定一次（也可以直接用你的图），每个动作再从带着角色参考图生成的精灵图、或在纯绿背景上拍的视频里取帧：按人物实际画到的位置切帧，让脚踩在同一个点上（跳跃保留起跳高度），用解混合抠像去掉绿边，最后打包成 Phaser、PixiJS 直接能读的 `atlas.json` 或 Aseprite 格式的帧表。一张静态图就能做出呼吸待机，不调用模型；像素画对齐到像素网格、锁定调色板，还能换出几套配色；四个朝向的角色可以镜像出另一侧，也可以单独画。界面循环动画导出 WebP、APNG、WebM 和 Lottie，任何动作都能导出 MP4、MOV、WebM、APNG、Lottie 或 PNG 序列，整个角色能导成一个 Rive 文件。抠像、循环检测、像素网格、切帧和呼吸动画的方法移植自 [aldegad/sprite-gen](https://github.com/aldegad/sprite-gen) |
 | **lucid** | 一场画面与程序之间的闭环 —— agent 先用图像生成把成品截图「梦」出来并锁死，再用 Three.js 静态场景一轮轮往那张图上追；每一轮都由一个没看过前情的评审按构图、光照、材质、细节打分，直到实时画面真的对上；素材阶梯上还有 Blender 与图生 3D。移植自 [achimala/dream-loop](https://github.com/achimala/dream-loop)（MIT） |
 | **backlot** | 片场 —— 从一个念头拍到成片：剧本、人物与场景设定、分镜画稿、3D 白模预演、模型渲染的镜头、台词与配乐；每一道工序都要你点头才进下一道。白模那一关先把空间、动作和运镜定死，再让视频模型在它之上把质感画出来。做法改编自 [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows)（MIT） |
+| **anime-series** | 动画单元剧：拍到第十集，主角还是那两个主角 —— 左边一面钉死的设定墙（角色、群体、场景、画风，各带设定图和锁定版本），右边一集一张桌子，镜头条同时是故事板、镜头表和时间轴。故事板宫格和 Seedance 视频的提示词都由脚本从设定集拼出来，不手写；成片抽帧后逐镜对照设定图检查，哪几秒跑偏就单独补拍那几秒，不用整集重拍。方法改编自 [10291124jcjc-dotcom/ai-anime-series](https://github.com/10291124jcjc-dotcom/ai-anime-series) |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 
 > 每个 mode 独立版本号 —— 在 launcher 和 mode 市场处呈现，不在 README 里重复以避免与代码漂移。
@@ -181,6 +182,7 @@ Modes:
   sprite                       游戏角色动作、让图动起来、界面循环动画与 Rive 吉祥物
   lucid                        梦出目标截图，用 Three.js 追着建
   backlot                      从一个念头拍到成片
+  anime-series                 动画单元剧，拍到第十集角色也不走样
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载

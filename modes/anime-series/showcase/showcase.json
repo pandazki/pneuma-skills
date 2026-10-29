@@ -1,0 +1,66 @@
+{
+  "tagline": {
+    "en": "A cartoon series whose characters still look like themselves in episode ten",
+    "zh-CN": "动画单元剧：拍到第十集，主角还是那两个主角",
+    "ja": "第十話になっても、主役は同じ姿のままのアニメ連作"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "Locked on the Wall",
+        "zh-CN": "设定钉在墙上",
+        "ja": "設定は壁にロック"
+      },
+      "description": {
+        "en": "The bible is written once and pinned beside every episode: the two leads, the sticky-note swarm that plays the villain and the night office, each with the design sheet you picked and the version it was locked under. Every storyboard and video prompt is assembled from these cards by a script, never typed — and each card says where the series has drifted from it: 光 in episode 1, shot 7.",
+        "zh-CN": "设定只写一次，钉在每一集旁边：两个主角、演反派的便利贴群、深夜的办公室，各自带着你选中的那张设定图和锁定时的版本号。每一张故事板、每一段视频的提示词都由脚本从这些卡片拼出来，不靠手写；哪一集哪一镜跟它对不上，卡片上也写着 —— 光，第一集第 7 镜。",
+        "ja": "設定は一度だけ書き、すべての話の横に貼っておきます。主役の二人、悪役を演じる付箋の群れ、夜のオフィス —— それぞれに選んだ設定画と、ロックしたときのバージョンが付きます。絵コンテも映像も、プロンプトはスクリプトがこのカードから組み立て、手では書きません。どの話のどのショットでずれたかもカードに出ます —— 光は第 1 話のショット 7。"
+      },
+      "media": "highlight-wall.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "The Storyboard Is the Timeline",
+        "zh-CN": "故事板就是时间轴",
+        "ja": "絵コンテがそのままタイムライン"
+      },
+      "description": {
+        "en": "Each panel of the storyboard grid becomes a cell as wide as its seconds, so one strip is the storyboard, the shot list and the timeline: the playhead runs across it, a dot per cast member shows how each shot checked out, and dragging a border moves seconds from one shot to the next without changing the length. Under the selected shot sit its words and its stamps — four design sheets, storyboard candidate 2, Seedance 2.5 at 480p, $6.19 for the 30-second take — read from the project's provenance, so nobody has to remember what went into a clip.",
+        "zh-CN": "故事板宫格里的每一格，都变成一个宽度等于秒数的格子，于是一条镜头条同时是故事板、镜头表和时间轴：播放头从上面走过，每个角色一个圆点，标出这一镜查得怎么样；拖动两格之间的边界，就把秒数从一镜挪给另一镜，总长不变。选中的镜头下面是它的文字和它用了什么 —— 四张设定图、第 2 版故事板、Seedance 2.5 · 480p、整段 30 秒 6.19 美元 —— 都从项目的来源记录里读出来，谁也不用去记一段视频是拿什么拍的。",
+        "ja": "絵コンテのグリッドの一コマずつが、秒数ぶんの幅を持つセルになります。だから一本のストリップが、絵コンテであり、ショットリストであり、タイムラインです。プレイヘッドがその上を走り、キャストごとの点がショットごとの照合結果を示し、境界をドラッグすれば全体の長さを変えずに隣のショットへ秒数を移せます。選んだショットの下には、その文章と出どころ —— 設定画 4 枚、絵コンテ候補 2、Seedance 2.5・480p、30 秒のテイクで 6.19 ドル —— がプロジェクトの来歴から読み出されて並ぶので、何から作った映像かを誰も覚えておく必要がありません。"
+      },
+      "media": "highlight-shot-strip.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Checked Against the Sheets",
+        "zh-CN": "逐镜对照设定图",
+        "ja": "設定画とショットごとに照合"
+      },
+      "description": {
+        "en": "When a take lands, three frames are sampled from every shot and each character is judged against its locked sheet: matches, drifted, not in the shot, or named in the words but missing from the clip. Shot 7 is where it failed: the sheet draws 光's bridge pose as its orange body with the face at the top, the clip made a plain golden band, and the verdict says exactly that, with the sheet beside the frames. It stays open until you re-shoot the shot or accept it on the record — this episode ships with three drifts still open.",
+        "zh-CN": "一段视频回来以后，每一镜抽三帧，每个角色都拿去对照它锁定的设定图：对上了、漂了、不在镜，或者文字里写了、画面里却没出现。第 7 镜就没过：设定图里光的拱桥形是橙色身体、脸在拱顶，成片里只是一道淡金色的光带，判语原话就是这么写的，设定图和抽出来的帧并排摆着。这一处会一直挂着，直到你补拍这一镜，或者点「接受，就这样」记一笔 —— 这一集交出来的时候，还有三处漂移没处理。",
+        "ja": "テイクが届くと、ショットごとに 3 フレームを抜き出し、キャラクターひとりずつロック済みの設定画と照らし合わせます。一致、ずれ、画面にいない、あるいは文章にはあるのに映っていない。ショット 7 は不合格でした。設定画の光はアーチの姿でもオレンジの体で顔がてっぺんにあるのに、映像ではただの金色の光の帯 —— 判定はそのとおりに書かれ、設定画と抜き出したフレームが並びます。撮り直すか、そのまま受け入れて記録に残すまで、この指摘は開いたまま。この話は、ずれを 3 つ残したまま収められています。"
+      },
+      "media": "highlight-drift-check.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "What the Season Cost",
+        "zh-CN": "这一季花了多少",
+        "ja": "シーズンにかかった費用"
+      },
+      "description": {
+        "en": "The episode log opens the season view: what the series has cost so far and where it went — $0.36 of design sheets, $0.052 for the lineup, $7.58 for episode 1 — how many drifts each lead still has open, and the log of place, goal, ability and ending that the next episode is pitched against so it does not repeat one. Image calls carry the figure OpenRouter reported; the two Seedance clips are estimates from fal's published formula, which is why the total says estimate.",
+        "zh-CN": "点开「已拍记录」就是整季视图：这个系列到现在花了多少、花在哪 —— 设定图 0.36 美元、同框比例图 0.052、第一集 7.58 —— 每个主角还有几处漂移没处理；还有一张地点、目标、能力、结尾的记录，下一集就对着它来想，免得重复。图片调用记的是 OpenRouter 报回来的金额；两段 Seedance 视频是按 fal 公布的公式估出来的，所以总数标着「估算」。",
+        "ja": "エピソードログを開くとシーズンの一覧です。ここまでの費用とその内訳 —— 設定画 0.36 ドル、並び比べ 0.052 ドル、第 1 話 7.58 ドル —— 主役ごとに残っているずれの数、そして次の話がネタをかぶらないように参照する、舞台・目標・能力・オチの記録。画像の呼び出しは OpenRouter が報告した金額、Seedance の 2 本は fal が公開している計算式による見積もりなので、合計には「見積もり」と付いています。"
+      },
+      "media": "highlight-season.png",
+      "mediaType": "image"
+    }
+  ]
+}

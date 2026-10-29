@@ -1,0 +1,37 @@
+The scripts in this directory port logic from the MIT-licensed scripts/ of
+ai-anime-series (https://github.com/10291124jcjc-dotcom/ai-anime-series,
+commit b750b5a8f8c7a8d5bc8ed47de22f6e84fa99fe6b), and prompt-locales.mjs
+reuses their Chinese prompt wording:
+
+  prompts.mjs, prompt-locales.mjs   scripts/make_prompts.py
+  series-state.mjs (timing, grids)  scripts/make_prompts.py
+  grid.mjs                          scripts/grid.py (split)
+  media.mjs                         scripts/grid.py, review_clip.py, compile.py
+  series.mjs                        the five scripts' commands, incl. setup_check.py
+
+That upstream code is distributed under this licence:
+
+MIT License
+
+Copyright (c) 2026 硅基废话 (10291124jcjc-dotcom)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The rest of that repository (docs/, examples/, templates/, assets/,
+SKILL.md, README.md) is CC BY-NC 4.0 and none of it is copied here.

@@ -1,0 +1,2052 @@
+{
+  "$schema": "pneuma-craft/project/v1",
+  "title": "光和牛马",
+  "composition": {
+    "settings": {
+      "width": 854,
+      "height": 480,
+      "fps": 24,
+      "aspectRatio": "16:9"
+    },
+    "tracks": [],
+    "transitions": []
+  },
+  "assets": [
+    {
+      "id": "char-guang-sheet-1",
+      "type": "image",
+      "uri": "refs/char-guang-sheet-1.webp",
+      "name": "光 design sheet",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1793257008508,
+      "status": "ready"
+    },
+    {
+      "id": "char-guang-sheet-2",
+      "type": "image",
+      "uri": "refs/char-guang-sheet-2.webp",
+      "name": "光 design sheet",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1793257008508,
+      "status": "ready"
+    },
+    {
+      "id": "group-stickies-sheet-1",
+      "type": "image",
+      "uri": "refs/group-stickies-sheet-1.webp",
+      "name": "便利贴群 design sheet",
+      "metadata": {
+        "width": 1536,
+        "height": 864
+      },
+      "createdAt": 1793256753305,
+      "status": "ready"
+    },
+    {
+      "id": "scene-office-night-sheet-1",
+      "type": "image",
+      "uri": "refs/scene-office-night-sheet-1.webp",
+      "name": "夜晚的开放办公区 design sheet",
+      "metadata": {
+        "width": 1536,
+        "height": 864
+      },
+      "createdAt": 1793257304471,
+      "status": "ready"
+    },
+    {
+      "id": "scene-office-night-sheet-2",
+      "type": "image",
+      "uri": "refs/scene-office-night-sheet-2.webp",
+      "name": "夜晚的开放办公区 design sheet",
+      "metadata": {
+        "width": 1536,
+        "height": 864
+      },
+      "createdAt": 1793257304471,
+      "status": "ready"
+    },
+    {
+      "id": "char-niuma-sheet-1",
+      "type": "image",
+      "uri": "refs/char-niuma-sheet-1.webp",
+      "name": "牛马 design sheet",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1793259688065,
+      "status": "ready"
+    },
+    {
+      "id": "char-niuma-sheet-2",
+      "type": "image",
+      "uri": "refs/char-niuma-sheet-2.webp",
+      "name": "牛马 design sheet",
+      "metadata": {
+        "width": 1024,
+        "height": 1024
+      },
+      "createdAt": 1793259688065,
+      "status": "ready"
+    },
+    {
+      "id": "lineup-1",
+      "type": "image",
+      "uri": "refs/lineup-1.webp",
+      "name": "lineup 光 · 牛马",
+      "metadata": {
+        "width": 1536,
+        "height": 864
+      },
+      "createdAt": 1793263030007,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-board-1",
+      "type": "image",
+      "uri": "episodes/ep01/boards/a-1.webp",
+      "name": "ep01 part A storyboard",
+      "metadata": {
+        "width": 1536,
+        "height": 864
+      },
+      "createdAt": 1793263110580,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-panel-6-1",
+      "type": "image",
+      "uri": "episodes/ep01/panels/a-6-1.webp",
+      "name": "ep01 part A panel 6",
+      "metadata": {
+        "width": 1536,
+        "height": 864
+      },
+      "createdAt": 1793263206560,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-board-2",
+      "type": "image",
+      "uri": "episodes/ep01/boards/a-2.webp",
+      "name": "ep01 part A storyboard (panel 6 redrawn)",
+      "metadata": {
+        "width": 1536,
+        "height": 864
+      },
+      "createdAt": 1793263207367,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-take-1",
+      "type": "video",
+      "uri": "episodes/ep01/takes/a-1.mp4",
+      "name": "ep01 part A take",
+      "metadata": {
+        "width": 854,
+        "height": 480,
+        "duration": 30.093,
+        "fps": 24
+      },
+      "createdAt": 1793263590570,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/overview.jpg",
+      "name": "ep01 part A contact sheet",
+      "metadata": {
+        "width": 1920,
+        "height": 2520
+      },
+      "createdAt": 1793263609327,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-sheets",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/sheets.jpg",
+      "name": "ep01 sheets for review",
+      "metadata": {
+        "width": 1920,
+        "height": 360
+      },
+      "createdAt": 1793263609382,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-1",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-01.jpg",
+      "name": "ep01 part A shot 1 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609438,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-2",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-02.jpg",
+      "name": "ep01 part A shot 2 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609492,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-3",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-03.jpg",
+      "name": "ep01 part A shot 3 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609546,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-4",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-04.jpg",
+      "name": "ep01 part A shot 4 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609599,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-5",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-05.jpg",
+      "name": "ep01 part A shot 5 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609652,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-6",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-06.jpg",
+      "name": "ep01 part A shot 6 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609705,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-7",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-07.jpg",
+      "name": "ep01 part A shot 7 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609765,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-8",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-08.jpg",
+      "name": "ep01 part A shot 8 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609819,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-1-shot-9",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-1/shot-09.jpg",
+      "name": "ep01 part A shot 9 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793263609876,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-patch-8-8-1",
+      "type": "video",
+      "uri": "episodes/ep01/patches/a-8-8-1.mp4",
+      "name": "ep01 part A patch 8–8",
+      "metadata": {
+        "width": 854,
+        "height": 480,
+        "duration": 6.083,
+        "fps": 24
+      },
+      "createdAt": 1793264293878,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-2",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-2/overview.jpg",
+      "name": "ep01 part A contact sheet",
+      "metadata": {
+        "width": 1920,
+        "height": 600
+      },
+      "createdAt": 1793264357341,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-2-sheets",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-2/sheets.jpg",
+      "name": "ep01 sheets for review",
+      "metadata": {
+        "width": 1920,
+        "height": 360
+      },
+      "createdAt": 1793264357395,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-a-review-2-shot-8",
+      "type": "image",
+      "uri": "episodes/ep01/review/a-2/shot-08.jpg",
+      "name": "ep01 part A shot 8 frames",
+      "metadata": {
+        "width": 1284,
+        "height": 240
+      },
+      "createdAt": 1793264357448,
+      "status": "ready"
+    },
+    {
+      "id": "ep01-final-2",
+      "type": "video",
+      "uri": "episodes/ep01/final-2.mp4",
+      "name": "ep01 final",
+      "metadata": {
+        "width": 854,
+        "height": 480,
+        "duration": 29.903,
+        "fps": 24
+      },
+      "createdAt": 1793266709102,
+      "status": "ready"
+    }
+  ],
+  "provenance": [
+    {
+      "toAssetId": "char-guang-sheet-1",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793256948508,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "角色设定图，同一个角色的全身三视图（正面、侧面、背面）、6 个不同表情（好奇、灵机一动、兴奋、惊吓、得意、着急）、4 个动作姿势（漂浮张望、身体拉长弯成拱桥形的光带（两端落地，脸在拱顶）、变成手电筒光束、散成一群小火花）和剪影，排版干净，除了角色名和每格的小标题不要写说明文字，左上角写角色名「光」。\n角色：一团小小的火焰形光之灵魂，形状像一滴倒过来的水滴：底部圆润饱满，顶端收成一个尖，尖端弯成一缕小钩状的光尾巴，像火苗尖一样会随动作轻轻摆动；外壳是浓郁饱和的橙色（#f97316），不偏黄、不偏金，半透明果冻质感，只有中心一颗小小的淡黄白色光芯更亮，整体不要被光芯冲淡成浅黄色，自己发光，周围一圈柔和的橙色光晕；脸在身体下半部，只有两颗黑色小圆点眼睛和淡淡的橙粉腮红，做表情时才出现一张简单的小嘴；没有手、没有脚、没有耳朵，悬空漂浮，底部不着地；个子很小，高度约为牛马的三分之二，宽度不到牛马的一半。\n柔和的 3D 潮玩风格角色设定图，圆润简洁的造型，半透明果冻质感与次表面散射，柔和的自发光，柔和阴影，纯白背景，高清，排版干净，每个视图里角色的造型、比例和配饰完全一致。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "make-sheets",
+            "kind": "character",
+            "entity": "guang"
+          },
+          "request": {
+            "aspectRatio": "1:1",
+            "quality": "high"
+          },
+          "finishedAt": 1793257008508,
+          "cost": {
+            "usd": 0.054955,
+            "basis": "reported",
+            "note": "half of one 2-image call; OpenRouter reported $0.10991"
+          }
+        }
+      }
+    },
+    {
+      "toAssetId": "char-guang-sheet-2",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793256948508,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "角色设定图，同一个角色的全身三视图（正面、侧面、背面）、6 个不同表情（好奇、灵机一动、兴奋、惊吓、得意、着急）、4 个动作姿势（漂浮张望、身体拉长弯成拱桥形的光带（两端落地，脸在拱顶）、变成手电筒光束、散成一群小火花）和剪影，排版干净，除了角色名和每格的小标题不要写说明文字，左上角写角色名「光」。\n角色：一团小小的火焰形光之灵魂，形状像一滴倒过来的水滴：底部圆润饱满，顶端收成一个尖，尖端弯成一缕小钩状的光尾巴，像火苗尖一样会随动作轻轻摆动；外壳是浓郁饱和的橙色（#f97316），不偏黄、不偏金，半透明果冻质感，只有中心一颗小小的淡黄白色光芯更亮，整体不要被光芯冲淡成浅黄色，自己发光，周围一圈柔和的橙色光晕；脸在身体下半部，只有两颗黑色小圆点眼睛和淡淡的橙粉腮红，做表情时才出现一张简单的小嘴；没有手、没有脚、没有耳朵，悬空漂浮，底部不着地；个子很小，高度约为牛马的三分之二，宽度不到牛马的一半。\n柔和的 3D 潮玩风格角色设定图，圆润简洁的造型，半透明果冻质感与次表面散射，柔和的自发光，柔和阴影，纯白背景，高清，排版干净，每个视图里角色的造型、比例和配饰完全一致。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "make-sheets",
+            "kind": "character",
+            "entity": "guang"
+          },
+          "request": {
+            "aspectRatio": "1:1",
+            "quality": "high"
+          },
+          "finishedAt": 1793257008508,
+          "cost": {
+            "usd": 0.054955,
+            "basis": "reported",
+            "note": "half of one 2-image call; OpenRouter reported $0.10991"
+          }
+        }
+      }
+    },
+    {
+      "toAssetId": "group-stickies-sheet-1",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793256693305,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "群体角色设定图：一大群方形的黄色便利贴小怪，每张都是一张薄薄的方纸片，一角微微卷起，正面有一双小黑豆眼睛，做表情时出现一张简单的小嘴，没有手脚，靠扇动纸片扑腾着飞，成群结队地啪啪贴满一切。画出 5 只不同姿势（整齐贴在墙上、成群飞过来、扑上来贴住东西、得意、惊吓），外形统一；再单独画一张头目的正面大图：一张特别大的红色便利贴，大约是普通便利贴的三倍大，正面用粗黑字写着「紧急」，眉头紧皱、气势汹汹。排版干净，左上角写名字「便利贴群」。\n柔和的 3D 潮玩风格角色设定图，圆润简洁的造型，半透明果冻质感与次表面散射，柔和的自发光，柔和阴影，纯白背景，高清，排版干净，每个视图里角色的造型、比例和配饰完全一致。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "make-sheets",
+            "kind": "group",
+            "entity": "stickies"
+          },
+          "request": {
+            "aspectRatio": "16:9",
+            "quality": "high"
+          },
+          "finishedAt": 1793256753305,
+          "cost": {
+            "usd": 0.033735,
+            "basis": "reported"
+          }
+        }
+      }
+    },
+    {
+      "toAssetId": "scene-office-night-sheet-1",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793257244471,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "场景设定图，没有任何角色：夜晚的开放办公区，开放式办公区，一排排工位，桌上的显示器亮着冷蓝色的光，办公椅、文件堆、绿植、马克杯，桌面上没有便利贴，也没有带脸的摆件；一面大落地窗外是城市夜景的点点灯光；墙上一只圆形挂钟，钟面只有刻度没有数字，指针指向快十一点；顶灯大多关着，只有零星几盏亮着，整体是深蓝夜色加屏幕光，暗而不黑，层次清楚。广角全景，深夜，柔和的 3D 动画短片质感，像动画电影里的场景，不是建筑效果图、不是照片；整个世界像软胶潮玩和微缩模型一样圆润简洁，角色和场景同一个画风：家具厚实圆润、造型简化、物件少而清楚、颜色块面干净；角色是半透明材质带次表面散射、自带柔和的光；干净的构图，浅景深，夸张搞笑的默剧动作喜剧，无写实真人、无暗黑恐怖元素。画面中没有文字。\n参考图只用来对齐画风、材质和圆润程度：场景里的家具和物件也做成同样圆润的软胶玩具质感，像一间用软胶玩具搭成的微缩办公室。画面里不要出现参考图里的任何角色。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "make-sheets",
+            "kind": "scene",
+            "entity": "office-night"
+          },
+          "request": {
+            "aspectRatio": "16:9",
+            "quality": "high"
+          },
+          "finishedAt": 1793257304471,
+          "cost": {
+            "usd": 0.050619,
+            "basis": "reported",
+            "note": "half of one 2-image call; OpenRouter reported $0.101238"
+          }
+        }
+      }
+    },
+    {
+      "toAssetId": "scene-office-night-sheet-2",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793257244471,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "场景设定图，没有任何角色：夜晚的开放办公区，开放式办公区，一排排工位，桌上的显示器亮着冷蓝色的光，办公椅、文件堆、绿植、马克杯，桌面上没有便利贴，也没有带脸的摆件；一面大落地窗外是城市夜景的点点灯光；墙上一只圆形挂钟，钟面只有刻度没有数字，指针指向快十一点；顶灯大多关着，只有零星几盏亮着，整体是深蓝夜色加屏幕光，暗而不黑，层次清楚。广角全景，深夜，柔和的 3D 动画短片质感，像动画电影里的场景，不是建筑效果图、不是照片；整个世界像软胶潮玩和微缩模型一样圆润简洁，角色和场景同一个画风：家具厚实圆润、造型简化、物件少而清楚、颜色块面干净；角色是半透明材质带次表面散射、自带柔和的光；干净的构图，浅景深，夸张搞笑的默剧动作喜剧，无写实真人、无暗黑恐怖元素。画面中没有文字。\n参考图只用来对齐画风、材质和圆润程度：场景里的家具和物件也做成同样圆润的软胶玩具质感，像一间用软胶玩具搭成的微缩办公室。画面里不要出现参考图里的任何角色。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "make-sheets",
+            "kind": "scene",
+            "entity": "office-night"
+          },
+          "request": {
+            "aspectRatio": "16:9",
+            "quality": "high"
+          },
+          "finishedAt": 1793257304471,
+          "cost": {
+            "usd": 0.050619,
+            "basis": "reported",
+            "note": "half of one 2-image call; OpenRouter reported $0.101238"
+          }
+        }
+      }
+    },
+    {
+      "toAssetId": "char-niuma-sheet-1",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793259628065,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "角色设定图，同一个角色的全身三视图（正面、侧面、背面）、6 个不同表情（累瘫、抱怨嘟囔、憨笑、震惊、委屈、认命）、4 个动作姿势（四只蹄墩小碎步走、压扁身体驮起比自己高十倍的文件堆、累到泄气瘪成一摊（头顶飘出一缕小小的魂）、趴在键盘上打盹）和剪影，排版干净，除了角色名和每格的小标题不要写说明文字，左上角写角色名「牛马」。\n角色：一只敦厚老实的小牛灵魂，和光同一种通透的半透明果冻质感，像一只透明的小精灵，身体里透出柔和的冷光，但颜色是雾蒙蒙的冷灰蓝色；头和身体是一体的，像一个胖乎乎的圆馒头，高和宽差不多，底部稍宽，比光大一圈、更圆更敦实；头顶两只奶白色的小短牛角，圆圆的角尖；牛角下面两侧各一只小小的横向圆耳朵；一双大大的、温和的下垂眼，眼睛下面有淡淡的眼袋，看起来有点累但很老实；脸的下半部是一块奶白色的宽椭圆口鼻，平平的不向前凸出，上面两个小小的鼻孔圆点（不是猪鼻子，没有獠牙）；头顶正中只有一小撮软软的呆毛；没有手臂，身体底下正好四个圆圆的小蹄墩，蹄尖颜色稍深；身后一根短短的小牛尾巴，尾尖一小团；一根薄荷绿挂绳在身体上部绕一圈，正面正中垂着一张白色长方形小工牌，工牌上印着一个小牛头图标。\n柔和的 3D 潮玩风格角色设定图，圆润简洁的造型，半透明果冻质感与次表面散射，柔和的自发光，柔和阴影，纯白背景，高清，排版干净，每个视图里角色的造型、比例和配饰完全一致。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "make-sheets",
+            "kind": "character",
+            "entity": "niuma"
+          },
+          "request": {
+            "aspectRatio": "1:1",
+            "quality": "high"
+          },
+          "finishedAt": 1793259688065,
+          "cost": {
+            "usd": 0.055435,
+            "basis": "reported",
+            "note": "half of one 2-image call; OpenRouter reported $0.11087"
+          }
+        }
+      }
+    },
+    {
+      "toAssetId": "char-niuma-sheet-2",
+      "fromAssetId": null,
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793259628065,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "角色设定图，同一个角色的全身三视图（正面、侧面、背面）、6 个不同表情（累瘫、抱怨嘟囔、憨笑、震惊、委屈、认命）、4 个动作姿势（四只蹄墩小碎步走、压扁身体驮起比自己高十倍的文件堆、累到泄气瘪成一摊（头顶飘出一缕小小的魂）、趴在键盘上打盹）和剪影，排版干净，除了角色名和每格的小标题不要写说明文字，左上角写角色名「牛马」。\n角色：一只敦厚老实的小牛灵魂，和光同一种通透的半透明果冻质感，像一只透明的小精灵，身体里透出柔和的冷光，但颜色是雾蒙蒙的冷灰蓝色；头和身体是一体的，像一个胖乎乎的圆馒头，高和宽差不多，底部稍宽，比光大一圈、更圆更敦实；头顶两只奶白色的小短牛角，圆圆的角尖；牛角下面两侧各一只小小的横向圆耳朵；一双大大的、温和的下垂眼，眼睛下面有淡淡的眼袋，看起来有点累但很老实；脸的下半部是一块奶白色的宽椭圆口鼻，平平的不向前凸出，上面两个小小的鼻孔圆点（不是猪鼻子，没有獠牙）；头顶正中只有一小撮软软的呆毛；没有手臂，身体底下正好四个圆圆的小蹄墩，蹄尖颜色稍深；身后一根短短的小牛尾巴，尾尖一小团；一根薄荷绿挂绳在身体上部绕一圈，正面正中垂着一张白色长方形小工牌，工牌上印着一个小牛头图标。\n柔和的 3D 潮玩风格角色设定图，圆润简洁的造型，半透明果冻质感与次表面散射，柔和的自发光，柔和阴影，纯白背景，高清，排版干净，每个视图里角色的造型、比例和配饰完全一致。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "make-sheets",
+            "kind": "character",
+            "entity": "niuma"
+          },
+          "request": {
+            "aspectRatio": "1:1",
+            "quality": "high"
+          },
+          "finishedAt": 1793259688065,
+          "cost": {
+            "usd": 0.055435,
+            "basis": "reported",
+            "note": "half of one 2-image call; OpenRouter reported $0.11087"
+          }
+        }
+      }
+    },
+    {
+      "toAssetId": "lineup-1",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793262999348,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "角色身高对比图：参考图 1 是光，参考图 2 是牛马。2 个角色并排站在纯白背景上，正面朝向镜头，按同一比例画全身像，每个角色的大小以下面的描述为准。外形必须和参考图完全一致，不要画设定图排版，不要写字，只画这一组并排的全身像。\n光：一团小小的火焰形光之灵魂，形状像一滴倒过来的水滴：底部圆润饱满，顶端收成一个尖，尖端弯成一缕小钩状的光尾巴，像火苗尖一样会随动作轻轻摆动；外壳是浓郁饱和的橙色（#f97316），不偏黄、不偏金，半透明果冻质感，只有中心一颗小小的淡黄白色光芯更亮，整体不要被光芯冲淡成浅黄色，自己发光，周围一圈柔和的橙色光晕；脸在身体下半部，只有两颗黑色小圆点眼睛和淡淡的橙粉腮红，做表情时才出现一张简单的小嘴；没有手、没有脚、没有耳朵，悬空漂浮，底部不着地；个子很小，高度约为牛马的三分之二，宽度不到牛马的一半。\n牛马：一只敦厚老实的小牛灵魂，和光同一种通透的半透明果冻质感，像一只透明的小精灵，身体里透出柔和的冷光，但颜色是雾蒙蒙的冷灰蓝色；头和身体是一体的，像一个胖乎乎的圆馒头，高和宽差不多，底部稍宽，比光大一圈、更圆更敦实；头顶两只奶白色的小短牛角，圆圆的角尖；牛角下面两侧各一只小小的横向圆耳朵；一双大大的、温和的下垂眼，眼睛下面有淡淡的眼袋，看起来有点累但很老实；脸的下半部是一块奶白色的宽椭圆口鼻，平平的不向前凸出，上面两个小小的鼻孔圆点（不是猪鼻子，没有獠牙）；头顶正中只有一小撮软软的呆毛；没有手臂，身体底下正好四个圆圆的小蹄墩，蹄尖颜色稍深；身后一根短短的小牛尾巴，尾尖一小团；一根薄荷绿挂绳在身体上部绕一圈，正面正中垂着一张白色长方形小工牌，工牌上印着一个小牛头图标。\n柔和的 3D 潮玩风格角色设定图，圆润简洁的造型，半透明果冻质感与次表面散射，柔和的自发光，柔和阴影，纯白背景，高清，排版干净，每个视图里角色的造型、比例和配饰完全一致。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "lineup"
+          },
+          "request": {
+            "aspectRatio": "16:9",
+            "quality": "high"
+          },
+          "cost": {
+            "usd": 0.0524,
+            "basis": "reported",
+            "note": "OpenRouter usage.cost for this call"
+          },
+          "inputs": [
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1"
+          ],
+          "finishedAt": 1793263030007
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-board-1",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793263056651,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "生成 16:9 九宫格（3 行 3 列）动画分镜素描草图。要求：黑白铅笔素描、画面干净不杂乱、不要复杂背景、无多余画面、无文字，每格左上角标镜头序号。角色外形参考：图 1 是光，图 2 是牛马，图 3 是便利贴群，图 4 是场景夜晚的开放办公区。\n全部 9 格在同一个夜晚的开放办公区，同一个深夜。\n\n镜头 1：深夜的办公区，墙上挂钟快十一点；牛马趴在键盘上打盹，旁边一座比它高三倍的文件堆。镜头缓缓推近。\n镜头 2：光从显示器后面飘出来，在牛马眼前猛地一亮；牛马一下惊醒，瞪圆眼睛看向挂钟。\n镜头 3：牛马压扁身体，把整座文件堆驮上背，朝画面右边小碎步冲出去；光在前面变成一束手电筒光开路。侧面跟拍。\n镜头 4：便利贴群从一排工位隔板后面飞起来堵住过道，最大的头目冲在最前面，眉头紧皱。正面低机位。\n镜头 5：便利贴群贴满牛马和文件堆，裹成一个大纸球，纸球滚了两圈停住。\n镜头 6：光散成一群小火花，钻进纸球的缝里；便利贴群被烫得卷起边角，纷纷松开飘落，牛马驮着文件堆钻了出来。特写。\n镜头 7：光拉长成一座拱桥形的光带，横跨一整排工位；牛马驮着文件堆从桥上小碎步跑过去，便利贴群被甩在桥下。\n镜头 8：挂钟特写：分针跳到十一点整，当的一声，整个办公区的顶灯和显示器一齐熄灭。\n镜头 9：一片黑暗里，光照着泄气瘪成一摊的牛马，头顶飘出一缕小小的魂；头目便利贴飘下来贴在它的工牌上。定格。\n\n再强调一次：全部画成黑白铅笔素描，不要上任何颜色。参考图只用来看角色的外形，画进分镜里也一样是铅笔素描。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "shoot-board",
+            "episode": "ep01",
+            "part": "A"
+          },
+          "request": {
+            "aspectRatio": "16:9",
+            "quality": "high"
+          },
+          "cost": {
+            "usd": 0.0727,
+            "basis": "reported",
+            "note": "OpenRouter usage.cost for this call"
+          },
+          "inputs": [
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1",
+            "scene-office-night-sheet-2"
+          ],
+          "finishedAt": 1793263110580
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-panel-6-1",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793263158004,
+        "params": {
+          "model": "openai/gpt-image-2.5-sunburst",
+          "prompt": "生成一格动画分镜素描草图，比例和九宫格（3 行 3 列）里的一格相同。要求：黑白铅笔素描、画面干净、无文字，左上角标序号 6。角色外形参考：图 1 是光，图 2 是牛马，图 3 是便利贴群，图 4 是场景夜晚的开放办公区。\n这一格在同一个夜晚的开放办公区，同一个深夜。\n\n镜头 6：光散成一群小火花，钻进纸球的缝里；便利贴群被烫得卷起边角，纷纷松开飘落，牛马驮着文件堆钻了出来。特写。\n\n再强调一次：全部画成黑白铅笔素描，不要上任何颜色。参考图只用来看角色的外形，画进分镜里也一样是铅笔素描。",
+          "provider": "openrouter",
+          "slot": {
+            "command": "redo-panel",
+            "episode": "ep01",
+            "part": "A",
+            "shot": 6
+          },
+          "request": {
+            "aspectRatio": "16:9",
+            "quality": "high"
+          },
+          "cost": {
+            "usd": 0.0708,
+            "basis": "reported",
+            "note": "OpenRouter usage.cost for this call"
+          },
+          "inputs": [
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1",
+            "scene-office-night-sheet-2"
+          ],
+          "finishedAt": 1793263206560
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-board-2",
+      "fromAssetId": "ep01-a-board-1",
+      "operation": {
+        "type": "composite",
+        "actor": "agent",
+        "timestamp": 1793263207247,
+        "params": {
+          "op": "replace-panel",
+          "shot": 6,
+          "rect": {
+            "x": 1024,
+            "y": 288,
+            "w": 512,
+            "h": 288
+          },
+          "inputs": [
+            "ep01-a-board-1",
+            "ep01-a-panel-6-1"
+          ],
+          "finishedAt": 1793263207367
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-take-1",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793263255702,
+        "params": {
+          "model": "bytedance/seedance-2.5",
+          "prompt": "根据故事板 @Image5 生成分镜视频，仅参考其镜头设计、动作节奏、景别和运镜，禁止直接拼接故事板图片。\n\n@Image1 是光，外形必须和参考图完全一致：一团小小的火焰形光之灵魂，形状像一滴倒过来的水滴：底部圆润饱满，顶端收成一个尖，尖端弯成一缕小钩状的光尾巴，像火苗尖一样会随动作轻轻摆动；外壳是浓郁饱和的橙色（#f97316），不偏黄、不偏金，半透明果冻质感，只有中心一颗小小的淡黄白色光芯更亮，整体不要被光芯冲淡成浅黄色，自己发光，周围一圈柔和的橙色光晕；脸在身体下半部，只有两颗黑色小圆点眼睛和淡淡的橙粉腮红，做表情时才出现一张简单的小嘴；没有手、没有脚、没有耳朵，悬空漂浮，底部不着地；个子很小，高度约为牛马的三分之二，宽度不到牛马的一半。\n@Image2 是牛马，外形必须和参考图完全一致：一只敦厚老实的小牛灵魂，和光同一种通透的半透明果冻质感，像一只透明的小精灵，身体里透出柔和的冷光，但颜色是雾蒙蒙的冷灰蓝色；头和身体是一体的，像一个胖乎乎的圆馒头，高和宽差不多，底部稍宽，比光大一圈、更圆更敦实；头顶两只奶白色的小短牛角，圆圆的角尖；牛角下面两侧各一只小小的横向圆耳朵；一双大大的、温和的下垂眼，眼睛下面有淡淡的眼袋，看起来有点累但很老实；脸的下半部是一块奶白色的宽椭圆口鼻，平平的不向前凸出，上面两个小小的鼻孔圆点（不是猪鼻子，没有獠牙）；头顶正中只有一小撮软软的呆毛；没有手臂，身体底下正好四个圆圆的小蹄墩，蹄尖颜色稍深；身后一根短短的小牛尾巴，尾尖一小团；一根薄荷绿挂绳在身体上部绕一圈，正面正中垂着一张白色长方形小工牌，工牌上印着一个小牛头图标。\n@Image3 是便利贴群的设定图：一大群方形的黄色便利贴小怪，每张都是一张薄薄的方纸片，一角微微卷起，正面有一双小黑豆眼睛，做表情时出现一张简单的小嘴，没有手脚，靠扇动纸片扑腾着飞，成群结队地啪啪贴满一切。头目：一张特别大的红色便利贴，大约是普通便利贴的三倍大，正面用粗黑字写着「紧急」，眉头紧皱、气势汹汹。\n\n风格：柔和的 3D 动画短片质感，像动画电影里的场景，不是建筑效果图、不是照片；整个世界像软胶潮玩和微缩模型一样圆润简洁，角色和场景同一个画风：家具厚实圆润、造型简化、物件少而清楚、颜色块面干净；角色是半透明材质带次表面散射、自带柔和的光；干净的构图，浅景深，夸张搞笑的默剧动作喜剧，无写实真人、无暗黑恐怖元素。没有台词。全片在同一个夜晚的开放办公区、同一个深夜：开放式办公区，一排排工位，桌上的显示器亮着冷蓝色的光，办公椅、文件堆、绿植、马克杯，桌面上没有便利贴，也没有带脸的摆件；一面大落地窗外是城市夜景的点点灯光；墙上一只圆形挂钟，钟面只有刻度没有数字，指针指向快十一点；顶灯大多关着，只有零星几盏亮着，整体是深蓝夜色加屏幕光，暗而不黑，层次清楚。场景参考 @Image4。\n\n连贯要求：每个镜头的开头，接住上一个镜头结尾的动作；镜头 3 到镜头 7 奔跑方向始终从画面左边到右边；镜头 3 到镜头 7，牛马背上一直驮着同一座文件堆；镜头 8 灯灭以后，画面里只剩光自己发出的橙色光。\n\n镜头 1｜0-3s：深夜的开放办公区，墙上的挂钟指向十点五十九分；牛马趴在键盘上打盹，旁边堆着一座比它高三倍的文件堆，显示器的冷蓝光照着它的眼袋。镜头缓缓推近。\n音效：挂钟滴答、显示器嗡嗡声、轻轻的鼾声\n\n镜头 2｜3-6s：光从显示器后面飘出来，在牛马眼前猛地一亮；牛马一下惊醒，瞪圆眼睛看向挂钟。\n音效：叮的一声亮光、牛马倒吸一口气\n\n镜头 3｜6-9s：牛马压扁身体，把整座文件堆驮上背，朝画面右边小碎步冲出去；光在前面变成一束手电筒光开路。侧面跟拍。\n音效：小碎步啪嗒啪嗒、纸张沙沙、轻快鼓点\n\n镜头 4｜9-12s：便利贴群从一排工位隔板后面扑腾着飞起来，堵住过道；最大的红色头目冲在最前面，眉头紧皱。正面低机位。\n音效：一大片纸片扑腾声、紧张鼓点\n\n镜头 5｜12-16s：便利贴群啪啪啪贴满牛马和文件堆，把它们裹成一个黄色的大纸球，纸球骨碌碌滚了两圈停住。\n音效：黏糊的啪啪声、闷哼、滚动声\n\n镜头 6｜16-20s：光散成一群小火花，钻进纸球的缝里；便利贴群被烫得卷起边角，纷纷松开飘落，牛马驮着文件堆钻了出来。特写。\n音效：噼啪火花声、纸片卷起的沙沙声\n\n镜头 7｜20-24s：光拉长成一座拱桥形的光带，横跨一整排工位；牛马驮着文件堆从桥上小碎步跑过去，便利贴群被甩在桥下。\n音效：光桥嗡鸣、小碎步、纸片扑空的呼呼声\n\n镜头 8｜24-27s：挂钟特写：分针跳到十一点整，当的一声，整个办公区的顶灯和显示器一齐熄灭。\n音效：一声钟响、啪的断电声、一片安静\n\n镜头 9｜27-30s：一片黑暗里，光是唯一亮着的，照着牛马：它累到泄气瘪成一摊，头顶飘出一缕小小的魂；红色头目晃晃悠悠飘下来，啪地贴在它的工牌上。定格。\n音效：长长的泄气声、纸片轻轻落下、滑稽长号收尾\n\n除了头目正面印着粗黑字「紧急」，画面里不要出现任何其他文字、字幕、商标。",
+          "provider": "fal",
+          "slot": {
+            "command": "shoot-video",
+            "episode": "ep01",
+            "part": "A"
+          },
+          "request": {
+            "endpoint": "reference",
+            "duration": 30,
+            "resolution": "480p",
+            "aspectRatio": "16:9",
+            "audio": true
+          },
+          "bibleVersion": 1,
+          "cost": {
+            "usd": 6.1871,
+            "basis": "estimate",
+            "note": "fal's published formula on the delivered clip (854×480, 30.093 s) — not an invoice"
+          },
+          "inputs": [
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1",
+            "scene-office-night-sheet-2",
+            "ep01-a-board-2"
+          ],
+          "requestId": "01a186d1-d509-75c3-81bf-7a468cc7942a",
+          "finishedAt": 1793263590570
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609275,
+        "params": {
+          "op": "contact-sheet",
+          "frames": 3,
+          "take": "ep01-a-take-1",
+          "inputs": [
+            "ep01-a-take-1",
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1"
+          ],
+          "finishedAt": 1793263609327
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-sheets",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609327,
+        "params": {
+          "op": "review-sheets",
+          "inputs": [
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1"
+          ],
+          "finishedAt": 1793263609382
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-1",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609382,
+        "params": {
+          "op": "contact-strip",
+          "shot": 1,
+          "times": [
+            0.5,
+            1.5,
+            2.5
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609438
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-2",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609438,
+        "params": {
+          "op": "contact-strip",
+          "shot": 2,
+          "times": [
+            3.5,
+            4.5,
+            5.5
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609492
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-3",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609492,
+        "params": {
+          "op": "contact-strip",
+          "shot": 3,
+          "times": [
+            6.5,
+            7.5,
+            8.5
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609546
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-4",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609547,
+        "params": {
+          "op": "contact-strip",
+          "shot": 4,
+          "times": [
+            9.5,
+            10.5,
+            11.5
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609599
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-5",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609599,
+        "params": {
+          "op": "contact-strip",
+          "shot": 5,
+          "times": [
+            12.67,
+            14,
+            15.33
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609652
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-6",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609652,
+        "params": {
+          "op": "contact-strip",
+          "shot": 6,
+          "times": [
+            16.67,
+            18,
+            19.33
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609705
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-7",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609705,
+        "params": {
+          "op": "contact-strip",
+          "shot": 7,
+          "times": [
+            20.67,
+            22,
+            23.33
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609765
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-8",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609765,
+        "params": {
+          "op": "contact-strip",
+          "shot": 8,
+          "times": [
+            24.5,
+            25.5,
+            26.5
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609819
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-1-shot-9",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793263609819,
+        "params": {
+          "op": "contact-strip",
+          "shot": 9,
+          "times": [
+            27.5,
+            28.5,
+            29.5
+          ],
+          "take": "ep01-a-take-1",
+          "finishedAt": 1793263609876
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-patch-8-8-1",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "generate",
+        "actor": "agent",
+        "timestamp": 1793264084896,
+        "params": {
+          "model": "bytedance/seedance-2.5",
+          "prompt": "根据故事板 @Image5 生成分镜视频，仅参考其镜头设计、动作节奏、景别和运镜，禁止直接拼接故事板图片。这次只生成故事板第 8–9 格，开头和结尾都是硬切。\n\n@Image1 是光，外形必须和参考图完全一致：一团小小的火焰形光之灵魂，形状像一滴倒过来的水滴：底部圆润饱满，顶端收成一个尖，尖端弯成一缕小钩状的光尾巴，像火苗尖一样会随动作轻轻摆动；外壳是浓郁饱和的橙色（#f97316），不偏黄、不偏金，半透明果冻质感，只有中心一颗小小的淡黄白色光芯更亮，整体不要被光芯冲淡成浅黄色，自己发光，周围一圈柔和的橙色光晕；脸在身体下半部，只有两颗黑色小圆点眼睛和淡淡的橙粉腮红，做表情时才出现一张简单的小嘴；没有手、没有脚、没有耳朵，悬空漂浮，底部不着地；个子很小，高度约为牛马的三分之二，宽度不到牛马的一半。\n@Image2 是牛马，外形必须和参考图完全一致：一只敦厚老实的小牛灵魂，和光同一种通透的半透明果冻质感，像一只透明的小精灵，身体里透出柔和的冷光，但颜色是雾蒙蒙的冷灰蓝色；头和身体是一体的，像一个胖乎乎的圆馒头，高和宽差不多，底部稍宽，比光大一圈、更圆更敦实；头顶两只奶白色的小短牛角，圆圆的角尖；牛角下面两侧各一只小小的横向圆耳朵；一双大大的、温和的下垂眼，眼睛下面有淡淡的眼袋，看起来有点累但很老实；脸的下半部是一块奶白色的宽椭圆口鼻，平平的不向前凸出，上面两个小小的鼻孔圆点（不是猪鼻子，没有獠牙）；头顶正中只有一小撮软软的呆毛；没有手臂，身体底下正好四个圆圆的小蹄墩，蹄尖颜色稍深；身后一根短短的小牛尾巴，尾尖一小团；一根薄荷绿挂绳在身体上部绕一圈，正面正中垂着一张白色长方形小工牌，工牌上印着一个小牛头图标。\n@Image3 是便利贴群的设定图：一大群方形的黄色便利贴小怪，每张都是一张薄薄的方纸片，一角微微卷起，正面有一双小黑豆眼睛，做表情时出现一张简单的小嘴，没有手脚，靠扇动纸片扑腾着飞，成群结队地啪啪贴满一切。头目：一张特别大的红色便利贴，大约是普通便利贴的三倍大，正面用粗黑字写着「紧急」，眉头紧皱、气势汹汹。\n\n风格：柔和的 3D 动画短片质感，像动画电影里的场景，不是建筑效果图、不是照片；整个世界像软胶潮玩和微缩模型一样圆润简洁，角色和场景同一个画风：家具厚实圆润、造型简化、物件少而清楚、颜色块面干净；角色是半透明材质带次表面散射、自带柔和的光；干净的构图，浅景深，夸张搞笑的默剧动作喜剧，无写实真人、无暗黑恐怖元素。没有台词。全片在同一个夜晚的开放办公区、同一个深夜：开放式办公区，一排排工位，桌上的显示器亮着冷蓝色的光，办公椅、文件堆、绿植、马克杯，桌面上没有便利贴，也没有带脸的摆件；一面大落地窗外是城市夜景的点点灯光；墙上一只圆形挂钟，钟面只有刻度没有数字，指针指向快十一点；顶灯大多关着，只有零星几盏亮着，整体是深蓝夜色加屏幕光，暗而不黑，层次清楚。场景参考 @Image4。\n\n连贯要求：每个镜头的开头，接住上一个镜头结尾的动作；镜头 3 到镜头 7 奔跑方向始终从画面左边到右边；镜头 3 到镜头 7，牛马背上一直驮着同一座文件堆；镜头 8 灯灭以后，画面里只剩光自己发出的橙色光。\n\n镜头 8｜0-3s：挂钟特写：分针跳到十一点整，当的一声，整个办公区的顶灯和显示器一齐熄灭；同一瞬间光飘到挂钟前，用自己的橙色光照亮钟面和它的小脸。\n音效：一声钟响、啪的断电声、光亮起时轻轻的一声叮\n\n镜头 9｜3-6s：一片黑暗里，光是唯一亮着的，照着牛马：它累到泄气瘪成一摊，头顶飘出一缕小小的魂；红色头目晃晃悠悠飘下来，啪地贴在它的工牌上。定格。\n音效：长长的泄气声、纸片轻轻落下、滑稽长号收尾\n\n除了头目正面印着粗黑字「紧急」，画面里不要出现任何其他文字、字幕、商标。",
+          "provider": "fal",
+          "slot": {
+            "command": "patch-range",
+            "episode": "ep01",
+            "part": "A",
+            "shots": [
+              8,
+              8
+            ]
+          },
+          "request": {
+            "endpoint": "reference",
+            "duration": 6,
+            "resolution": "480p",
+            "aspectRatio": "16:9",
+            "audio": true
+          },
+          "bibleVersion": 1,
+          "patches": "ep01-a-take-1",
+          "cost": {
+            "usd": 1.2507,
+            "basis": "estimate",
+            "note": "fal's published formula on the delivered clip (854×480, 6.083 s) — not an invoice"
+          },
+          "inputs": [
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1",
+            "scene-office-night-sheet-2",
+            "ep01-a-board-2"
+          ],
+          "requestId": "01a186de-73f4-7441-8168-136dd4d240a2",
+          "finishedAt": 1793264293878
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-2",
+      "fromAssetId": "ep01-a-patch-8-8-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793264357282,
+        "params": {
+          "op": "contact-sheet",
+          "frames": 3,
+          "take": "ep01-a-patch-8-8-1",
+          "inputs": [
+            "ep01-a-patch-8-8-1",
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1"
+          ],
+          "finishedAt": 1793264357341
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-2-sheets",
+      "fromAssetId": "char-guang-sheet-2",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793264357341,
+        "params": {
+          "op": "review-sheets",
+          "inputs": [
+            "char-guang-sheet-2",
+            "char-niuma-sheet-1",
+            "group-stickies-sheet-1"
+          ],
+          "finishedAt": 1793264357395
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-a-review-2-shot-8",
+      "fromAssetId": "ep01-a-patch-8-8-1",
+      "operation": {
+        "type": "derive",
+        "actor": "agent",
+        "timestamp": 1793264357395,
+        "params": {
+          "op": "contact-strip",
+          "shot": 8,
+          "times": [
+            0.5,
+            1.5,
+            2.5
+          ],
+          "take": "ep01-a-patch-8-8-1",
+          "finishedAt": 1793264357448
+        }
+      }
+    },
+    {
+      "toAssetId": "ep01-final-2",
+      "fromAssetId": "ep01-a-take-1",
+      "operation": {
+        "type": "composite",
+        "actor": "agent",
+        "timestamp": 1793266709042,
+        "params": {
+          "op": "final",
+          "edits": [
+            {
+              "part": "A",
+              "replace": [
+                23.63,
+                26.63
+              ],
+              "with": "ep01-a-patch-8-8-1"
+            }
+          ],
+          "inputs": [
+            "ep01-a-take-1",
+            "ep01-a-patch-8-8-1"
+          ],
+          "finishedAt": 1793266709102
+        }
+      }
+    }
+  ],
+  "series": {
+    "schema": 1,
+    "sheets": {
+      "character:guang": {
+        "candidates": [
+          {
+            "asset": "char-guang-sheet-1",
+            "basis": {
+              "version": 0,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "sheetStyle": "883a9daa"
+                },
+                "character:guang": {
+                  "name": "cb730952",
+                  "look": "1aff0a8d",
+                  "expressions": "6f62c0bb",
+                  "poses": "f3a73dca"
+                }
+              }
+            },
+            "check": {
+              "verdict": "ok",
+              "note": "造型对，表情比 2 号弱一些",
+              "at": 1793258040000
+            }
+          },
+          {
+            "asset": "char-guang-sheet-2",
+            "basis": {
+              "version": 0,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "sheetStyle": "883a9daa"
+                },
+                "character:guang": {
+                  "name": "cb730952",
+                  "look": "1aff0a8d",
+                  "expressions": "6f62c0bb",
+                  "poses": "f3a73dca"
+                }
+              }
+            },
+            "check": {
+              "verdict": "ok",
+              "note": "三视图一致，无手无脚，橙色外壳没被光芯冲淡；火苗尖在背面没有镜像，look 已写成会随动作摆动",
+              "at": 1793258040000
+            }
+          }
+        ],
+        "compares": []
+      },
+      "character:niuma": {
+        "candidates": [
+          {
+            "asset": "char-niuma-sheet-1",
+            "basis": {
+              "version": 0,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "sheetStyle": "883a9daa"
+                },
+                "character:niuma": {
+                  "name": "2c0572e0",
+                  "look": "e3f12da4",
+                  "expressions": "d2c35006",
+                  "poses": "e3ee29e1"
+                }
+              }
+            },
+            "check": {
+              "verdict": "ok",
+              "note": "小短牛角、下垂眼带眼袋、平平的奶白口鼻只有两个鼻孔点；无手臂、四个蹄墩，挂绳绕身一圈、工牌在正中；三视图一致",
+              "at": 1793259960000
+            }
+          },
+          {
+            "asset": "char-niuma-sheet-2",
+            "basis": {
+              "version": 0,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "sheetStyle": "883a9daa"
+                },
+                "character:niuma": {
+                  "name": "2c0572e0",
+                  "look": "e3f12da4",
+                  "expressions": "d2c35006",
+                  "poses": "e3ee29e1"
+                }
+              }
+            },
+            "check": {
+              "verdict": "ok",
+              "note": "表情更足，泄气时飘出的魂也是小牛脸；视图多画了一个侧面，剪影单独占一行",
+              "at": 1793259960000
+            }
+          }
+        ],
+        "compares": []
+      },
+      "group:stickies": {
+        "candidates": [
+          {
+            "asset": "group-stickies-sheet-1",
+            "basis": {
+              "version": 0,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "sheetStyle": "883a9daa"
+                },
+                "group:stickies": {
+                  "name": "253b77a5",
+                  "look": "60804e0b",
+                  "leader": "b683d8ea",
+                  "poses": "95c10843"
+                }
+              }
+            },
+            "check": {
+              "verdict": "ok",
+              "note": "五个姿势外形统一，头目约三倍大、写着「紧急」",
+              "at": 1793258040000
+            }
+          }
+        ],
+        "compares": []
+      },
+      "scene:office-night": {
+        "candidates": [
+          {
+            "asset": "scene-office-night-sheet-1",
+            "basis": {
+              "version": 0,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "sheetStyle": "883a9daa"
+                },
+                "scene:office-night": {
+                  "name": "ead19649",
+                  "look": "71836383",
+                  "time": "49a105e6"
+                }
+              }
+            },
+            "check": {
+              "verdict": "ok",
+              "note": "画风对，构图比 2 号挤",
+              "at": 1793258040000
+            }
+          },
+          {
+            "asset": "scene-office-night-sheet-2",
+            "basis": {
+              "version": 0,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "sheetStyle": "883a9daa"
+                },
+                "scene:office-night": {
+                  "name": "ead19649",
+                  "look": "71836383",
+                  "time": "49a105e6"
+                }
+              }
+            },
+            "check": {
+              "verdict": "ok",
+              "note": "软胶潮玩画风和角色一致，没有带脸的摆件，挂钟只有刻度",
+              "at": 1793258040000
+            }
+          }
+        ],
+        "compares": []
+      }
+    },
+    "episodes": {
+      "ep01": {
+        "parts": {
+          "A": {
+            "boards": [
+              {
+                "asset": "ep01-a-board-1",
+                "basis": {
+                  "version": 1,
+                  "fields": {
+                    "style": {
+                      "style": "db35769b",
+                      "ratio": "5d4327b7",
+                      "dialogue": "0b069958"
+                    },
+                    "character:guang": {
+                      "name": "cb730952",
+                      "look": "1aff0a8d",
+                      "markings": "ffcaaa85",
+                      "sheet": "bcee50a5"
+                    },
+                    "character:niuma": {
+                      "name": "2c0572e0",
+                      "look": "e3f12da4",
+                      "markings": "ffcaaa85",
+                      "sheet": "45347dfc"
+                    },
+                    "group:stickies": {
+                      "name": "253b77a5",
+                      "look": "60804e0b",
+                      "leader": "b683d8ea",
+                      "markings": "6e8385d6",
+                      "sheet": "56006922"
+                    },
+                    "scene:office-night": {
+                      "name": "ead19649",
+                      "look": "71836383",
+                      "time": "49a105e6",
+                      "sheet": "b92d4732"
+                    }
+                  }
+                },
+                "shots": [
+                  "9af8d173",
+                  "38e559af",
+                  "5ca49c66",
+                  "92e82de1",
+                  "6015614d",
+                  "172558e6",
+                  "784cdbf7",
+                  "5c98d54e",
+                  "f6746869"
+                ],
+                "refs": [
+                  "char-guang-sheet-2",
+                  "char-niuma-sheet-1",
+                  "group-stickies-sheet-1",
+                  "scene-office-night-sheet-2"
+                ]
+              },
+              {
+                "asset": "ep01-a-board-2",
+                "basis": {
+                  "version": 1,
+                  "fields": {
+                    "style": {
+                      "style": "db35769b",
+                      "ratio": "5d4327b7",
+                      "dialogue": "0b069958"
+                    },
+                    "character:guang": {
+                      "name": "cb730952",
+                      "look": "1aff0a8d",
+                      "markings": "ffcaaa85",
+                      "sheet": "bcee50a5"
+                    },
+                    "character:niuma": {
+                      "name": "2c0572e0",
+                      "look": "e3f12da4",
+                      "markings": "ffcaaa85",
+                      "sheet": "45347dfc"
+                    },
+                    "group:stickies": {
+                      "name": "253b77a5",
+                      "look": "60804e0b",
+                      "leader": "b683d8ea",
+                      "markings": "6e8385d6",
+                      "sheet": "56006922"
+                    },
+                    "scene:office-night": {
+                      "name": "ead19649",
+                      "look": "71836383",
+                      "time": "49a105e6",
+                      "sheet": "b92d4732"
+                    }
+                  }
+                },
+                "shots": [
+                  "9af8d173",
+                  "38e559af",
+                  "5ca49c66",
+                  "92e82de1",
+                  "6015614d",
+                  "172558e6",
+                  "784cdbf7",
+                  "5c98d54e",
+                  "f6746869"
+                ],
+                "refs": [
+                  "char-guang-sheet-2",
+                  "char-niuma-sheet-1",
+                  "group-stickies-sheet-1",
+                  "scene-office-night-sheet-2"
+                ],
+                "from": {
+                  "board": "ep01-a-board-1",
+                  "panel": "ep01-a-panel-6-1",
+                  "shot": 6
+                }
+              }
+            ],
+            "panels": [
+              {
+                "shot": 6,
+                "asset": "ep01-a-panel-6-1",
+                "board": "ep01-a-board-1",
+                "result": "ep01-a-board-2"
+              }
+            ],
+            "takes": [
+              {
+                "asset": "ep01-a-take-1",
+                "board": "ep01-a-board-2",
+                "refs": [
+                  "char-guang-sheet-2",
+                  "char-niuma-sheet-1",
+                  "group-stickies-sheet-1",
+                  "scene-office-night-sheet-2",
+                  "ep01-a-board-2"
+                ],
+                "basis": {
+                  "version": 1,
+                  "fields": {
+                    "style": {
+                      "style": "db35769b",
+                      "ratio": "5d4327b7",
+                      "dialogue": "0b069958"
+                    },
+                    "character:guang": {
+                      "name": "cb730952",
+                      "look": "1aff0a8d",
+                      "markings": "ffcaaa85",
+                      "sheet": "bcee50a5"
+                    },
+                    "character:niuma": {
+                      "name": "2c0572e0",
+                      "look": "e3f12da4",
+                      "markings": "ffcaaa85",
+                      "sheet": "45347dfc"
+                    },
+                    "group:stickies": {
+                      "name": "253b77a5",
+                      "look": "60804e0b",
+                      "leader": "b683d8ea",
+                      "markings": "6e8385d6",
+                      "sheet": "56006922"
+                    },
+                    "scene:office-night": {
+                      "name": "ead19649",
+                      "look": "71836383",
+                      "time": "49a105e6",
+                      "sheet": "b92d4732"
+                    }
+                  }
+                },
+                "shots": [
+                  "ede23be5",
+                  "1c6af3e9",
+                  "3faa3b64",
+                  "d836a399",
+                  "869047c1",
+                  "289abf45",
+                  "679c4852",
+                  "7a2b1133",
+                  "035f2394"
+                ],
+                "durs": [
+                  3,
+                  3,
+                  3,
+                  3,
+                  4,
+                  4,
+                  4,
+                  3,
+                  3
+                ],
+                "setup": "95916d5e",
+                "resolution": "480p",
+                "seconds": 30
+              }
+            ],
+            "patches": [
+              {
+                "asset": "ep01-a-patch-8-8-1",
+                "take": "ep01-a-take-1",
+                "shots": [
+                  8,
+                  8
+                ],
+                "covered": [
+                  8,
+                  9
+                ],
+                "durs": [
+                  3,
+                  3
+                ],
+                "span": [
+                  24,
+                  27
+                ],
+                "offset": 0,
+                "length": 3,
+                "seconds": 6,
+                "requestSeconds": 6,
+                "board": "ep01-a-board-2",
+                "refs": [
+                  "char-guang-sheet-2",
+                  "char-niuma-sheet-1",
+                  "group-stickies-sheet-1",
+                  "scene-office-night-sheet-2",
+                  "ep01-a-board-2"
+                ],
+                "basis": {
+                  "version": 1,
+                  "fields": {
+                    "style": {
+                      "style": "db35769b",
+                      "ratio": "5d4327b7",
+                      "dialogue": "0b069958"
+                    },
+                    "character:guang": {
+                      "name": "cb730952",
+                      "look": "1aff0a8d",
+                      "markings": "ffcaaa85",
+                      "sheet": "bcee50a5"
+                    },
+                    "character:niuma": {
+                      "name": "2c0572e0",
+                      "look": "e3f12da4",
+                      "markings": "ffcaaa85",
+                      "sheet": "45347dfc"
+                    },
+                    "group:stickies": {
+                      "name": "253b77a5",
+                      "look": "60804e0b",
+                      "leader": "b683d8ea",
+                      "markings": "6e8385d6",
+                      "sheet": "56006922"
+                    },
+                    "scene:office-night": {
+                      "name": "ead19649",
+                      "look": "71836383",
+                      "time": "49a105e6",
+                      "sheet": "b92d4732"
+                    }
+                  }
+                },
+                "shotHashes": [
+                  "ede23be5",
+                  "1c6af3e9",
+                  "3faa3b64",
+                  "d836a399",
+                  "869047c1",
+                  "289abf45",
+                  "679c4852",
+                  "bbcdd9f7",
+                  "035f2394"
+                ],
+                "applied": true
+              }
+            ],
+            "reviews": [
+              {
+                "asset": "ep01-a-review-1",
+                "take": "ep01-a-take-1",
+                "sheets": "ep01-a-review-1-sheets",
+                "strips": [
+                  {
+                    "shot": 1,
+                    "asset": "ep01-a-review-1-shot-1",
+                    "times": [
+                      0.5,
+                      1.5,
+                      2.5
+                    ]
+                  },
+                  {
+                    "shot": 2,
+                    "asset": "ep01-a-review-1-shot-2",
+                    "times": [
+                      3.5,
+                      4.5,
+                      5.5
+                    ]
+                  },
+                  {
+                    "shot": 3,
+                    "asset": "ep01-a-review-1-shot-3",
+                    "times": [
+                      6.5,
+                      7.5,
+                      8.5
+                    ]
+                  },
+                  {
+                    "shot": 4,
+                    "asset": "ep01-a-review-1-shot-4",
+                    "times": [
+                      9.5,
+                      10.5,
+                      11.5
+                    ]
+                  },
+                  {
+                    "shot": 5,
+                    "asset": "ep01-a-review-1-shot-5",
+                    "times": [
+                      12.67,
+                      14,
+                      15.33
+                    ]
+                  },
+                  {
+                    "shot": 6,
+                    "asset": "ep01-a-review-1-shot-6",
+                    "times": [
+                      16.67,
+                      18,
+                      19.33
+                    ]
+                  },
+                  {
+                    "shot": 7,
+                    "asset": "ep01-a-review-1-shot-7",
+                    "times": [
+                      20.67,
+                      22,
+                      23.33
+                    ]
+                  },
+                  {
+                    "shot": 8,
+                    "asset": "ep01-a-review-1-shot-8",
+                    "times": [
+                      24.5,
+                      25.5,
+                      26.5
+                    ]
+                  },
+                  {
+                    "shot": 9,
+                    "asset": "ep01-a-review-1-shot-9",
+                    "times": [
+                      27.5,
+                      28.5,
+                      29.5
+                    ]
+                  }
+                ],
+                "cuts": [
+                  2.96,
+                  5.88,
+                  9.33,
+                  15.67,
+                  19.71,
+                  23.63,
+                  24.54,
+                  26.79
+                ]
+              },
+              {
+                "asset": "ep01-a-review-2",
+                "take": "ep01-a-patch-8-8-1",
+                "sheets": "ep01-a-review-2-sheets",
+                "strips": [
+                  {
+                    "shot": 8,
+                    "asset": "ep01-a-review-2-shot-8",
+                    "times": [
+                      0.5,
+                      1.5,
+                      2.5
+                    ]
+                  }
+                ],
+                "cuts": [
+                  0.63,
+                  3
+                ]
+              }
+            ],
+            "checks": {
+              "ep01-a-take-1": {
+                "1": {
+                  "guang": {
+                    "verdict": "absent",
+                    "note": "0.5/1.5/2.5 s 只有空办公区的推镜，光不在（文字也没写光）",
+                    "frame": "ep01-a-review-1-shot-1",
+                    "at": 1793263969278
+                  },
+                  "niuma": {
+                    "verdict": "absent",
+                    "note": "丢了一拍：文字写牛马趴在键盘上打盹，0–3 s 只有空办公区的缓慢推镜（几乎就是场景设定图），牛马到镜头 2 才出现",
+                    "frame": "ep01-a-review-1-shot-1",
+                    "at": 1793263969412
+                  },
+                  "group:stickies": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字也没写）",
+                    "frame": "ep01-a-review-1-shot-1",
+                    "at": 1793263969540
+                  }
+                },
+                "2": {
+                  "guang": {
+                    "verdict": "ok",
+                    "note": "橙色水滴、钩状火苗尖、黑点眼睛和腮红、自发光，与设定图一致；从挂钟前亮起而不是从显示器后面飘出",
+                    "frame": "ep01-a-review-1-shot-2",
+                    "at": 1793263969663
+                  },
+                  "niuma": {
+                    "verdict": "ok",
+                    "note": "牛角、侧耳、奶白口鼻、薄荷绿挂绳和牛头工牌都在；5.5 s 惊醒瞪眼对；身体偏暖灰、有淡淡斑点，比设定图少一点通透",
+                    "frame": "ep01-a-review-1-shot-2",
+                    "at": 1793263969795
+                  },
+                  "group:stickies": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字也没写）",
+                    "frame": "ep01-a-review-1-shot-2",
+                    "at": 1793263969924
+                  }
+                },
+                "3": {
+                  "guang": {
+                    "verdict": "ok",
+                    "note": "手电筒形态与设定图动作栏一致，在前面开路",
+                    "frame": "ep01-a-review-1-shot-3",
+                    "at": 1793263970047
+                  },
+                  "niuma": {
+                    "verdict": "ok",
+                    "note": "驮着文件堆从左往右小碎步，牛角、耳朵、口鼻、挂绳、工牌、尾巴、深色蹄都在；颜色比设定图略深，没有压扁身体",
+                    "frame": "ep01-a-review-1-shot-3",
+                    "at": 1793263970170
+                  },
+                  "group:stickies": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字也没写）",
+                    "frame": "ep01-a-review-1-shot-3",
+                    "at": 1793263970298
+                  }
+                },
+                "4": {
+                  "guang": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字也没写）",
+                    "frame": "ep01-a-review-1-shot-4",
+                    "at": 1793263970427
+                  },
+                  "niuma": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字也没写）",
+                    "frame": "ep01-a-review-1-shot-4",
+                    "at": 1793263970427
+                  },
+                  "group:stickies": {
+                    "verdict": "ok",
+                    "note": "黄色方纸片、小黑豆眼睛，从工位间飞起来堵住过道；红色头目「紧急」、皱眉、冲在最前，低机位",
+                    "frame": "ep01-a-review-1-shot-4",
+                    "at": 1793263970547
+                  }
+                },
+                "5": {
+                  "guang": {
+                    "verdict": "ok",
+                    "note": "12.4–12.9 s 已经散成一群小火花飞进来（这一拍提前了，本属镜头 6），火花是带脸的小火苗，形状对，颜色偏淡金",
+                    "frame": "ep01-a-review-1-shot-5",
+                    "at": 1793263970666
+                  },
+                  "niuma": {
+                    "verdict": "ok",
+                    "note": "被纸球裹住，14.0/15.3 s 透过纸片看得到它的蚊香眼和口鼻；12.9 s 身上有浅色斑点",
+                    "frame": "ep01-a-review-1-shot-5",
+                    "at": 1793263970786
+                  },
+                  "group:stickies": {
+                    "verdict": "ok",
+                    "note": "贴满牛马和文件堆，裹成黄色大纸球",
+                    "frame": "ep01-a-review-1-shot-5",
+                    "at": 1793263970913
+                  }
+                },
+                "6": {
+                  "guang": {
+                    "verdict": "ok",
+                    "note": "15.9 s 完整的光在纸球前打着手电；16.7–18.0 s 只见火花轨迹在纸球里，看不到角色本体",
+                    "frame": "ep01-a-review-1-shot-6",
+                    "at": 1793263971038
+                  },
+                  "niuma": {
+                    "verdict": "ok",
+                    "note": "19.3 s 驮着文件堆从散落的便利贴里钻出来，造型与设定图一致",
+                    "frame": "ep01-a-review-1-shot-6",
+                    "at": 1793263971165
+                  },
+                  "group:stickies": {
+                    "verdict": "ok",
+                    "note": "被烫得卷边、松开落了一地",
+                    "frame": "ep01-a-review-1-shot-6",
+                    "at": 1793263971306
+                  }
+                },
+                "7": {
+                  "guang": {
+                    "verdict": "drift",
+                    "note": "光桥是一道淡金色的光带，没有脸、不是橙色果冻质感，看不出是光变的；设定图里拱桥形是橙色身体、脸在拱顶",
+                    "frame": "ep01-a-review-1-shot-7",
+                    "at": 1793263971527
+                  },
+                  "niuma": {
+                    "verdict": "ok",
+                    "note": "驮着文件堆从左往右跑过光桥，牛角、工牌可辨（画面里很小）",
+                    "frame": "ep01-a-review-1-shot-7",
+                    "at": 1793263971703
+                  },
+                  "group:stickies": {
+                    "verdict": "ok",
+                    "note": "被甩在桥下扑空",
+                    "frame": "ep01-a-review-1-shot-7",
+                    "at": 1793263971872
+                  }
+                },
+                "8": {
+                  "guang": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字没写他们）",
+                    "frame": "ep01-a-review-1-shot-8",
+                    "at": 1793263972032
+                  },
+                  "niuma": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字没写他们）",
+                    "frame": "ep01-a-review-1-shot-8",
+                    "at": 1793263972032
+                  },
+                  "group:stickies": {
+                    "verdict": "absent",
+                    "note": "不在画面里（文字没写）",
+                    "frame": "ep01-a-review-1-shot-8",
+                    "at": 1793263972171
+                  }
+                },
+                "9": {
+                  "guang": {
+                    "verdict": "ok",
+                    "note": "黑暗里唯一的橙色光，钩状火苗尖、黑点眼睛，与设定图一致",
+                    "frame": "ep01-a-review-1-shot-9",
+                    "at": 1793263972303
+                  },
+                  "niuma": {
+                    "verdict": "drift",
+                    "note": "泄气瘪成一摊、头顶飘出小魂、工牌都对；但背上出现一圈浅色圆斑（像小鹿斑点），设定图没有，身体也偏深灰",
+                    "frame": "ep01-a-review-1-shot-9",
+                    "at": 1793263972433
+                  },
+                  "group:stickies": {
+                    "verdict": "drift",
+                    "note": "头目变成了普通大小的黄色便利贴，只剩「紧急」字样；落在光面前和牛马脸旁，没有贴到工牌上",
+                    "frame": "ep01-a-review-1-shot-9",
+                    "at": 1793263972558
+                  }
+                }
+              },
+              "ep01-a-patch-8-8-1": {
+                "8": {
+                  "guang": {
+                    "verdict": "ok",
+                    "note": "补拍：灯灭后光从左边飘进来停在挂钟前，用自己的橙光照亮钟面；橙色水滴、钩状火苗尖、黑点眼睛、腮红与设定图一致。原片 1.75 s 黑屏和 1.5 s 静音没有了",
+                    "frame": "ep01-a-review-2-shot-8",
+                    "at": 1793264490115
+                  },
+                  "niuma": {
+                    "verdict": "absent",
+                    "note": "补拍里不在画面（文字没写牛马）",
+                    "frame": "ep01-a-review-2-shot-8",
+                    "at": 1793264490239
+                  },
+                  "group:stickies": {
+                    "verdict": "absent",
+                    "note": "补拍里不在画面（文字没写）",
+                    "frame": "ep01-a-review-2-shot-8",
+                    "at": 1793264490360
+                  }
+                }
+              }
+            }
+          }
+        },
+        "prompts": {
+          "A": {
+            "at": 1793262966554,
+            "basis": {
+              "version": 1,
+              "fields": {
+                "style": {
+                  "style": "db35769b",
+                  "ratio": "5d4327b7",
+                  "dialogue": "0b069958"
+                },
+                "character:guang": {
+                  "name": "cb730952",
+                  "look": "1aff0a8d",
+                  "markings": "ffcaaa85",
+                  "sheet": "bcee50a5"
+                },
+                "character:niuma": {
+                  "name": "2c0572e0",
+                  "look": "e3f12da4",
+                  "markings": "ffcaaa85",
+                  "sheet": "45347dfc"
+                },
+                "group:stickies": {
+                  "name": "253b77a5",
+                  "look": "60804e0b",
+                  "leader": "b683d8ea",
+                  "markings": "6e8385d6",
+                  "sheet": "56006922"
+                },
+                "scene:office-night": {
+                  "name": "ead19649",
+                  "look": "71836383",
+                  "time": "49a105e6",
+                  "sheet": "b92d4732"
+                }
+              }
+            },
+            "boardShots": [
+              "9af8d173",
+              "38e559af",
+              "5ca49c66",
+              "92e82de1",
+              "6015614d",
+              "172558e6",
+              "784cdbf7",
+              "5c98d54e",
+              "f6746869"
+            ],
+            "clipShots": [
+              "ede23be5",
+              "1c6af3e9",
+              "3faa3b64",
+              "d836a399",
+              "869047c1",
+              "289abf45",
+              "679c4852",
+              "7a2b1133",
+              "035f2394"
+            ],
+            "setup": "95916d5e",
+            "refs": [
+              {
+                "n": 1,
+                "kind": "character",
+                "id": "guang",
+                "name": "光",
+                "asset": "char-guang-sheet-2"
+              },
+              {
+                "n": 2,
+                "kind": "character",
+                "id": "niuma",
+                "name": "牛马",
+                "asset": "char-niuma-sheet-1"
+              },
+              {
+                "n": 3,
+                "kind": "group",
+                "id": "stickies",
+                "name": "便利贴群",
+                "asset": "group-stickies-sheet-1"
+              },
+              {
+                "n": 4,
+                "kind": "scene",
+                "id": "office-night",
+                "name": "夜晚的开放办公区",
+                "asset": "scene-office-night-sheet-2"
+              },
+              {
+                "n": 5,
+                "kind": "storyboard",
+                "id": null,
+                "name": "storyboard",
+                "asset": null
+              }
+            ],
+            "storyboard": "生成 16:9 九宫格（3 行 3 列）动画分镜素描草图。要求：黑白铅笔素描、画面干净不杂乱、不要复杂背景、无多余画面、无文字，每格左上角标镜头序号。角色外形参考：图 1 是光，图 2 是牛马，图 3 是便利贴群，图 4 是场景夜晚的开放办公区。\n全部 9 格在同一个夜晚的开放办公区，同一个深夜。\n\n镜头 1：深夜的办公区，墙上挂钟快十一点；牛马趴在键盘上打盹，旁边一座比它高三倍的文件堆。镜头缓缓推近。\n镜头 2：光从显示器后面飘出来，在牛马眼前猛地一亮；牛马一下惊醒，瞪圆眼睛看向挂钟。\n镜头 3：牛马压扁身体，把整座文件堆驮上背，朝画面右边小碎步冲出去；光在前面变成一束手电筒光开路。侧面跟拍。\n镜头 4：便利贴群从一排工位隔板后面飞起来堵住过道，最大的头目冲在最前面，眉头紧皱。正面低机位。\n镜头 5：便利贴群贴满牛马和文件堆，裹成一个大纸球，纸球滚了两圈停住。\n镜头 6：光散成一群小火花，钻进纸球的缝里；便利贴群被烫得卷起边角，纷纷松开飘落，牛马驮着文件堆钻了出来。特写。\n镜头 7：光拉长成一座拱桥形的光带，横跨一整排工位；牛马驮着文件堆从桥上小碎步跑过去，便利贴群被甩在桥下。\n镜头 8：挂钟特写：分针跳到十一点整，当的一声，整个办公区的顶灯和显示器一齐熄灭。\n镜头 9：一片黑暗里，光照着泄气瘪成一摊的牛马，头顶飘出一缕小小的魂；头目便利贴飘下来贴在它的工牌上。定格。\n\n再强调一次：全部画成黑白铅笔素描，不要上任何颜色。参考图只用来看角色的外形，画进分镜里也一样是铅笔素描。",
+            "video": "根据故事板 @Image5 生成分镜视频，仅参考其镜头设计、动作节奏、景别和运镜，禁止直接拼接故事板图片。\n\n@Image1 是光，外形必须和参考图完全一致：一团小小的火焰形光之灵魂，形状像一滴倒过来的水滴：底部圆润饱满，顶端收成一个尖，尖端弯成一缕小钩状的光尾巴，像火苗尖一样会随动作轻轻摆动；外壳是浓郁饱和的橙色（#f97316），不偏黄、不偏金，半透明果冻质感，只有中心一颗小小的淡黄白色光芯更亮，整体不要被光芯冲淡成浅黄色，自己发光，周围一圈柔和的橙色光晕；脸在身体下半部，只有两颗黑色小圆点眼睛和淡淡的橙粉腮红，做表情时才出现一张简单的小嘴；没有手、没有脚、没有耳朵，悬空漂浮，底部不着地；个子很小，高度约为牛马的三分之二，宽度不到牛马的一半。\n@Image2 是牛马，外形必须和参考图完全一致：一只敦厚老实的小牛灵魂，和光同一种通透的半透明果冻质感，像一只透明的小精灵，身体里透出柔和的冷光，但颜色是雾蒙蒙的冷灰蓝色；头和身体是一体的，像一个胖乎乎的圆馒头，高和宽差不多，底部稍宽，比光大一圈、更圆更敦实；头顶两只奶白色的小短牛角，圆圆的角尖；牛角下面两侧各一只小小的横向圆耳朵；一双大大的、温和的下垂眼，眼睛下面有淡淡的眼袋，看起来有点累但很老实；脸的下半部是一块奶白色的宽椭圆口鼻，平平的不向前凸出，上面两个小小的鼻孔圆点（不是猪鼻子，没有獠牙）；头顶正中只有一小撮软软的呆毛；没有手臂，身体底下正好四个圆圆的小蹄墩，蹄尖颜色稍深；身后一根短短的小牛尾巴，尾尖一小团；一根薄荷绿挂绳在身体上部绕一圈，正面正中垂着一张白色长方形小工牌，工牌上印着一个小牛头图标。\n@Image3 是便利贴群的设定图：一大群方形的黄色便利贴小怪，每张都是一张薄薄的方纸片，一角微微卷起，正面有一双小黑豆眼睛，做表情时出现一张简单的小嘴，没有手脚，靠扇动纸片扑腾着飞，成群结队地啪啪贴满一切。头目：一张特别大的红色便利贴，大约是普通便利贴的三倍大，正面用粗黑字写着「紧急」，眉头紧皱、气势汹汹。\n\n风格：柔和的 3D 动画短片质感，像动画电影里的场景，不是建筑效果图、不是照片；整个世界像软胶潮玩和微缩模型一样圆润简洁，角色和场景同一个画风：家具厚实圆润、造型简化、物件少而清楚、颜色块面干净；角色是半透明材质带次表面散射、自带柔和的光；干净的构图，浅景深，夸张搞笑的默剧动作喜剧，无写实真人、无暗黑恐怖元素。没有台词。全片在同一个夜晚的开放办公区、同一个深夜：开放式办公区，一排排工位，桌上的显示器亮着冷蓝色的光，办公椅、文件堆、绿植、马克杯，桌面上没有便利贴，也没有带脸的摆件；一面大落地窗外是城市夜景的点点灯光；墙上一只圆形挂钟，钟面只有刻度没有数字，指针指向快十一点；顶灯大多关着，只有零星几盏亮着，整体是深蓝夜色加屏幕光，暗而不黑，层次清楚。场景参考 @Image4。\n\n连贯要求：每个镜头的开头，接住上一个镜头结尾的动作；镜头 3 到镜头 7 奔跑方向始终从画面左边到右边；镜头 3 到镜头 7，牛马背上一直驮着同一座文件堆；镜头 8 灯灭以后，画面里只剩光自己发出的橙色光。\n\n镜头 1｜0-3s：深夜的开放办公区，墙上的挂钟指向十点五十九分；牛马趴在键盘上打盹，旁边堆着一座比它高三倍的文件堆，显示器的冷蓝光照着它的眼袋。镜头缓缓推近。\n音效：挂钟滴答、显示器嗡嗡声、轻轻的鼾声\n\n镜头 2｜3-6s：光从显示器后面飘出来，在牛马眼前猛地一亮；牛马一下惊醒，瞪圆眼睛看向挂钟。\n音效：叮的一声亮光、牛马倒吸一口气\n\n镜头 3｜6-9s：牛马压扁身体，把整座文件堆驮上背，朝画面右边小碎步冲出去；光在前面变成一束手电筒光开路。侧面跟拍。\n音效：小碎步啪嗒啪嗒、纸张沙沙、轻快鼓点\n\n镜头 4｜9-12s：便利贴群从一排工位隔板后面扑腾着飞起来，堵住过道；最大的红色头目冲在最前面，眉头紧皱。正面低机位。\n音效：一大片纸片扑腾声、紧张鼓点\n\n镜头 5｜12-16s：便利贴群啪啪啪贴满牛马和文件堆，把它们裹成一个黄色的大纸球，纸球骨碌碌滚了两圈停住。\n音效：黏糊的啪啪声、闷哼、滚动声\n\n镜头 6｜16-20s：光散成一群小火花，钻进纸球的缝里；便利贴群被烫得卷起边角，纷纷松开飘落，牛马驮着文件堆钻了出来。特写。\n音效：噼啪火花声、纸片卷起的沙沙声\n\n镜头 7｜20-24s：光拉长成一座拱桥形的光带，横跨一整排工位；牛马驮着文件堆从桥上小碎步跑过去，便利贴群被甩在桥下。\n音效：光桥嗡鸣、小碎步、纸片扑空的呼呼声\n\n镜头 8｜24-27s：挂钟特写：分针跳到十一点整，当的一声，整个办公区的顶灯和显示器一齐熄灭。\n音效：一声钟响、啪的断电声、一片安静\n\n镜头 9｜27-30s：一片黑暗里，光是唯一亮着的，照着牛马：它累到泄气瘪成一摊，头顶飘出一缕小小的魂；红色头目晃晃悠悠飘下来，啪地贴在它的工牌上。定格。\n音效：长长的泄气声、纸片轻轻落下、滑稽长号收尾\n\n除了头目正面印着粗黑字「紧急」，画面里不要出现任何其他文字、字幕、商标。",
+            "jimeng": {
+              "storyboard": "【即梦画布｜图片生成｜框选节点：光设定图、牛马设定图、便利贴群设定图、夜晚的开放办公区设定图｜比例 16:9｜出 4 张挑 1 张，登记：series.mjs shoot-board --episode ep01 --part A --upload <文件>】\n———————— 以下整段复制 ————————\n\n生成 16:9 九宫格（3 行 3 列）动画分镜素描草图。要求：黑白铅笔素描、画面干净不杂乱、不要复杂背景、无多余画面、无文字，每格左上角标镜头序号。角色外形参考：图 1 是光，图 2 是牛马，图 3 是便利贴群，图 4 是场景夜晚的开放办公区。\n全部 9 格在同一个夜晚的开放办公区，同一个深夜。\n\n镜头 1：深夜的办公区，墙上挂钟快十一点；牛马趴在键盘上打盹，旁边一座比它高三倍的文件堆。镜头缓缓推近。\n镜头 2：光从显示器后面飘出来，在牛马眼前猛地一亮；牛马一下惊醒，瞪圆眼睛看向挂钟。\n镜头 3：牛马压扁身体，把整座文件堆驮上背，朝画面右边小碎步冲出去；光在前面变成一束手电筒光开路。侧面跟拍。\n镜头 4：便利贴群从一排工位隔板后面飞起来堵住过道，最大的头目冲在最前面，眉头紧皱。正面低机位。\n镜头 5：便利贴群贴满牛马和文件堆，裹成一个大纸球，纸球滚了两圈停住。\n镜头 6：光散成一群小火花，钻进纸球的缝里；便利贴群被烫得卷起边角，纷纷松开飘落，牛马驮着文件堆钻了出来。特写。\n镜头 7：光拉长成一座拱桥形的光带，横跨一整排工位；牛马驮着文件堆从桥上小碎步跑过去，便利贴群被甩在桥下。\n镜头 8：挂钟特写：分针跳到十一点整，当的一声，整个办公区的顶灯和显示器一齐熄灭。\n镜头 9：一片黑暗里，光照着泄气瘪成一摊的牛马，头顶飘出一缕小小的魂；头目便利贴飘下来贴在它的工牌上。定格。\n\n再强调一次：全部画成黑白铅笔素描，不要上任何颜色。参考图只用来看角色的外形，画进分镜里也一样是铅笔素描。",
+              "video": "【即梦画布｜视频生成｜Seedance 2.5 全能参考｜框选节点：@图1 光设定图、@图2 牛马设定图、@图3 便利贴群设定图、@图4 夜晚的开放办公区设定图、@图5 故事板｜16:9｜30 秒｜先 480p，满意再超清｜整集】\n———————— 以下整段复制 ————————\n\n根据故事板 @图5 生成分镜视频，仅参考其镜头设计、动作节奏、景别和运镜，禁止直接拼接故事板图片。\n\n@图1 是光，外形必须和参考图完全一致：一团小小的火焰形光之灵魂，形状像一滴倒过来的水滴：底部圆润饱满，顶端收成一个尖，尖端弯成一缕小钩状的光尾巴，像火苗尖一样会随动作轻轻摆动；外壳是浓郁饱和的橙色（#f97316），不偏黄、不偏金，半透明果冻质感，只有中心一颗小小的淡黄白色光芯更亮，整体不要被光芯冲淡成浅黄色，自己发光，周围一圈柔和的橙色光晕；脸在身体下半部，只有两颗黑色小圆点眼睛和淡淡的橙粉腮红，做表情时才出现一张简单的小嘴；没有手、没有脚、没有耳朵，悬空漂浮，底部不着地；个子很小，高度约为牛马的三分之二，宽度不到牛马的一半。\n@图2 是牛马，外形必须和参考图完全一致：一只敦厚老实的小牛灵魂，和光同一种通透的半透明果冻质感，像一只透明的小精灵，身体里透出柔和的冷光，但颜色是雾蒙蒙的冷灰蓝色；头和身体是一体的，像一个胖乎乎的圆馒头，高和宽差不多，底部稍宽，比光大一圈、更圆更敦实；头顶两只奶白色的小短牛角，圆圆的角尖；牛角下面两侧各一只小小的横向圆耳朵；一双大大的、温和的下垂眼，眼睛下面有淡淡的眼袋，看起来有点累但很老实；脸的下半部是一块奶白色的宽椭圆口鼻，平平的不向前凸出，上面两个小小的鼻孔圆点（不是猪鼻子，没有獠牙）；头顶正中只有一小撮软软的呆毛；没有手臂，身体底下正好四个圆圆的小蹄墩，蹄尖颜色稍深；身后一根短短的小牛尾巴，尾尖一小团；一根薄荷绿挂绳在身体上部绕一圈，正面正中垂着一张白色长方形小工牌，工牌上印着一个小牛头图标。\n@图3 是便利贴群的设定图：一大群方形的黄色便利贴小怪，每张都是一张薄薄的方纸片，一角微微卷起，正面有一双小黑豆眼睛，做表情时出现一张简单的小嘴，没有手脚，靠扇动纸片扑腾着飞，成群结队地啪啪贴满一切。头目：一张特别大的红色便利贴，大约是普通便利贴的三倍大，正面用粗黑字写着「紧急」，眉头紧皱、气势汹汹。\n\n风格：柔和的 3D 动画短片质感，像动画电影里的场景，不是建筑效果图、不是照片；整个世界像软胶潮玩和微缩模型一样圆润简洁，角色和场景同一个画风：家具厚实圆润、造型简化、物件少而清楚、颜色块面干净；角色是半透明材质带次表面散射、自带柔和的光；干净的构图，浅景深，夸张搞笑的默剧动作喜剧，无写实真人、无暗黑恐怖元素。没有台词。全片在同一个夜晚的开放办公区、同一个深夜：开放式办公区，一排排工位，桌上的显示器亮着冷蓝色的光，办公椅、文件堆、绿植、马克杯，桌面上没有便利贴，也没有带脸的摆件；一面大落地窗外是城市夜景的点点灯光；墙上一只圆形挂钟，钟面只有刻度没有数字，指针指向快十一点；顶灯大多关着，只有零星几盏亮着，整体是深蓝夜色加屏幕光，暗而不黑，层次清楚。场景参考 @图4。\n\n连贯要求：每个镜头的开头，接住上一个镜头结尾的动作；镜头 3 到镜头 7 奔跑方向始终从画面左边到右边；镜头 3 到镜头 7，牛马背上一直驮着同一座文件堆；镜头 8 灯灭以后，画面里只剩光自己发出的橙色光。\n\n镜头 1｜0-3s：深夜的开放办公区，墙上的挂钟指向十点五十九分；牛马趴在键盘上打盹，旁边堆着一座比它高三倍的文件堆，显示器的冷蓝光照着它的眼袋。镜头缓缓推近。\n音效：挂钟滴答、显示器嗡嗡声、轻轻的鼾声\n\n镜头 2｜3-6s：光从显示器后面飘出来，在牛马眼前猛地一亮；牛马一下惊醒，瞪圆眼睛看向挂钟。\n音效：叮的一声亮光、牛马倒吸一口气\n\n镜头 3｜6-9s：牛马压扁身体，把整座文件堆驮上背，朝画面右边小碎步冲出去；光在前面变成一束手电筒光开路。侧面跟拍。\n音效：小碎步啪嗒啪嗒、纸张沙沙、轻快鼓点\n\n镜头 4｜9-12s：便利贴群从一排工位隔板后面扑腾着飞起来，堵住过道；最大的红色头目冲在最前面，眉头紧皱。正面低机位。\n音效：一大片纸片扑腾声、紧张鼓点\n\n镜头 5｜12-16s：便利贴群啪啪啪贴满牛马和文件堆，把它们裹成一个黄色的大纸球，纸球骨碌碌滚了两圈停住。\n音效：黏糊的啪啪声、闷哼、滚动声\n\n镜头 6｜16-20s：光散成一群小火花，钻进纸球的缝里；便利贴群被烫得卷起边角，纷纷松开飘落，牛马驮着文件堆钻了出来。特写。\n音效：噼啪火花声、纸片卷起的沙沙声\n\n镜头 7｜20-24s：光拉长成一座拱桥形的光带，横跨一整排工位；牛马驮着文件堆从桥上小碎步跑过去，便利贴群被甩在桥下。\n音效：光桥嗡鸣、小碎步、纸片扑空的呼呼声\n\n镜头 8｜24-27s：挂钟特写：分针跳到十一点整，当的一声，整个办公区的顶灯和显示器一齐熄灭。\n音效：一声钟响、啪的断电声、一片安静\n\n镜头 9｜27-30s：一片黑暗里，光是唯一亮着的，照着牛马：它累到泄气瘪成一摊，头顶飘出一缕小小的魂；红色头目晃晃悠悠飘下来，啪地贴在它的工牌上。定格。\n音效：长长的泄气声、纸片轻轻落下、滑稽长号收尾\n\n除了头目正面印着粗黑字「紧急」，画面里不要出现任何其他文字、字幕、商标。"
+            }
+          }
+        },
+        "finals": [
+          {
+            "asset": "ep01-final-2",
+            "takes": {
+              "A": "ep01-a-take-1"
+            },
+            "patches": [
+              "ep01-a-patch-8-8-1"
+            ],
+            "parts": [
+              {
+                "part": "A",
+                "take": "ep01-a-take-1",
+                "at": [
+                  0,
+                  29.933
+                ]
+              }
+            ],
+            "splices": [
+              {
+                "part": "A",
+                "shots": [
+                  8,
+                  8
+                ],
+                "at": [
+                  23.63,
+                  26.63
+                ],
+                "patch": "ep01-a-patch-8-8-1",
+                "planned": {
+                  "take": [
+                    24,
+                    27
+                  ],
+                  "patch": [
+                    0,
+                    3
+                  ]
+                },
+                "snapped": {
+                  "take": [
+                    23.63,
+                    26.79
+                  ],
+                  "patch": [
+                    0,
+                    3
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "compilations": [],
+    "lineups": [
+      {
+        "asset": "lineup-1",
+        "characters": [
+          "guang",
+          "niuma"
+        ],
+        "sheets": [
+          "char-guang-sheet-2",
+          "char-niuma-sheet-1"
+        ]
+      }
+    ]
+  }
+}

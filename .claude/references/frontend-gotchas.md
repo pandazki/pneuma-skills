@@ -84,6 +84,8 @@ remain in [AGENTS.md](../../AGENTS.md#engineering-judgment).
 
 - **`element.click()` 和 CDP 的可信输入在某些组件上行为不同**:实测 bansho transport 的 Replay,脚本 `.click()` 之后按钮显示"Pause"但时钟钉死不动,看起来像一个真 bug;换 `Input.dispatchMouseEvent`(`isTrusted: true`)一切正常。凡是断言交互后状态的探针脚本,用可信输入,别用 `element.click()`。
 
+- **A dev `<video>` from the API origin needs `crossOrigin="anonymous"` or DOM capture paints it black** (2026-10-29 anime-series agent `capture`, found by the Codex e2e). In dev the page and `/content` are different origins; without CORS the canvas is tainted ("Tainted canvases may not be exported") and the capture falls back to an empty video rectangle with no error. `/content` answers `Access-Control-Allow-Origin: *`, so set `crossOrigin="anonymous"` on viewer videos. Same-origin production builds are unaffected, which is why it only shows in dev verification.
+
 - **`@zumer/snapdom`**:调用期间 capture iframe 必须 `display: none`——可见 iframe 会导致 foreignObject 文本 reflow。见 `useSlideThumbnails.ts` 和 `export.ts`。
 
 - **snapdom 必须在目标元素自己的 window 里跑**:用外层 window 的 snapdom 去栅格化*同源 iframe 内部*的元素时,iframe 文档里的 CSS 变量、`@font-face`、SVG 画笔服务器都解析不到。用 `src/utils/iframe-snapdom.ts::snapdomFor()`(往同源 iframe 注 `/vendor/snapdom.js`)。捕获主文档元素的(GridBoard、`useThumbnailCapture`)外层 snapdom 本就正确,不要改。
