@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.60.0] - 2026-10-30
+
+### Added
+- **Sprite becomes a game asset pipeline** — From one character: a whole move set booked at one quoted price (idle, walk, run, jump, attack, hurt, death, cast, guard, victory), props and icons drawn in one visual language and animated together, outfit and skin variants, and a rigged 3D model with animations from Meshy's library, turned and played on the stage.
+- **Eight directions from one clip** — The character is drawn once per facing on a 3×3 sheet and each state is one clip of all eight moving in sync, cut into a motion per facing on one shared loop window. Every facing is checked against its drawing before anything is cut, and a take that turned or swapped its copies is refused. Walk and idle hold all eight; a fast run is offered four ways.
+- **Borrowed and directed motion** — Drive a character through a filmed performance from the motion library, your own video or another character's motion (Kling v3 Motion Control, Wan 2.2 Animate), give an existing motion a new look frame for frame, storyboard a custom move as timed beats with keyframes, and shoot cutscenes with your cast.
+
+### Improved
+- **Video showcases in the launcher** — A mode's showcase highlights can be recorded videos; Sprite's nine are rendered from assets the mode really made.
+
 ## [3.59.0] - 2026-10-29
 
 ### Added
