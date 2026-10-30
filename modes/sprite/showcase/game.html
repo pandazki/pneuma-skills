@@ -224,7 +224,7 @@
       <div class="card" style="width:440px;height:560px;background:radial-gradient(ellipse at 50% 70%,#2a1a10,#0d0d10 70%)"><canvas id="m3-main" width="440" height="560"></canvas><div style="position:absolute;top:12px;left:12px" class="tag hot">Rigged model</div></div>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div class="card" style="width:230px;height:178px;background:#0d0d10"><canvas id="m3-a" width="230" height="178"></canvas><div class="tag" style="position:absolute;top:8px;left:8px">Sword slash</div></div>
-        <div class="card" style="width:230px;height:178px;background:#0d0d10"><canvas id="m3-b" width="230" height="178"></canvas><div class="tag" style="position:absolute;top:8px;left:8px">Roll</div></div>
+        <div class="card" style="width:230px;height:178px;background:#0d0d10"><canvas id="m3-b" width="230" height="178"></canvas><div class="tag" style="position:absolute;top:8px;left:8px">Dance</div></div>
         <div class="card" style="width:230px;height:178px;background:#0d0d10"><canvas id="m3-c" width="230" height="178"></canvas><div class="tag" style="position:absolute;top:8px;left:8px">Cast</div></div>
       </div>
     </div>
@@ -232,7 +232,7 @@
       <div class="num"><b>08</b><i></i>3D model and animation</div>
       <h1>From picture to animated 3D</h1>
       <p>One picture becomes a textured, rigged 3D model; animations come from a library of hundreds of moves, played from any angle on the stage.</p>
-      <div class="facts"><span class="tag hot">rigged GLB</span><span class="tag">11 animations</span><span class="tag">$0.88</span></div>
+      <div class="facts"><span class="tag hot">rigged GLB</span><span class="tag">9 animations</span><span class="tag">$0.88</span></div>
     </div>
   </div>
   <div class="foot"><span>Pip's front anchor · Meshy 7.1 image-to-3D with rigging, Meshy multi-animation</span><span>Pneuma Sprite 0.6.0</span></div>
@@ -332,7 +332,13 @@ const views = {
       const img = await loadImage(await refUrl(s, "anchor-front").catch(() => refUrl(s, "front")));
       img.style.height = "54px"; d.appendChild(img); document.getElementById("hero-looks").appendChild(d);
     }
-    const rows = [["Walk", "8 directions · 12 frames", true], ["Run", "8 directions · 14 frames"], ["Idle", "8 directions · 16 frames"], ["Victory dance", "from the motion library"], ["3D model", "rigged · 11 animations"]];
+    // The rail is read off Pip's project: only what is really ready is listed.
+    const pip = await project("pip");
+    const found = (id) => pip.sprite.motions.find((m) => m.id === id);
+    const rows = ["walk", "run", "idle"].filter((st) => found(`${st}-pack`)?.status === "ready")
+      .map((st, i) => [st[0].toUpperCase() + st.slice(1), `8 directions · ${found(`${st}-front`).frames.length} frames`, i === 0]);
+    if (found("victory-dance")?.status === "ready") rows.push(["Victory dance", "from the motion library"]);
+    if (pip.sprite.model) rows.push(["3D model", `rigged · ${pip.sprite.model.animations.length} animations`]);
     document.getElementById("hero-motions").innerHTML = rows.map(([a, b, on]) => `<div style="padding:8px 10px;border:1px solid ${on ? "#c4753d" : "#2b282b"};border-radius:8px;margin-bottom:6px;background:${on ? "#f973120d" : "#111113"}"><div style="display:flex;justify-content:space-between;font-size:12.5px;color:${on ? "#f9be92" : "#ded7d1"}">${a}<span style="font-size:9.5px;letter-spacing:.8px;color:#6ee7a0;border:1px solid #1f5f3b;border-radius:4px;padding:1px 6px">READY</span></div><div style="font-size:10.5px;color:#8d8783;margin-top:3px">${b}</div></div>`).join("");
     updates.push(await packGrid(document.getElementById("hero-grid"), "pip", "walk", 140));
     const items = document.getElementById("hero-items");
@@ -488,7 +494,7 @@ const views = {
     };
     updates.push(await stage("m3-main", "anim-walk.glb", { dist: 3.2, spin: 0.35 }));
     updates.push(await stage("m3-a", "anim-sword-slash.glb", { dist: 2.4 }));
-    updates.push(await stage("m3-b", "anim-roll.glb", { dist: 2.6 }));
+    updates.push(await stage("m3-b", "anim-dance.glb", { dist: 2.6 }));
     updates.push(await stage("m3-c", "anim-cast.glb", { dist: 2.4 }));
   },
   async cutscene() {
@@ -515,6 +521,12 @@ window.renderAt = async (t) => {
 };
 window.ready = true;
 await window.renderAt(0);
+// ?play: run on the wall clock in a browser, for looking at a view live.
+if (params.has("play")) {
+  const start = performance.now();
+  const tick = async () => { await window.renderAt((performance.now() - start) / 1000); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
 </script>
 </body>
 </html>
