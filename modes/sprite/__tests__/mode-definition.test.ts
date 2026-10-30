@@ -521,8 +521,23 @@ describe("the definition and the manifest agree", () => {
     }
   });
 
+  test("0.6.0 is the game asset pipeline release, in the user's words", () => {
+    expect(spriteManifest.version).toBe("0.6.0");
+    const notes = spriteManifest.changelog!["0.6.0"];
+    expect(notes.length).toBeGreaterThanOrEqual(6);
+    for (const note of notes) {
+      expect(note).not.toMatch(/`|\*\*|^- /);
+      expect(note.endsWith(".")).toBe(false);
+      expect(note).not.toMatch(/\.mjs|--[a-z]|\.json\b/);
+    }
+    const text = notes.join(" ");
+    for (const claim of [/[Ee]ight directions/, /[Pp]rops/, /move set/, /[Oo]utfits/, /3D model/, /[Cc]utscenes/, /[Ss]toryboards/]) {
+      expect(text).toMatch(claim);
+    }
+    expect(spriteManifest.skill.sharedScripts).toContain("motion-transfer.mjs");
+  });
+
   test("0.5.1 fixes three leftovers, in the user's words", () => {
-    expect(spriteManifest.version).toBe("0.5.2");
     const notes = spriteManifest.changelog!["0.5.1"];
     expect(notes.length).toBeGreaterThanOrEqual(1);
     expect(notes.length).toBeLessThanOrEqual(3);

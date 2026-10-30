@@ -93,7 +93,23 @@ export interface NoSource {
   kind: "none";
 }
 
-export type FrameSource = FramesSource | SheetSource | NoSource;
+/**
+ * A pack on the stage (0.6.0): every cell's motion at once, on the pack's
+ * grid, all driven by ONE playhead — the cells were cut on one shared
+ * window, so frame i of each is the same instant of the take. A cell whose
+ * motion has fewer frames wraps on its own count.
+ */
+export interface PackSource {
+  kind: "pack";
+  rows: number;
+  cols: number;
+  /** Row-major; `null` an empty cell. */
+  cells: ReadonlyArray<{ motion: string; label: string; frames: ReadonlyArray<string | null> } | null>;
+  /** The longest cell's frame count — what the transport steps through. */
+  count: number;
+}
+
+export type FrameSource = FramesSource | SheetSource | PackSource | NoSource;
 
 /**
  * What the stage can actually draw for this motion, in precedence order.
@@ -106,6 +122,22 @@ export function resolveFrameSource(
   imageVersion: number,
 ): FrameSource {
   if (!project || !motion) return { kind: "none" };
+
+  // A pack has no frames of its own: its cells' motions are its frames.
+  if (motion.kind === "pack" && motion.pack) {
+    const cells = motion.pack.cells.map((cell) => {
+      if (!cell) return null;
+      const child = project.sprite.motions.find((m) => m.id === cell.motion);
+      const frames = (child?.frames ?? []).map((assetId) => {
+        const uri = resolveAssetUri(project, assetId);
+        const registeredAt = project.assetsById.get(assetId)?.createdAt;
+        return uri ? contentUrl(project.contentSet, uri, imageVersion, registeredAt) : null;
+      });
+      return { motion: cell.motion, label: child?.label ?? cell.motion, frames };
+    });
+    const count = Math.max(0, ...cells.map((c) => c?.frames.length ?? 0));
+    if (count > 0) return { kind: "pack", rows: motion.pack.rows, cols: motion.pack.cols, cells, count };
+  }
 
   if (motion.frames.length > 0) {
     let missing = 0;
@@ -408,6 +440,8 @@ export interface SpriteAddress {
   contentSet?: string;
   motion?: string;
   ref?: string;
+  /** A props set's item (0.6.0). */
+  item?: string;
   frame?: number;
 }
 
@@ -422,7 +456,7 @@ export function parseAddress(raw: unknown): SpriteAddress {
   const record = raw as Record<string, unknown>;
   const address: SpriteAddress = {};
 
-  for (const key of ["contentSet", "motion", "ref"] as const) {
+  for (const key of ["contentSet", "motion", "ref", "item"] as const) {
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {
       address[key] = value.trim();
@@ -525,6 +559,19 @@ export function resolveAddress(
     note = `Both "motion" and "ref" were given; they are mutually exclusive, so the ref "${address.ref}" was ignored.`;
   }
 
+  // An item stands on the stage as a still, or plays its loop when it has
+  // a ready one — what a person clicking it in the rail sees too.
+  if (!address.motion && !address.ref && address.item) {
+    const item = (project.sprite.items ?? []).find((i) => i.id === address.item);
+    if (!item) {
+      const known = (project.sprite.items ?? []).map((i) => i.id).join(", ") || "none";
+      return { ok: false, target: null, message: `Item "${address.item}" is not in this set (has: ${known}).`, notYetKnown: true };
+    }
+    const loop = item.loop ? project.sprite.motions.find((m) => m.id === item.loop && m.status === "ready") : undefined;
+    if (loop) return { ok: true, target: { kind: "motion", motionId: loop.id, frame: address.frame ?? null } };
+    return { ok: true, target: { kind: "ref", refId: `item:${item.id}` } };
+  }
+
   if (!address.motion && address.ref) {
     const ref = project.sprite.refs.find((r) => r.id === address.ref);
     if (!ref) {
@@ -572,7 +619,7 @@ export function resolveAddress(
 
   // The frame count here is the declared one — the number of frames the
   // motion HAS, not what happens to be decoded on screen.
-  const count = declaredFrameCount(motion);
+  const count = declaredFrameCount(motion, project);
   if (address.frame >= count) {
     return {
       ok: false,
@@ -594,8 +641,13 @@ export function resolveAddress(
 }
 
 /** Frames a motion claims to have, sheet- and keyframe-preview included. */
-export function declaredFrameCount(motion: Motion): number {
+export function declaredFrameCount(motion: Motion, project?: CharacterProject | null): number {
   if (motion.frames.length > 0) return motion.frames.length;
+  // A pack's frames are its cells': the longest one is what plays.
+  if (motion.kind === "pack" && motion.pack && project) {
+    return Math.max(0, ...motion.pack.cells.map((cell) =>
+      cell ? project.sprite.motions.find((m) => m.id === cell.motion)?.frames.length ?? 0 : 0));
+  }
   // The keyframe is one frame, and an address that names frame 0 of a loop
   // still being shot has to land on it rather than be refused.
   if (motion.kind === "loop" && (motion.keyframeAlpha ?? motion.keyframe)) return 1;

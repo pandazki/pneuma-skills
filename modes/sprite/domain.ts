@@ -97,14 +97,45 @@ export const CHARACTER_PURPOSES = ["game", "loop", "mascot", "animate"] as const
 export type CharacterPurpose = (typeof CHARACTER_PURPOSES)[number];
 
 /**
- * The four directions a motion or an anchor can face. Diagonals are an
- * 8-direction game's need nobody has asked for; the tuple can grow. "Side"
- * is not a direction: `character.facing` names the side that is generated,
- * and the other side is a `mirror` of it.
+ * The directions a motion or an anchor can face: the four of a top-down or
+ * side game, then the four diagonals an 8-direction (isometric) game adds
+ * (0.6.0). In compass terms, as an isometric game names them: front = S,
+ * back = N, left = W, right = E, front-left = SW, front-right = SE,
+ * back-left = NW, back-right = NE. "Side" is not a direction:
+ * `character.facing` names the side that is generated, and the other side
+ * is a `mirror` of it. `sheet-prompt.mjs`'s DIRECTIONS is the same tuple.
  */
-export const DIRECTIONS = ["front", "back", "left", "right"] as const;
+export const DIRECTIONS = [
+  "front",
+  "back",
+  "left",
+  "right",
+  "front-left",
+  "front-right",
+  "back-left",
+  "back-right",
+] as const;
 
 export type Direction = (typeof DIRECTIONS)[number];
+
+/**
+ * The camera a character is drawn from (0.6.0): every built prompt states it.
+ * Absent on every 0.5.x character, whose prompts say nothing about the camera.
+ */
+export const CHARACTER_VIEWS = ["side", "topdown", "isometric"] as const;
+
+export type CharacterView = (typeof CHARACTER_VIEWS)[number];
+
+/**
+ * What a content set holds (0.6.0). Absent means a character — everything
+ * this mode made before. A `"props"` set is a family of items drawn in one
+ * visual language (inventory icons, weapons, pickups): its `character`
+ * block carries the set's name, style sentence and cell, and its items are
+ * `SpriteSidecar.items`.
+ */
+export const SET_KINDS = ["character", "props"] as const;
+
+export type SetKind = (typeof SET_KINDS)[number];
 
 /**
  * The one authority for "this character is pixel art" (0.5.0). Absent means
@@ -170,9 +201,23 @@ export interface SpriteCharacter {
    * becomes the identity guard of every built sheet prompt.
    */
   asymmetric?: string;
+  /** The camera every built prompt states; see `CharacterView`. */
+  view?: CharacterView;
+  /**
+   * A variation of another character (0.6.0) — a new outfit, a skin, a
+   * different look of the same person: the content set it was made from,
+   * and the change in one sentence. Its references are edits of that
+   * character's, its style sentence and cell are copied from it.
+   */
+  variantOf?: { contentSet: string; note: string };
 }
 
-export type SpriteRefRole = "turnaround" | "portrait" | "expression" | "anchor" | "custom";
+/**
+ * `"directions"` (0.6.0) is a facing sheet: one picture with the character
+ * once per direction on a grid (`SpriteRef.layout`) — the source of a
+ * direction pack's clip, and of the per-direction anchors cut out of it.
+ */
+export type SpriteRefRole = "turnaround" | "portrait" | "expression" | "anchor" | "directions" | "custom";
 
 export interface SpriteRef {
   /** The `ref` address key, e.g. `"turnaround"`. */
@@ -187,6 +232,19 @@ export interface SpriteRef {
    * one loads as `custom`, and no other role carries one.
    */
   direction?: Direction;
+  /**
+   * A `directions` sheet's grid: which direction each cell faces, row-major,
+   * `null` for an empty cell (the centre of an 8-facing 3×3 sheet). Present
+   * exactly when `role === "directions"`.
+   */
+  layout?: FacingLayout;
+}
+
+/** A grid of facings, row-major; `null` is an empty cell. */
+export interface FacingLayout {
+  rows: number;
+  cols: number;
+  cells: Array<Direction | null>;
 }
 
 /** Declared order is the lifecycle order. The tuple is the single source of
@@ -202,8 +260,13 @@ export const MOTION_STATUSES = [
 
 export type MotionStatus = (typeof MOTION_STATUSES)[number];
 
-/** Models that MAKE a clip out of images and a prompt. */
-export type GeneratedVideoModel = "seedance-2.5" | "h3-max";
+/**
+ * Models that MAKE a clip out of images and a prompt — or, for the motion
+ * transfer models (0.6.0), out of the character's image and a driving clip:
+ * `kling-mc` is Kling v3 Motion Control, `wan-animate` Wan 2.2 Animate Move,
+ * both on fal.
+ */
+export type GeneratedVideoModel = "seedance-2.5" | "h3-max" | "kling-mc" | "kling-mc-pro" | "wan-animate";
 
 /** Models that make a clip out of ANOTHER CLIP — video matting (`veed`,
  *  `veed-gs` on its green-screen endpoint, `bria`), frame interpolation
@@ -219,7 +282,12 @@ export type DerivedVideoModel = "veed" | "veed-gs" | "bria" | "topaz" | "rife" |
 
 export type VideoModel = GeneratedVideoModel | DerivedVideoModel;
 
-export type GeneratedVideoMode = "i2v" | "first-last" | "r2v";
+/**
+ * `motion-transfer` (0.6.0): the character's image performs a driving clip's
+ * movement (`kling-mc`, `wan-animate`). `v2v`: a Seedance reference clip
+ * whose `@Video1` is another motion's clip — the same movement, a new look.
+ */
+export type GeneratedVideoMode = "i2v" | "first-last" | "r2v" | "motion-transfer" | "v2v";
 
 export type VideoMode = GeneratedVideoMode | "derived";
 
@@ -246,8 +314,10 @@ export interface MotionVideo {
    * `retime` replays the parent's own frames in another order (a hold cut
    * short, a repeated beat) and invents nothing; it is its own op because a
    * retime recorded as an `interpolate` claims a model ran that never did.
+   * `crop` (0.6.0) is one cell of a direction pack's clip: `derivedFrom` then
+   * names the pack's clip as `<pack motion>/<video id>`.
    */
-  op?: "matte" | "interpolate" | "retime";
+  op?: "matte" | "interpolate" | "retime" | "crop";
 }
 
 /** The latest `sprite-sheet.mjs inspect` report, copied into the motion by
@@ -446,7 +516,45 @@ export interface PixelLatticeCheck {
  * different deliverable from the same character, not a different `source` —
  * `source` still says how the frames were obtained (`"video"` for a loop).
  */
-export type MotionKind = "loop" | "transition";
+export type MotionKind = "loop" | "transition" | "pack" | "cutscene";
+
+/**
+ * A pack (0.6.0): ONE clip of a grid picture — every direction of a
+ * character performing one state at once, or every item of a props set
+ * moving at once, each in its own cell — cut into one motion per cell. The
+ * pack motion owns the clip; each cell's motion owns its frames and names
+ * the pack in `packOf`. One shared window keeps the cells in phase.
+ */
+export interface PackRecord {
+  /** What every cell performs: `"walk"`; `"loop"` for an items pack. */
+  state: string;
+  rows: number;
+  cols: number;
+  /** Row-major; `null` for an empty cell. A character's cell names the
+   *  direction it faces, a props set's the item it animates. */
+  cells: Array<PackCell | null>;
+}
+
+export interface PackCell {
+  motion: string;
+  direction?: Direction;
+  item?: string;
+}
+
+/**
+ * A storyboard (0.6.0): the beats a custom motion's clip is asked to
+ * perform, in order, each optionally pinned by a keyframe picture.
+ */
+export interface Storyboard {
+  beats: Array<{
+    /** Seconds into the clip the beat is planned at. */
+    at: number;
+    /** What happens, in the user's words. */
+    text: string;
+    /** Asset id of the keyframe drawn or brought for this beat. */
+    keyframe?: string;
+  }>;
+}
 
 /**
  * A transition's interview: how long it should PLAY (a 4 s take is retimed
@@ -670,6 +778,25 @@ export interface Motion {
   atlas?: string;
   /** Asset ids in playback order. */
   frames: string[];
+  /** `kind: "pack"` only: the facing grid and the motion cut from each cell. */
+  pack?: PackRecord;
+  /** A directional motion cut out of a pack: the pack motion's id. */
+  packOf?: string;
+  /** A custom motion's planned beats and keyframes; see `Storyboard`. */
+  storyboard?: Storyboard;
+  /**
+   * The same movement with a new look (0.6.0): the motion whose clip this
+   * one's clip was made from, in this content set or another (a variant's
+   * motion restyled from the original character's).
+   */
+  restyleOf?: { contentSet?: string; motion: string; note?: string };
+  /**
+   * A movement transferred from a driving clip (0.6.0): where the movement
+   * came from — a motion library entry's id, `"upload"` for the user's own
+   * video, or `"<contentSet>/<motion>"` for another character's motion —
+   * and the driving clip's asset id.
+   */
+  transfer?: { from: string; label?: string; video: string };
   gif?: string;
   webp?: string;
   /** Exports by format: a loop's own APNG / WebM / Lottie, and any format
@@ -684,11 +811,57 @@ export interface Motion {
   clip?: LoopClip;
 }
 
+/**
+ * One item of a props set (0.6.0): a single cut-out picture — an icon, a
+ * weapon, a pickup — and, when it moves, the loop motion that animates it.
+ */
+export interface PropItem {
+  /** The `item` address key: `"health-potion"`. */
+  id: string;
+  label: string;
+  /** Asset id of the cut-out picture (`item-<id>`). */
+  image: string;
+  /** Asset id of the sheet it was cut from, when it came from one. */
+  sheet?: string;
+  /** Id of the loop motion that animates it, once there is one. */
+  loop?: string;
+}
+
+/**
+ * A character's 3D model (0.6.0): an image-to-3D mesh, rigged, and the
+ * animation clips played on that rig. Every file is an asset id.
+ */
+export interface CharacterModel {
+  /** The rigged character, GLB. */
+  glb: string;
+  /** Which service made the mesh and the rig: `"meshy-7.1"`. */
+  provider: string;
+  /** The reference the mesh was made from (a ref id). */
+  from?: string;
+  /** A picture of the model, when the service sent one. */
+  thumbnail?: string;
+  animations: Array<{
+    /** `"walk"`, `"sword-slash"` — what the 3D tab's button says. */
+    id: string;
+    label: string;
+    /** Asset id of the animated GLB. */
+    asset: string;
+    /** The animation library entry it was made from (Meshy action id). */
+    action?: number;
+  }>;
+}
+
 export interface SpriteSidecar {
   version: 1;
+  /** What the content set holds; absent = a character. See `SetKind`. */
+  set?: SetKind;
   character: SpriteCharacter;
   refs: SpriteRef[];
   motions: Motion[];
+  /** A props set's items, in the order the user sees them. */
+  items?: PropItem[];
+  /** The character's rigged 3D model, once made. */
+  model?: CharacterModel;
   /** Absent until something was exported for the whole character. */
   exports?: CharacterExports;
 }
@@ -984,6 +1157,9 @@ function parseCharacterExports(value: unknown): CharacterExports | undefined {
 const VIDEO_MODELS: readonly VideoModel[] = [
   "seedance-2.5",
   "h3-max",
+  "kling-mc",
+  "kling-mc-pro",
+  "wan-animate",
   "veed",
   "veed-gs",
   "bria",
@@ -1031,7 +1207,7 @@ function parseLoopBrief(value: unknown): LoopBrief | undefined {
   };
 }
 
-const VIDEO_MODES: readonly VideoMode[] = ["i2v", "first-last", "r2v", "derived"];
+const VIDEO_MODES: readonly VideoMode[] = ["i2v", "first-last", "r2v", "motion-transfer", "v2v", "derived"];
 
 /** A whole measured record or nothing: a scale without its provenance, or an
  *  origin missing a coordinate, is not a measurement anyone made. */
@@ -1253,6 +1429,125 @@ function parsePromptParts(value: unknown): PromptParts | undefined {
   return { builder, action, guards: [...value.guards], ...(guide ? { guide } : {}) };
 }
 
+function parseFacingLayout(value: unknown): FacingLayout | undefined {
+  if (!isRecord(value)) return undefined;
+  const rows = positiveInteger(value.rows);
+  const cols = positiveInteger(value.cols);
+  if (!rows || !cols) return undefined;
+  const cells = arr(value.cells);
+  if (cells.length !== rows * cols) return undefined;
+  const out: Array<Direction | null> = [];
+  for (const cell of cells) {
+    if (cell === null) { out.push(null); continue; }
+    const direction = member(DIRECTIONS, cell);
+    if (!direction) return undefined;
+    out.push(direction);
+  }
+  return { rows, cols, cells: out };
+}
+
+/** A pack is whole or absent: its grid, its state, and a cell list that
+ *  fills the grid — every cell names its motion and what it holds. */
+function parsePack(value: unknown): PackRecord | undefined {
+  if (!isRecord(value)) return undefined;
+  const rows = positiveInteger(value.rows);
+  const cols = positiveInteger(value.cols);
+  const state = optionalStr(value.state);
+  if (!rows || !cols || !state) return undefined;
+  const cells = arr(value.cells);
+  if (cells.length !== rows * cols) return undefined;
+  const out: PackRecord["cells"] = [];
+  for (const cell of cells) {
+    if (cell === null) { out.push(null); continue; }
+    if (!isRecord(cell)) return undefined;
+    const direction = member(DIRECTIONS, cell.direction);
+    const item = optionalStr(cell.item);
+    const motion = optionalStr(cell.motion);
+    if (!motion || (!direction && !item)) return undefined;
+    out.push({ motion, ...(direction ? { direction } : {}), ...(item ? { item } : {}) });
+  }
+  return { state, rows, cols, cells: out };
+}
+
+function parseStoryboard(value: unknown): Storyboard | undefined {
+  if (!isRecord(value)) return undefined;
+  const beats: Storyboard["beats"] = [];
+  for (const beat of arr(value.beats)) {
+    if (!isRecord(beat)) continue;
+    const text = sentence(beat.text);
+    const at = parseFinite(beat.at);
+    if (!text || at === undefined || at < 0) continue;
+    const keyframe = optionalStr(beat.keyframe);
+    beats.push({ at, text, ...(keyframe ? { keyframe } : {}) });
+  }
+  return beats.length ? { beats } : undefined;
+}
+
+function parseRestyle(value: unknown): Motion["restyleOf"] {
+  if (!isRecord(value)) return undefined;
+  const motion = optionalStr(value.motion);
+  if (!motion) return undefined;
+  const contentSet = optionalStr(value.contentSet);
+  const note = sentence(value.note);
+  return { motion, ...(contentSet ? { contentSet } : {}), ...(note ? { note } : {}) };
+}
+
+function parseTransfer(value: unknown): Motion["transfer"] {
+  if (!isRecord(value)) return undefined;
+  const from = optionalStr(value.from);
+  const video = optionalStr(value.video);
+  if (!from || !video) return undefined;
+  const label = sentence(value.label);
+  return { from, video, ...(label ? { label } : {}) };
+}
+
+function parseItems(value: unknown): PropItem[] | undefined {
+  const items: PropItem[] = [];
+  const seen = new Set<string>();
+  for (const raw of arr(value)) {
+    if (!isRecord(raw)) continue;
+    const id = optionalStr(raw.id);
+    const image = optionalStr(raw.image);
+    if (!id || !image || seen.has(id)) continue;
+    seen.add(id);
+    const sheet = optionalStr(raw.sheet);
+    const loop = optionalStr(raw.loop);
+    items.push({ id, label: str(raw.label, id), image, ...(sheet ? { sheet } : {}), ...(loop ? { loop } : {}) });
+  }
+  return items.length ? items : undefined;
+}
+
+function parseModel(value: unknown): CharacterModel | undefined {
+  if (!isRecord(value)) return undefined;
+  const glb = optionalStr(value.glb);
+  if (!glb) return undefined;
+  const from = optionalStr(value.from);
+  const thumbnail = optionalStr(value.thumbnail);
+  const animations: CharacterModel["animations"] = [];
+  for (const raw of arr(value.animations)) {
+    if (!isRecord(raw)) continue;
+    const id = optionalStr(raw.id);
+    const asset = optionalStr(raw.asset);
+    if (!id || !asset) continue;
+    const action = Number.isInteger(raw.action) && (raw.action as number) >= 0 ? (raw.action as number) : undefined;
+    animations.push({ id, label: str(raw.label, id), asset, ...(action !== undefined ? { action } : {}) });
+  }
+  return {
+    glb,
+    provider: str(value.provider, "unknown"),
+    ...(from ? { from } : {}),
+    ...(thumbnail ? { thumbnail } : {}),
+    animations,
+  };
+}
+
+function parseVariantOf(value: unknown): SpriteCharacter["variantOf"] {
+  if (!isRecord(value)) return undefined;
+  const contentSet = optionalStr(value.contentSet);
+  if (!contentSet) return undefined;
+  return { contentSet, note: str(value.note) };
+}
+
 function parseMotion(value: unknown): Motion | null {
   if (!isRecord(value)) return null;
   const id = optionalStr(value.id);
@@ -1268,9 +1563,14 @@ function parseMotion(value: unknown): Motion | null {
   // the sprite motion every unrecognised kind falls back to.
   const from = optionalStr(value.from);
   const to = optionalStr(value.to);
+  const pack = value.kind === "pack" ? parsePack(value.pack) : undefined;
   const kind: MotionKind | undefined = value.kind === "loop"
     ? "loop"
-    : value.kind === "transition" && from && to ? "transition" : undefined;
+    : value.kind === "transition" && from && to
+      ? "transition"
+      : pack
+        ? "pack"
+        : value.kind === "cutscene" ? "cutscene" : undefined;
   const brief = kind === "loop"
     ? parseLoopBrief(value.brief)
     : kind === "transition" ? parseTransitionBrief(value.brief) : undefined;
@@ -1294,6 +1594,11 @@ function parseMotion(value: unknown): Motion | null {
   // Colourways are baked from a sprite motion's packed frames; a loop or a
   // transition has none.
   const variants = kind ? undefined : parseMotionVariants(value.variants);
+  // A cell of a pack is a sprite motion; a pack names its cells itself.
+  const packOf = kind ? undefined : optionalStr(value.packOf);
+  const storyboard = kind === "pack" || kind === "transition" ? undefined : parseStoryboard(value.storyboard);
+  const restyleOf = parseRestyle(value.restyleOf);
+  const transfer = parseTransfer(value.transfer);
   return {
     id,
     label: str(value.label, id),
@@ -1307,6 +1612,11 @@ function parseMotion(value: unknown): Motion | null {
     ...(kind ? { kind } : {}),
     ...(brief ? { brief } : {}),
     ...(kind === "transition" ? { from, to } : {}),
+    ...(pack ? { pack } : {}),
+    ...(packOf ? { packOf } : {}),
+    ...(storyboard ? { storyboard } : {}),
+    ...(restyleOf ? { restyleOf } : {}),
+    ...(transfer ? { transfer } : {}),
     ...(reverseOf ? { reverseOf } : {}),
     grid: { rows: num(grid.rows, 1), cols: num(grid.cols, 1) },
     fps: num(value.fps, 8),
@@ -1360,7 +1670,7 @@ function parseMotion(value: unknown): Motion | null {
               ? (v.status as MotionVideo["status"])
               : "generating",
           ...(derivedFrom ? { derivedFrom } : {}),
-          ...(v.op === "matte" || v.op === "interpolate" || v.op === "retime"
+          ...(v.op === "matte" || v.op === "interpolate" || v.op === "retime" || v.op === "crop"
             ? { op: v.op as MotionVideo["op"] }
             : {}),
         };
@@ -1381,6 +1691,11 @@ function parseSidecar(value: unknown): SpriteSidecar | null {
   const purpose = member(CHARACTER_PURPOSES, character.purpose);
   const pixel = parsePixel(character.pixel);
   const asymmetric = sentence(character.asymmetric);
+  const view = member(CHARACTER_VIEWS, character.view);
+  const variantOf = parseVariantOf(character.variantOf);
+  const set = value.set === "props" ? "props" : undefined;
+  const items = set === "props" ? parseItems(value.items) : undefined;
+  const model = parseModel(value.model);
   return {
     version: 1,
     character: {
@@ -1392,7 +1707,10 @@ function parseSidecar(value: unknown): SpriteSidecar | null {
       ...(purpose ? { purpose } : {}),
       ...(pixel ? { pixel } : {}),
       ...(asymmetric ? { asymmetric } : {}),
+      ...(view ? { view } : {}),
+      ...(variantOf ? { variantOf } : {}),
     },
+    ...(set ? { set } : {}),
     refs: arr(value.refs)
       .map((r): SpriteRef | null => {
         if (!isRecord(r)) return null;
@@ -1406,14 +1724,19 @@ function parseSidecar(value: unknown): SpriteSidecar | null {
           ["turnaround", "portrait", "expression", "custom"] as const,
           r.role,
         );
+        // A facing sheet IS its layout: without one it is just a picture.
+        const layout = r.role === "directions" ? parseFacingLayout(r.layout) : undefined;
         const role: SpriteRefRole =
-          r.role === "anchor" && direction ? "anchor" : named ?? "custom";
+          r.role === "anchor" && direction
+            ? "anchor"
+            : layout ? "directions" : named ?? "custom";
         return {
           id,
           asset: str(r.asset, `ref-${id}`),
           role,
           label: str(r.label, id),
           ...(role === "anchor" ? { direction } : {}),
+          ...(layout ? { layout } : {}),
         };
       })
       .filter((r): r is SpriteRef => r !== null),
@@ -1421,6 +1744,8 @@ function parseSidecar(value: unknown): SpriteSidecar | null {
     motions: arr(value.motions)
       .map(parseMotion)
       .filter((m): m is Motion => m !== null),
+    ...(items ? { items } : {}),
+    ...(model ? { model } : {}),
     ...(exports ? { exports } : {}),
   };
 }
@@ -1580,6 +1905,33 @@ export function findRef(
   refId: string,
 ): SpriteRef | undefined {
   return project.sprite.refs.find((r) => r.id === refId);
+}
+
+/** The prefix a props set's item carries when it stands on the stage as a
+ *  still, in the slot a reference uses (`"item:golden-key"`). */
+export const ITEM_STILL_PREFIX = "item:";
+
+/** A props set's item by its id. */
+export function findItem(project: CharacterProject, itemId: string): PropItem | undefined {
+  return (project.sprite.items ?? []).find((i) => i.id === itemId);
+}
+
+/**
+ * A still the stage can show: a reference by its id, or an item by
+ * `item:<id>`. One shape for both, because the stage, the label under it and
+ * the address the user's selection carries are the same for both — only the
+ * address key differs.
+ */
+export function findStill(
+  project: CharacterProject,
+  id: string,
+): { id: string; label: string; asset: string; address: { ref: string } | { item: string } } | undefined {
+  if (id.startsWith(ITEM_STILL_PREFIX)) {
+    const item = findItem(project, id.slice(ITEM_STILL_PREFIX.length));
+    return item ? { id, label: item.label, asset: item.image, address: { item: item.id } } : undefined;
+  }
+  const ref = findRef(project, id);
+  return ref ? { id, label: ref.label, asset: ref.asset, address: { ref: ref.id } } : undefined;
 }
 
 /**

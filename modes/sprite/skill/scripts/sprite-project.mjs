@@ -20,16 +20,28 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync,
+  closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync,
   realpathSync, renameSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import {
-  GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, SIDE_GEOMETRY, buildSheetPrompt, sheetGrid,
-  sideClause, stateOf,
+  CHARACTER_VIEWS, DIRECTIONS, GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, SIDE_GEOMETRY,
+  buildSheetPrompt, sheetGrid, sideClause, stateOf,
 } from "./sheet-prompt.mjs";
+// Facing sheets and packs (0.6.0): the layouts and the prompts, one authority
+// shared with sprite-sheet.mjs, which cuts by the same layout.
+import {
+  FACING_LAYOUTS, PACK_PROMPT_BUILDER, PACK_STATES, facingLayout, facingSheetPrompt, itemGrid, itemId, itemSheetPrompt,
+  packCellMotionId, packClipPrompt,
+} from "./pack.mjs";
+// Variants, restyles, storyboards and the motion library (0.6.0).
+import {
+  MOTION_LIBRARY, libraryClipPrompt, libraryEntry, restylePrompt, storyboardPrompt, transferPrompt, variantEditPrompt,
+} from "./remake.mjs";
 // A breathe's default rate — the rate `add-motion --source breathe` records
 // until the run lands with its own (one authority, shared with sprite-sheet.mjs).
 import { BREATHE_FPS } from "./breathe.mjs";
@@ -47,12 +59,14 @@ const DEFAULT_FPS = 8;
 
 /** `anchor` is one single-pose image facing one direction (`--direction`),
  *  one per direction; the character's direction set is read off them. */
-const REF_ROLES = ["turnaround", "portrait", "expression", "anchor", "custom"];
+const REF_ROLES = ["turnaround", "portrait", "expression", "anchor", "directions", "custom"];
 const MOTION_STATUSES = ["planned", "generating", "processing", "ready", "failed"];
 const VIDEO_STATUSES = ["generating", "ready", "failed"];
 /** Models that MAKE a clip out of images and a prompt. */
-const VIDEO_MODELS = ["seedance-2.5", "h3-max"];
-const VIDEO_MODES = ["i2v", "first-last", "r2v"];
+const VIDEO_MODELS = ["seedance-2.5", "h3-max", "kling-mc", "kling-mc-pro", "wan-animate"];
+/** `motion-transfer`: the character performs a driving clip (kling-mc,
+ *  wan-animate). `v2v`: a reference clip whose @Video1 is another clip. */
+const VIDEO_MODES = ["i2v", "first-last", "r2v", "motion-transfer", "v2v"];
 /** Models that make a clip out of ANOTHER clip: video matting (veed, its
  *  green-screen endpoint veed-gs, bria) and frame interpolation (topaz,
  *  rife). They generate nothing of their own, so they live in their own
@@ -66,7 +80,7 @@ const DERIVE_VIDEO_MODELS = ["veed", "veed-gs", "bria", "topaz", "rife", "ffmpeg
  *  frames in another order — a hold cut short, a beat repeated — and invents
  *  no pixel, which is why it is its own op with `ffmpeg` as its only model: a
  *  reorder filed as an `interpolate` claims a paid endpoint ran that did not. */
-const VIDEO_OPS = ["matte", "interpolate", "retime"];
+const VIDEO_OPS = ["matte", "interpolate", "retime", "crop"];
 const ANCHORS = ["bottom", "center"];
 /** Who invents a loop's in-between frames, as recorded in the brief.
  *  `none` keeps the clip's own rate. */
@@ -88,7 +102,7 @@ const LOOP_TARGET_FPS = [60, 48, 30, 24];
  *  engine. A `loop` is a seamless transparent animation for a UI: no sheet,
  *  no atlas, no GIF, and three-digit frame ids because one closed cycle at
  *  full rate is 96–400 frames, not 8–16. */
-const MOTION_KINDS = ["loop", "transition"];
+const MOTION_KINDS = ["loop", "transition", "cutscene"];
 /** How a motion's frames were obtained. Absent means "sheet" — every motion
  *  made before the video source existed. `breathe` frames are warps of one
  *  still; `mirror` frames are another motion's flipped left↔right. Both are
@@ -98,10 +112,6 @@ const FACINGS = ["left", "right"];
 /** What the user is making — the route. Recorded so a later session does
  *  not ask again; absent means nobody recorded one. */
 const PURPOSES = ["game", "loop", "mascot", "animate"];
-/** The directions a motion or an anchor faces. `domain.ts`'s DIRECTIONS is
- *  the same list; these two scripts carry their own copies because they are
- *  standalone files. */
-const DIRECTIONS = ["front", "back", "left", "right"];
 /** The one flip `mirror` makes: a side view into the other side. */
 const MIRRORED = { left: "right", right: "left" };
 const BREATHE_MODES = ["smooth", "pixel"];
@@ -109,6 +119,10 @@ const BREATHE_MODES = ["smooth", "pixel"];
 const SUBCOMMANDS = [
   "init", "set-character", "add-ref", "add-motion", "set-motion", "sheet-prompt", "set-sheet", "set-keyframe",
   "register-run", "register-export", "register-recolor", "add-video", "set-video", "remove-motion", "show",
+  "facing-prompt", "register-facings", "add-pack", "pack-prompt", "register-pack",
+  "items-prompt", "register-items",
+  "variant-prompt", "restyle-prompt", "library", "add-driver", "set-storyboard", "storyboard-prompt", "register-model",
+  "plan-moveset",
 ];
 
 /**
@@ -710,10 +724,16 @@ function assetOwner(doc, id) {
     ];
     if (slots.includes(id)
       || (motion.frames ?? []).includes(id)
-      || (motion.videos ?? []).some((v) => v.asset === id)) {
+      || (motion.videos ?? []).some((v) => v.asset === id)
+      || motion.transfer?.video === id
+      || (motion.storyboard?.beats ?? []).some((b) => b.keyframe === id)) {
       return `motion '${motion.id}'`;
     }
   }
+  const item = (doc.sprite.items ?? []).find((i) => i.image === id);
+  if (item) return `item '${item.id}'`;
+  const model = doc.sprite.model;
+  if (model && (model.glb === id || model.thumbnail === id || (model.animations ?? []).some((a) => a.asset === id))) return "the model";
   return null;
 }
 
@@ -1529,6 +1549,7 @@ function applyCharacterFlags(doc, character, values) {
     else delete character.pixel.variants;
   }
   if (values.purpose !== undefined) character.purpose = oneOf(values.purpose, PURPOSES, "--purpose");
+  if (values.view !== undefined) character.view = oneOf(values.view, CHARACTER_VIEWS, "--view");
   if (values.asymmetric !== undefined) {
     const sentence = String(values.asymmetric).trim();
     // An empty sentence takes the lock back: nothing is side-specific now.
@@ -2244,6 +2265,9 @@ function summarize(doc, dir) {
       uri: doc.assets.find((a) => a.id === ref.asset)?.uri ?? null,
     })),
     motions: doc.sprite.motions.map(compactMotion),
+    ...(doc.sprite.set ? { set: doc.sprite.set } : {}),
+    ...(Array.isArray(doc.sprite.items) && doc.sprite.items.length ? { items: doc.sprite.items } : {}),
+    ...(doc.sprite.model ? { model: doc.sprite.model } : {}),
     ...(doc.sprite.exports && Object.keys(doc.sprite.exports).length ? { exports: doc.sprite.exports } : {}),
     // Only when there is one: a 0.4.x summary stays byte-for-byte what it was.
     ...(stale.length ? { staleMirrors: stale } : {}),
@@ -2298,15 +2322,17 @@ const OPTIONS = {
     name: { type: "string" }, description: { type: "string" }, style: { type: "string" },
     cell: { type: "string" }, facing: { type: "string" }, force: { type: "boolean", default: false },
     purpose: { type: "string" }, asymmetric: { type: "string" }, pixel: { type: "string" }, colors: { type: "string" },
+    view: { type: "string" }, set: { type: "string" }, "variant-of": { type: "string" }, variant: { type: "string" },
   },
   "set-character": {
     description: { type: "string" }, style: { type: "string" }, facing: { type: "string" },
     purpose: { type: "string" }, asymmetric: { type: "string" }, pixel: { type: "string" }, colors: { type: "string" },
     "no-pixel": { type: "boolean", default: false }, "remove-variant": { type: "string" },
+    view: { type: "string" },
   },
   "add-ref": {
     id: { type: "string" }, file: { type: "string" }, role: { type: "string" }, label: { type: "string" },
-    direction: { type: "string" },
+    direction: { type: "string" }, layout: { type: "string" },
     prompt: { type: "string" }, model: { type: "string" }, from: { type: "string", multiple: true },
     uploaded: { type: "boolean", default: false }, "derived-from": { type: "string" }, op: { type: "string" },
   },
@@ -2315,7 +2341,7 @@ const OPTIONS = {
     fps: { type: "string" }, loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
     anchor: { type: "string" }, prompt: { type: "string" }, status: { type: "string" },
     source: { type: "string" }, kind: { type: "string" }, from: { type: "string" }, to: { type: "string" },
-    direction: { type: "string" },
+    direction: { type: "string" }, "restyle-of": { type: "string" }, "restyle-note": { type: "string" },
   },
   "set-motion": {
     motion: { type: "string" }, label: { type: "string" }, fps: { type: "string" },
@@ -2353,8 +2379,35 @@ const OPTIONS = {
   "set-video": {
     motion: { type: "string" }, video: { type: "string" }, status: { type: "string" }, notes: { type: "string" },
   },
-  "remove-motion": { motion: { type: "string" } },
+  "remove-motion": { motion: { type: "string" }, "of-pack": { type: "string" } },
   show: { motion: { type: "string" } },
+  "facing-prompt": { layout: { type: "string" } },
+  "register-facings": { report: { type: "string" }, model: { type: "string" } },
+  "add-pack": {
+    state: { type: "string" }, ref: { type: "string" }, id: { type: "string" }, label: { type: "string" },
+    fps: { type: "string" }, items: { type: "string" }, "restyle-of": { type: "string" }, "restyle-note": { type: "string" },
+  },
+  "variant-prompt": { what: { type: "string" } },
+  "restyle-prompt": { motion: { type: "string" } },
+  library: { id: { type: "string" } },
+  "add-driver": {
+    motion: { type: "string" }, file: { type: "string" }, from: { type: "string" }, label: { type: "string" },
+    model: { type: "string" }, prompt: { type: "string" },
+  },
+  "set-storyboard": {
+    motion: { type: "string" }, beat: { type: "string", multiple: true }, keyframe: { type: "string", multiple: true },
+    model: { type: "string" }, prompt: { type: "string" }, clear: { type: "boolean", default: false },
+  },
+  "storyboard-prompt": { motion: { type: "string" }, duration: { type: "string" } },
+  "register-model": { report: { type: "string" } },
+  "plan-moveset": { states: { type: "string" }, source: { type: "string" }, packs: { type: "boolean", default: false } },
+  "items-prompt": { items: { type: "string" }, "max-cols": { type: "string" } },
+  "register-items": {
+    report: { type: "string" }, sheet: { type: "string" }, labels: { type: "string" },
+    model: { type: "string" }, prompt: { type: "string" }, from: { type: "string", multiple: true },
+  },
+  "pack-prompt": { motion: { type: "string" }, action: { type: "string" } },
+  "register-pack": { motion: { type: "string" }, report: { type: "string" }, video: { type: "string" }, force: { type: "boolean", default: false } },
 };
 
 function emit(values, payload, humanLines) {
@@ -2391,6 +2444,108 @@ function readRunSummary(source) {
   }
   if (!Array.isArray(run.frames) || !run.frames.length) fail("--run: 'frames' must be a non-empty array");
   return run;
+}
+
+/**
+ * A `--json` report from a file or stdin, parsed: the pack and facing
+ * reports `sprite-sheet.mjs pack-split` / `split-facings` print. An empty
+ * one is a command that failed, said as such.
+ */
+function readJsonReport(source, flag) {
+  const text = source === "-" ? readFileSync(0, "utf-8") : (() => {
+    const path = resolve(source);
+    if (!existsSync(path)) fail(`${flag}: file not found: ${path}`);
+    return readFileSync(path, "utf-8");
+  })();
+  if (!text.trim()) fail(`${flag}: the report is empty — the command that should have written it failed; its ERROR: line says why`);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return fail(`${flag}: not valid JSON (${error.message})`);
+  }
+}
+
+/**
+ * Run one of this script's own subcommands on the same character and
+ * return its stdout. A command that registers many things at once (every
+ * anchor of a facing sheet, every cell of a pack) is the single commands
+ * it stands for, run in order — so each one validates and writes exactly
+ * as it would by hand, and the first refusal stops the rest with its own
+ * message.
+ */
+const SELF = fileURLToPath(import.meta.url);
+let selfArgs = [];
+function runSelf(args) {
+  const r = spawnSync(process.execPath, [SELF, ...args, ...selfArgs], { encoding: "utf-8" });
+  if (r.status !== 0) {
+    fail(`${args[0]} ${args.slice(1, 3).join(" ")}: ${String(r.stderr || r.stdout || "").trim().replace(/^ERROR: /, "")}`);
+  }
+  if (r.stderr?.trim()) console.error(r.stderr.trim());
+  return r.stdout;
+}
+
+/**
+ * `--restyle-of <content set>/<motion>` (or a motion of this character):
+ * the motion whose clip a new one keeps the movement of. Checked against the
+ * file it names, so a restyle never points at a motion that is not there.
+ */
+function restyleRecord(dir, values) {
+  if (values["restyle-of"] === undefined) {
+    if (values["restyle-note"] !== undefined) fail("--restyle-note: name the motion with --restyle-of <content set>/<motion>");
+    return {};
+  }
+  const raw = String(values["restyle-of"]).trim();
+  const slash = raw.lastIndexOf("/");
+  const contentSet = slash > 0 ? raw.slice(0, slash) : null;
+  const motionId = slash > 0 ? raw.slice(slash + 1) : raw;
+  const path = contentSet ? resolve(dir, "..", contentSet, "project.json") : projectPath(dir);
+  let sprite;
+  try {
+    sprite = JSON.parse(readFileSync(path, "utf-8")).sprite;
+  } catch {
+    fail(`--restyle-of: no character '${contentSet ?? basename(dir)}' (${path})`);
+  }
+  const source = (sprite?.motions ?? []).find((m) => m.id === motionId);
+  if (!source) fail(`--restyle-of: '${contentSet ?? basename(dir)}' has no motion '${motionId}'`);
+  if (!(source.videos ?? []).some((v) => v.status === "ready")) fail(`--restyle-of: '${raw}' has no ready clip to keep the movement of`);
+  const note = values["restyle-note"] === undefined ? "" : String(values["restyle-note"]).trim();
+  return { restyleOf: { ...(contentSet ? { contentSet } : {}), motion: motionId, ...(note ? { note } : {}) } };
+}
+
+/**
+ * The move set defaults (0.6.0): how each common state is best made, its
+ * frames, rate and looping, and what it costs. A clip is the smoother
+ * source (the model draws the in-betweens); a sheet the cheaper one, and the
+ * better one for poses whose timing is the point. Prices: a 2048-wide sheet
+ * ≈ $0.13, a 4 s 480p Seedance clip ≈ $0.83, a 4 s 720p pack clip of all
+ * eight facings ≈ $1.87 (fal's formula, 2026-10-30).
+ */
+const MOVESET = {
+  idle: { source: "video", loop: true, fps: 12, frames: 12, pinned: true },
+  walk: { source: "video", loop: true, fps: 12, frames: 12 },
+  // fast: an 8-way pack of it lost its diagonals or its grid in 6 of 6 takes (2026-10-30)
+  run: { source: "video", loop: true, fps: 12, frames: 10, fast: true },
+  jump: { source: "sheet", loop: false, fps: 10, frames: 8 },
+  attack: { source: "video", loop: false, fps: 12, frames: 12, pinned: true },
+  hurt: { source: "sheet", loop: false, fps: 10, frames: 6 },
+  death: { source: "sheet", loop: false, fps: 10, frames: 8 },
+  cast: { source: "video", loop: false, fps: 12, frames: 12, pinned: true },
+  guard: { source: "sheet", loop: false, fps: 10, frames: 6 },
+  victory: { source: "video", loop: false, fps: 12, frames: 12, pinned: true },
+};
+const MOVESET_PRICE = { sheet: 0.13, video: 0.83, pack: 1.87 };
+
+/** A model's animations, newer ones replacing older ones of the same id. */
+function mergeAnimations(current, added) {
+  const out = current.filter((a) => !added.some((b) => b.id === a.id));
+  return [...out, ...added];
+}
+
+/** A reference's file, by its ref id — for the attach lines printed to a human. */
+function refUri(doc, refId) {
+  const ref = doc.sprite.refs.find((r) => r.id === refId);
+  const asset = ref ? doc.assets.find((a) => a.id === ref.asset) : null;
+  return asset?.uri ?? refId;
 }
 
 /**
@@ -2713,6 +2868,8 @@ function main() {
   const now = values.at === undefined
     ? Date.now()
     : num(values.at, "--at", { integer: true, min: 0 });
+  // Every sub-run works on this character, at this pinned time when one is.
+  selfArgs = ["--dir", dir, ...(values.at === undefined ? [] : ["--at", String(values.at)])];
 
   const loop = (fallback) => {
     if (values.loop && values["no-loop"]) fail("--loop and --no-loop are mutually exclusive");
@@ -2736,13 +2893,42 @@ function main() {
       } catch (error) {
         fail(`--dir: cannot create the character directory ${dir}: ${error.message}`);
       }
+      // A variant starts from its original: the same style sentence, cell,
+      // camera, facing and route — and says what is different about it.
+      let original = null;
+      if (values["variant-of"] !== undefined) {
+        const from = String(values["variant-of"]).trim();
+        const path = resolve(dir, "..", from, "project.json");
+        if (!from || !existsSync(path)) fail(`--variant-of: no character '${from}' beside ${dir} (a sibling content set with a project.json)`);
+        if (resolve(dir, "..", from) === dir) fail("--variant-of: a character cannot be a variant of itself");
+        if (!values.variant || !String(values.variant).trim()) fail("--variant: say what is different about this one (\"a purple witch outfit with a pointed hat\")");
+        try {
+          original = { contentSet: from, sprite: JSON.parse(readFileSync(path, "utf-8")).sprite };
+        } catch (error) {
+          fail(`--variant-of: ${path} is not a readable project (${error.message})`);
+        }
+        if (original.sprite?.set === "props") fail("--variant-of: a props set has no outfit to change");
+      } else if (values.variant !== undefined) {
+        fail("--variant: name the original with --variant-of <content set>");
+      }
+      const base = original?.sprite?.character ?? null;
+      if (base) {
+        for (const key of ["style", "description", "facing", "purpose", "view", "asymmetric"]) {
+          if (values[key] === undefined && base[key] !== undefined) values[key] = base[key];
+        }
+        if (values.cell === undefined && base.cell) values.cell = `${base.cell.width}x${base.cell.height}`;
+        if (values.pixel === undefined && base.pixel?.logicalHeight) values.pixel = String(base.pixel.logicalHeight);
+      }
       const cell = values.cell ? parseCell(values.cell, "--cell") : { ...DEFAULT_CELL };
       // A side view faces right unless told otherwise. A picture brought to
       // life (route A) faces whatever way it was drawn — usually the viewer —
       // so nothing is recorded rather than a side nobody chose.
       const animate = values.purpose === "animate";
+      // A props set is a family of items, not a figure: it faces nowhere.
+      const props = values.set === undefined ? false : oneOf(values.set, ["character", "props"], "--set") === "props";
+      if (props && values.facing !== undefined) fail("--facing: a props set holds items, which face nowhere");
       const facing = values.facing === undefined
-        ? (animate ? undefined : "right")
+        ? (animate || props ? undefined : "right")
         : oneOf(values.facing, FACINGS, "--facing");
       const doc = {
         $schema: SCHEMA,
@@ -2761,12 +2947,14 @@ function main() {
         provenance: [],
         sprite: {
           version: 1,
+          ...(props ? { set: "props", items: [] } : {}),
           character: {
             name,
             description: values.description ?? "",
             style: values.style ?? "",
             cell,
             ...(facing ? { facing } : {}),
+            ...(original ? { variantOf: { contentSet: original.contentSet, note: String(values.variant).trim() } } : {}),
           },
           refs: [],
           motions: [],
@@ -2824,6 +3012,17 @@ function main() {
       } else if (direction !== undefined) {
         fail(`--direction: only an anchor faces one direction (--role anchor) — a ${role} is not one pose`);
       }
+      // A facing sheet IS its layout: which direction each cell faces.
+      let layout;
+      if (role === "directions") {
+        try {
+          layout = facingLayout(requireFlag(values.layout, "--layout"));
+        } catch (error) {
+          fail(error.message);
+        }
+      } else if (values.layout !== undefined) {
+        fail(`--layout: only a facing sheet (--role directions) has a layout`);
+      }
       // Every origin refusal lives in here, so building the edge first means a
       // rejected flag combination exits before the document is touched at all.
       const provenance = refEdge(doc, values, id, now);
@@ -2836,7 +3035,11 @@ function main() {
       setEdge(doc, provenance);
 
       const existing = doc.sprite.refs.findIndex((r) => r.id === id);
-      const entry = { id, asset: assetId, role, label, ...(role === "anchor" ? { direction } : {}) };
+      const entry = {
+        id, asset: assetId, role, label,
+        ...(role === "anchor" ? { direction } : {}),
+        ...(layout ? { layout } : {}),
+      };
       if (existing === -1) doc.sprite.refs.push(entry);
       else doc.sprite.refs[existing] = entry;
 
@@ -2884,10 +3087,12 @@ function main() {
       // which register-run writes when the frames land. Everything else about
       // a sprite motion is untouched.
       const isLoop = kind === "loop";
+      // A cutscene is a clip and nothing else: no grid, no frames, played once.
+      const isCutscene = kind === "cutscene";
       // A mirror plays on its source's grid, at its source's rate, and the
       // run that flips it says both: register-run takes them from it.
       const timedByRun = values.source === "breathe" || values.source === "mirror";
-      const gridFromRun = isLoop || timedByRun;
+      const gridFromRun = isLoop || timedByRun || isCutscene;
       const gridSide = (flag, raw) => (gridFromRun
         ? num(raw, flag, { integer: true, min: 1, fallback: 1 })
         : num(requireFlag(raw, flag), flag, { integer: true, min: 1 }));
@@ -2904,26 +3109,27 @@ function main() {
         // A breathe is timed by its run as well (`breathe --fps`), and a
         // mirror by its source; register-run takes the rate from the run.
         // Until then it reads as the rate a breathe plays at by default.
-        fps: timedByRun
-          ? num(values.fps, "--fps", { min: 1, fallback: values.source === "breathe" ? BREATHE_FPS : DEFAULT_FPS })
+        fps: timedByRun || isCutscene
+          ? num(values.fps, "--fps", { min: 1, fallback: values.source === "breathe" ? BREATHE_FPS : isCutscene ? 24 : DEFAULT_FPS })
           : num(requireFlag(values.fps, "--fps"), "--fps", { min: 1 }),
         // A loop that plays once is a contradiction in terms, so that is the
         // default here — --no-loop can still say otherwise.
-        loop: loop(isLoop),
+        loop: isCutscene ? (values.loop === true) : loop(isLoop),
         anchor: oneOf(values.anchor ?? "bottom", ANCHORS, "--anchor"),
         status: oneOf(values.status ?? "planned", MOTION_STATUSES, "--status"),
         // Absent is the honest default: it means "sheet", and every motion
         // made before the video source existed says nothing at all. A loop is
         // the exception — its frames can only come from a clip.
         ...(values.source === undefined
-          ? (isLoop ? { source: "video" } : {})
+          ? (isLoop || isCutscene ? { source: "video" } : {})
           : { source: oneOf(values.source, MOTION_SOURCES, "--source") }),
         frames: [],
         videos: [],
+        ...restyleRecord(dir, values),
       };
       doc.sprite.motions.push(motion);
       saveProject(dir, doc);
-      emit(values, motion, [`added motion ${id} (${motion.grid.rows}x${motion.grid.cols} @ ${motion.fps}fps)`]);
+      emit(values, motion, [`added motion ${id} (${motion.grid.rows}x${motion.grid.cols} @ ${motion.fps}fps)${motion.restyleOf ? `, a restyle of ${motion.restyleOf.contentSet ? `${motion.restyleOf.contentSet}/` : ""}${motion.restyleOf.motion}` : ""}`]);
       break;
     }
 
@@ -3806,14 +4012,24 @@ function main() {
         }
         const op = oneOf(requireFlag(values.op, "--op"), VIDEO_OPS, "--op");
         const model = oneOf(requireFlag(values.model, "--model"), DERIVE_VIDEO_MODELS, "--model");
-        const parent = motion.videos.find((v) => v.id === derivedFrom || v.asset === derivedFrom);
-        if (!parent) {
-          const known = motion.videos.map((v) => v.id).join(", ") || "none";
-          fail(`--derived-from: no video '${derivedFrom}' on motion '${motion.id}' (known: ${known})`);
+        // A pack cell's clip is a crop of the PACK's clip, which lives on
+        // another motion: `<pack motion>/<video id>`. Every other derived clip
+        // comes from an earlier clip of the same motion.
+        const slash = derivedFrom.indexOf("/");
+        const owner = slash > 0 ? findMotion(doc, derivedFrom.slice(0, slash), "--derived-from") : motion;
+        const parentKey = slash > 0 ? derivedFrom.slice(slash + 1) : derivedFrom;
+        if (owner !== motion && op !== "crop") {
+          fail(`--derived-from: only a crop (--op crop) is made out of another motion's clip — a ${op} is made out of this motion's own`);
         }
-        entry = { id: videoId, asset: assetId, model, mode: "derived", prompt: "", status, derivedFrom: parent.id, op };
+        const parent = (owner.videos ?? []).find((v) => v.id === parentKey || v.asset === parentKey);
+        if (!parent) {
+          const known = (owner.videos ?? []).map((v) => v.id).join(", ") || "none";
+          fail(`--derived-from: no video '${parentKey}' on motion '${owner.id}' (known: ${known})`);
+        }
+        const parentName = owner === motion ? parent.id : `${owner.id}/${parent.id}`;
+        entry = { id: videoId, asset: assetId, model, mode: "derived", prompt: "", status, derivedFrom: parentName, op };
         provenance = edge(assetId, [parent.asset], operation("derive", now, { op, model, duration }));
-        note = `${op}, ${model}, from ${parent.id}`;
+        note = `${op}, ${model}, from ${parentName}`;
       } else {
         if (values.op !== undefined) {
           fail("--op: only --derived-from records an operation — a clip that was shot has a --mode, not an op");
@@ -3878,6 +4094,25 @@ function main() {
     case "remove-motion": {
       const doc = loadProject(dir);
       const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      // A pack goes with its cells: they are one take, cut. A cell alone
+      // cannot go — the pack would name a motion that is not there.
+      if (motion.packOf && motion.packOf !== values["of-pack"] && doc.sprite.motions.some((m) => m.id === motion.packOf)) {
+        fail(`remove-motion: '${motion.id}' is a cell of the pack '${motion.packOf}' — remove the pack, which takes its cells with it`);
+      }
+      if (motion.kind === "pack") {
+        // Cells first, each one a whole removal of its own; the pack last, so
+        // an interruption leaves cells that still name their pack.
+        for (const cell of (motion.pack?.cells ?? []).filter(Boolean)) {
+          if (loadProject(dir).sprite.motions.some((m) => m.id === cell.motion && m.packOf === motion.id)) {
+            runSelf(["remove-motion", "--motion", cell.motion, "--of-pack", motion.id]);
+          }
+        }
+        const fresh = loadProject(dir);
+        for (const item of fresh.sprite.items ?? []) {
+          if ((motion.pack?.cells ?? []).some((c) => c?.motion === item.loop)) delete item.loop;
+        }
+        Object.assign(doc, fresh);
+      }
       const joined = doc.sprite.motions.filter((m) => m.kind === "transition" && (m.from === motion.id || m.to === motion.id));
       if (joined.length) {
         fail(`remove-motion: ${joined.map((m) => m.id).join(", ")} ${joined.length === 1 ? "joins" : "join"} '${motion.id}' — remove ${joined.length === 1 ? "it" : "them"} first, or the character keeps a transition to nowhere`);
@@ -3908,6 +4143,604 @@ function main() {
       for (const flipped of doc.sprite.motions.filter((m) => m.source === "mirror" && m.mirrorOf === motion.id)) {
         console.error(`note: ${flipped.id} was a mirror of ${motion.id}; its frames stay, but there is nothing to mirror it from again`);
       }
+      break;
+    }
+
+    case "facing-prompt": {
+      // The prompt for a facing sheet: the character once per direction on
+      // one grid picture. Printed, not recorded — the sheet is a reference,
+      // and add-ref records the prompt it was drawn from.
+      const doc = loadProject(dir);
+      let built;
+      try {
+        built = facingSheetPrompt({ character: doc.sprite.character, layout: values.layout ?? "8" });
+      } catch (error) {
+        fail(error.message);
+      }
+      const refs = doc.sprite.refs.filter((r) => r.role === "turnaround" || r.role === "portrait");
+      const attach = refs.map((r) => r.id);
+      const size = built.layout.rows === built.layout.cols ? "2048x2048" : `${built.layout.cols * 1024}x${built.layout.rows * 1024}`;
+      if (values.json) {
+        console.log(JSON.stringify({ prompt: built.prompt, builder: built.builder, layout: built.layout, imageSize: size, attach }));
+      } else {
+        console.log(built.prompt);
+        console.error(`--image-size ${size}; attach, in order: ${attach.length ? attach.map((id) => refUri(doc, id)).join(", ") : "nothing registered yet — draw the turnaround first"}`);
+        console.error(`then register it: add-ref --id directions --role directions --layout ${values.layout ?? "8"} --file refs/directions.png --from ${attach.map((id) => `ref-${id}`).join(",") || "<refs>"} --model <the model> --prompt "<this prompt>"`);
+      }
+      break;
+    }
+
+    case "register-facings": {
+      // Every anchor `sprite-sheet.mjs split-facings` cut, registered at once:
+      // anchor-<direction>, derived from the facing sheet (op crop).
+      const report = readJsonReport(requireFlag(values.report, "--report"), "--report");
+      if (report?.kind !== "facings" || !Array.isArray(report.files)) {
+        fail("--report: not a 'sprite-sheet.mjs split-facings --json' report");
+      }
+      const doc = loadProject(dir);
+      const sheet = doc.sprite.refs.find((r) => r.id === report.ref);
+      if (!sheet || sheet.role !== "directions") fail(`--report: '${report.ref}' is not a facing sheet of this character`);
+      const done = [];
+      for (const f of report.files) {
+        const id = `anchor-${f.direction}`;
+        runSelf(["add-ref", "--id", id, "--file", toUri(dir, f.file, "--report file"), "--role", "anchor",
+          "--direction", f.direction, "--derived-from", sheet.id, "--op", "crop", "--label", `Anchor ${f.direction}`]);
+        done.push(id);
+      }
+      const after = loadProject(dir);
+      emit(values, summarize(after, dir), [`registered ${done.length} anchors from ${sheet.id}: ${done.join(", ")}`]);
+      break;
+    }
+
+    case "add-pack": {
+      // One clip of a facing sheet, cut into one motion per direction. The
+      // pack motion owns the clip; each `<state>-<direction>` motion owns its
+      // frames and names the pack. Created together, planned, so the stage
+      // shows every direction waiting before anything is paid for.
+      const doc = loadProject(dir);
+      if (doc.sprite.set === "props") {
+        // An items pack: the set's items laid on a grid, one clip of all of
+        // them moving, cut into one looping motion per item.
+        if (values.ref !== undefined) fail("--ref: an items pack is laid out from the set's items, not a facing sheet");
+        const all = Array.isArray(doc.sprite.items) ? doc.sprite.items : [];
+        const wanted = values.items === undefined || values.items === "all"
+          ? all.map((i) => i.id)
+          : String(values.items).split(",").map((v) => v.trim()).filter(Boolean);
+        if (new Set(wanted).size !== wanted.length) fail("--items: an item is named twice");
+        const unknown = wanted.filter((id) => !all.some((i) => i.id === id));
+        if (!wanted.length || unknown.length) fail(`--items: ${unknown.length ? `no item ${unknown.join(", ")}` : "name the items"} (has: ${all.map((i) => i.id).join(", ") || "none — register-items first"})`);
+        // At most four across: the clip's frame follows the plate's shape,
+        // and a video model takes nothing wider than 21:9 (5×2 is 5:2).
+        const grid = itemGrid(wanted.length, 4);
+        const id = values.id ?? "items-pack";
+        if (doc.sprite.motions.some((m) => m.id === id)) fail(`--id: motion '${id}' already exists`);
+        const cells = Array.from({ length: grid.rows * grid.cols }, (_, i) => (i < wanted.length
+          ? { item: wanted[i], motion: packCellMotionId("loop", { item: wanted[i] }) }
+          : null));
+        const fps = num(values.fps, "--fps", { min: 1, fallback: 12 });
+        const children = [];
+        for (const cell of cells) {
+          if (!cell) continue;
+          const existing = doc.sprite.motions.find((m) => m.id === cell.motion);
+          if (existing && existing.packOf !== id) fail(`add-pack: motion '${cell.motion}' already exists and is not a cell of ${id}`);
+          if (existing) continue;
+          const item = all.find((i) => i.id === cell.item);
+          children.push({
+            id: cell.motion, label: item?.label ?? titleCase(cell.item), prompt: "",
+            grid: { rows: 1, cols: 1 }, fps, loop: true, anchor: "center", status: "planned", source: "video",
+            packOf: id, frames: [], videos: [],
+          });
+        }
+        const pack = {
+          id, label: values.label ?? `Items · ${wanted.length} animated`, prompt: "", kind: "pack",
+          grid: { rows: grid.rows, cols: grid.cols }, fps, loop: true, anchor: "center", status: "planned", source: "video",
+          pack: { state: "loop", rows: grid.rows, cols: grid.cols, cells }, frames: [], videos: [],
+        };
+        doc.sprite.motions.push(pack, ...children);
+        saveProject(dir, doc);
+        emit(values, pack, [`added items pack ${id} (${grid.cols}x${grid.rows}) and ${children.length} item loops: ${children.map((c) => c.id).join(", ")}`]);
+        break;
+      }
+      if (values.items !== undefined) fail("--items: only a props set (init --set props) has items to pack");
+      const state = requireFlag(values.state, "--state").trim().toLowerCase();
+      if (!/^[a-z][a-z0-9-]*$/.test(state)) fail(`--state: a lower-case word for what every cell does ('walk'), got '${values.state}'`);
+      const ref = doc.sprite.refs.find((r) => r.id === (values.ref ?? "directions"));
+      if (!ref || ref.role !== "directions" || !ref.layout) {
+        fail(`--ref: '${values.ref ?? "directions"}' is not a facing sheet — draw one (facing-prompt) and register it (add-ref --role directions --layout 8)`);
+      }
+      const id = values.id ?? `${state}-pack`;
+      if (doc.sprite.motions.some((m) => m.id === id)) fail(`--id: motion '${id}' already exists`);
+      const loops = ["idle", "walk", "run"].includes(state);
+      const fps = num(values.fps, "--fps", { min: 1, fallback: loops ? 12 : 10 });
+      const cells = ref.layout.cells.map((direction) => (direction ? { direction, motion: packCellMotionId(state, { direction }) } : null));
+      const children = [];
+      for (const cell of cells) {
+        if (!cell) continue;
+        const existing = doc.sprite.motions.find((m) => m.id === cell.motion);
+        if (existing && existing.packOf !== id) {
+          fail(`add-pack: motion '${cell.motion}' already exists and is not a cell of ${id} — remove it or pick another --state`);
+        }
+        if (existing) continue;
+        children.push({
+          id: cell.motion,
+          label: `${titleCase(state)} ${cell.direction}`,
+          direction: cell.direction,
+          prompt: "",
+          grid: { rows: 1, cols: 1 },
+          fps,
+          loop: loops,
+          anchor: "bottom",
+          status: "planned",
+          source: "video",
+          packOf: id,
+          frames: [],
+          videos: [],
+        });
+      }
+      const pack = {
+        id,
+        label: values.label ?? `${titleCase(state)} · ${cells.filter(Boolean).length} directions`,
+        prompt: "",
+        kind: "pack",
+        grid: { rows: ref.layout.rows, cols: ref.layout.cols },
+        fps,
+        loop: loops,
+        anchor: "bottom",
+        status: "planned",
+        source: "video",
+        pack: { state, rows: ref.layout.rows, cols: ref.layout.cols, cells },
+        frames: [],
+        videos: [],
+        ...restyleRecord(dir, values),
+      };
+      doc.sprite.motions.push(pack, ...children);
+      saveProject(dir, doc);
+      emit(values, pack, [
+        `added pack ${id} (${state}, ${ref.layout.cols}x${ref.layout.rows} from ${ref.id}) and ${children.length} cell motions: ${children.map((c) => c.id).join(", ")}`,
+      ]);
+      break;
+    }
+
+    case "pack-prompt": {
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      if (motion.kind !== "pack" || !motion.pack) fail(`--motion: '${motion.id}' is not a pack (add-pack)`);
+      let built;
+      try {
+        built = packClipPrompt({ character: doc.sprite.character, pack: motion.pack, action: values.action ?? null });
+      } catch (error) {
+        fail(error.message);
+      }
+      motion.prompt = built.prompt;
+      delete motion.promptParts;
+      saveProject(dir, doc);
+      if (values.json) {
+        console.log(JSON.stringify({ prompt: built.prompt, builder: built.builder, pinned: built.pinned, state: motion.pack.state }));
+      } else {
+        console.log(built.prompt);
+        console.error(built.pinned
+          ? "first-last: pass the green facing sheet as both --image and --end-image"
+          : "image-to-video: pass the green facing sheet as --image");
+      }
+      break;
+    }
+
+    case "register-pack": {
+      // What `sprite-sheet.mjs pack-split` cut: every cell's clip becomes a
+      // crop of the pack's clip on its own motion, then its run registers
+      // there exactly as a from-video run does.
+      const report = readJsonReport(requireFlag(values.report, "--report"), "--report");
+      if (report?.kind !== "pack" || !Array.isArray(report.cells)) fail("--report: not a 'sprite-sheet.mjs pack-split --json' report");
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      if (motion.kind !== "pack" || !motion.pack) fail(`--motion: '${motion.id}' is not a pack`);
+      if (report.pack !== motion.id) fail(`--report: it cuts ${report.pack}, not ${motion.id}`);
+      // A take that scrambled its grid is not this pack, whatever its frames
+      // look like one by one.
+      if (report.facingCheck?.ok === false && !values.force) {
+        const pairs = (report.facingCheck.collapsed ?? []).slice(0, 4).map((p) => `${p.a}/${p.b} ${p.ratio}`).join(", ");
+        fail(`register-pack: the take mixed up its cells (${pairs}) — shoot it again; --force registers it anyway after you have looked`);
+      }
+      const clipUri = toUri(dir, report.clip, "--report clip");
+      const video = values.video
+        ? (motion.videos ?? []).find((v) => v.id === values.video || v.asset === values.video)
+        : (motion.videos ?? []).find((v) => doc.assets.find((a) => a.id === v.asset)?.uri === clipUri);
+      if (!video) fail(`register-pack: the clip ${clipUri} is not a registered video of ${motion.id} — add-video it first`);
+      const tmp = mkdtempSync(join(tmpdir(), "sprite-pack-"));
+      const registered = [];
+      try {
+        for (const cell of report.cells) {
+          const child = doc.sprite.motions.find((m) => m.id === cell.motion);
+          if (!child || child.packOf !== motion.id) fail(`--report: '${cell.motion}' is not a cell of ${motion.id}`);
+          // Registering the same report again reuses the crop it registered.
+          const cellUri = toUri(dir, cell.clip, "--report cell clip");
+          const current = loadProject(dir).sprite.motions.find((m) => m.id === cell.motion);
+          const known = (current?.videos ?? []).find((v) => v.op === "crop" && v.derivedFrom === `${motion.id}/${video.id}`
+            && loadProject(dir).assets.find((a) => a.id === v.asset)?.uri === cellUri);
+          const childVideo = known?.id ?? JSON.parse(runSelf(["add-video", "--motion", cell.motion, "--file", cellUri,
+            "--derived-from", `${motion.id}/${video.id}`, "--op", "crop", "--model", "ffmpeg", "--json"])).videos.at(-1).id;
+          const runFile = join(tmp, `${cell.motion}.json`);
+          writeFileSync(runFile, JSON.stringify(cell.run));
+          runSelf(["register-run", "--motion", cell.motion, "--run", runFile, "--video", childVideo]);
+          registered.push(cell.motion);
+        }
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+      const after = loadProject(dir);
+      const pack = after.sprite.motions.find((m) => m.id === motion.id);
+      pack.status = "ready";
+      // An items pack's loop is now the way each item moves.
+      for (const cell of pack.pack.cells) {
+        if (!cell?.item || !registered.includes(cell.motion)) continue;
+        const item = (after.sprite.items ?? []).find((i) => i.id === cell.item);
+        if (item) item.loop = cell.motion;
+      }
+      pack.fps = report.cells[0]?.run?.fps ?? pack.fps;
+      pack.loop = report.window?.loop ?? pack.loop;
+      saveProject(dir, after);
+      emit(values, pack, [`${motion.id}: registered ${registered.length} cells (${registered.join(", ")}) from ${video.id}, window ${report.window?.start}–${report.window?.end}s`]);
+      break;
+    }
+
+    case "items-prompt": {
+      // A props set's item sheet: every item once, one per cell, one visual
+      // language. Printed with the grid and ids the cut will need.
+      const doc = loadProject(dir);
+      if (doc.sprite.set !== "props") fail("items-prompt: this is a character, not a props set (init --set props)");
+      const names = String(requireFlag(values.items, "--items")).split(",").map((v) => v.trim()).filter(Boolean);
+      let grid;
+      let ids;
+      let built;
+      try {
+        grid = itemGrid(names.length, num(values["max-cols"], "--max-cols", { integer: true, min: 1, fallback: 5 }));
+        ids = names.map(itemId);
+        if (new Set(ids).size !== ids.length) fail("--items: two items have the same name");
+        built = itemSheetPrompt({ character: doc.sprite.character, items: names, ...grid });
+      } catch (error) {
+        fail(error.message);
+      }
+      const cell = Math.floor(2048 / Math.max(grid.cols, grid.rows) / 16) * 16;
+      const imageSize = `${cell * grid.cols}x${cell * grid.rows}`;
+      if (values.json) {
+        console.log(JSON.stringify({ prompt: built.prompt, grid, ids, labels: names, imageSize }));
+      } else {
+        console.log(built.prompt);
+        console.error(`--image-size ${imageSize}; then cut it out and split: sprite-sheet.mjs split-items <sheet-alpha> --rows ${grid.rows} --cols ${grid.cols} --ids ${ids.join(",")} --out <set>/items --json | sprite-project.mjs register-items --report - --sheet <sheet> --labels "${names.join(",")}"`);
+      }
+      break;
+    }
+
+    case "register-items": {
+      // What `sprite-sheet.mjs split-items` cut: the sheet it came from (a
+      // generated image, registered here) and every item, derived from it.
+      const report = readJsonReport(requireFlag(values.report, "--report"), "--report");
+      if (report?.kind !== "items" || !Array.isArray(report.files)) fail("--report: not a 'sprite-sheet.mjs split-items --json' report");
+      const doc = loadProject(dir);
+      if (doc.sprite.set !== "props") fail("register-items: this is a character, not a props set (init --set props)");
+      const sheetUri = toUri(dir, requireFlag(values.sheet, "--sheet"), "--sheet");
+      const sheetFile = requireFile(dir, sheetUri, "--sheet");
+      let n = 1;
+      const existingSheet = doc.assets.find((a) => a.uri === sheetUri && a.id.startsWith("items-sheet-"));
+      while (!existingSheet && doc.assets.some((a) => a.id === `items-sheet-${n}`)) n++;
+      const sheetId = existingSheet?.id ?? `items-sheet-${n}`;
+      const inputs = parseInputs(doc, values.from, "--from");
+      upsertAsset(doc, {
+        id: sheetId, type: "image", uri: sheetUri, name: `Item sheet ${sheetId.slice("items-sheet-".length)}`,
+        metadata: imageMetadata(sheetFile, "--sheet"), createdAt: now, status: "ready", tags: ["items-sheet"],
+      }, `sheet '${sheetId}'`);
+      setEdge(doc, edge(sheetId, inputs, operation("generate", now, { model: values.model, prompt: values.prompt }, inputs)));
+      const labels = values.labels === undefined ? [] : String(values.labels).split(",").map((v) => v.trim());
+      doc.sprite.items ??= [];
+      const done = [];
+      report.files.forEach((f, i) => {
+        const uri = toUri(dir, f.file, "--report file");
+        const file = requireFile(dir, uri, "--report file");
+        const assetId = `item-${f.id}`;
+        // The labels name the cells the sheet was drawn with; an empty cell
+        // has no file, so a file's own cell is what finds its label.
+        const label = labels[Number.isInteger(f.cell) ? f.cell : i] || titleCase(f.id);
+        upsertAsset(doc, {
+          id: assetId, type: "image", uri, name: label,
+          metadata: imageMetadata(file, "--report file"), createdAt: now, status: "ready", tags: ["item"],
+        }, `item '${f.id}'`);
+        setEdge(doc, edge(assetId, [sheetId], operation("derive", now, { tool: TOOL, step: "split-items", cell: f.cell })));
+        const entry = { id: f.id, label, image: assetId, sheet: sheetId };
+        const at = doc.sprite.items.findIndex((it) => it.id === f.id);
+        if (at === -1) doc.sprite.items.push(entry);
+        else doc.sprite.items[at] = { ...doc.sprite.items[at], ...entry };
+        done.push(f.id);
+      });
+      saveProject(dir, doc);
+      emit(values, { sheet: sheetId, items: doc.sprite.items }, [`registered ${sheetId} and ${done.length} items: ${done.join(", ")}`]);
+      break;
+    }
+
+    case "variant-prompt": {
+      // The edit that makes this variant's reference out of the original's.
+      const doc = loadProject(dir);
+      const variant = doc.sprite.character.variantOf;
+      if (!variant) fail("variant-prompt: this character is not a variant (init --variant-of <content set> --variant \"…\")");
+      const what = values.what ?? "turnaround";
+      let built;
+      try {
+        built = variantEditPrompt({ character: doc.sprite.character, note: variant.note, what });
+      } catch (error) {
+        fail(error.message);
+      }
+      const original = (() => {
+        try {
+          const other = JSON.parse(readFileSync(resolve(dir, "..", variant.contentSet, "project.json"), "utf-8"));
+          const ref = (other.sprite?.refs ?? []).find((r) => r.role === what || r.id === what);
+          const asset = ref ? (other.assets ?? []).find((a) => a.id === ref.asset) : null;
+          return asset ? join("..", variant.contentSet, asset.uri) : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (values.json) console.log(JSON.stringify({ prompt: built.prompt, builder: built.builder, edit: original }));
+      else {
+        console.log(built.prompt);
+        console.error(original
+          ? `edit ${variant.contentSet}'s ${what}: edit_image.mjs "<this prompt>" --input ${relative(process.cwd(), resolve(dir, original))} …`
+          : `the original '${variant.contentSet}' has no ${what} reference to edit`);
+      }
+      break;
+    }
+
+    case "restyle-prompt": {
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      if (!motion.restyleOf) fail(`--motion: '${motion.id}' is not a restyle (add-motion / add-pack --restyle-of <content set>/<motion>)`);
+      const note = motion.restyleOf.note ?? doc.sprite.character.variantOf?.note ?? "";
+      const built = restylePrompt({
+        character: doc.sprite.character,
+        note,
+        grid: motion.kind === "pack" && motion.pack ? { rows: motion.pack.rows, cols: motion.pack.cols } : null,
+      });
+      motion.prompt = built.prompt;
+      delete motion.promptParts;
+      saveProject(dir, doc);
+      const sourceDir = motion.restyleOf.contentSet ? resolve(dir, "..", motion.restyleOf.contentSet) : dir;
+      const source = (() => {
+        try {
+          const other = JSON.parse(readFileSync(join(sourceDir, "project.json"), "utf-8"));
+          const m = (other.sprite?.motions ?? []).find((x) => x.id === motion.restyleOf.motion);
+          const video = [...(m?.videos ?? [])].reverse().find((v) => v.status === "ready" && v.mode !== "derived") ?? (m?.videos ?? []).find((v) => v.status === "ready");
+          const asset = video ? (other.assets ?? []).find((a) => a.id === video.asset) : null;
+          return asset ? join(sourceDir, asset.uri) : null;
+        } catch {
+          return null;
+        }
+      })();
+      if (values.json) console.log(JSON.stringify({ prompt: built.prompt, builder: built.builder, refVideo: source }));
+      else {
+        console.log(built.prompt);
+        console.error(`seedance-video.mjs --endpoint reference --ref-video ${source ? relative(process.cwd(), source) : "<the original clip>"} --ref-image <this look: the facing sheet or turnaround> …`);
+      }
+      break;
+    }
+
+    case "library": {
+      // The motion library: performances any character can borrow.
+      const entries = values.id ? [libraryEntry(values.id) ?? fail(`--id: no library entry '${values.id}' (${MOTION_LIBRARY.map((e) => e.id).join(", ")})`)] : MOTION_LIBRARY;
+      const out = entries.map((e) => ({ ...e, prompt: libraryClipPrompt(e), file: `motion-library/${e.id}.mp4` }));
+      if (values.json) console.log(JSON.stringify(values.id ? out[0] : out));
+      else for (const e of out) console.log(`${e.id.padEnd(14)} ${e.category.padEnd(11)} ${e.label}${values.id ? `\n${e.prompt}` : ""}`);
+      break;
+    }
+
+    case "add-driver": {
+      // The clip a motion borrows its movement from: a library performance,
+      // the user's own video, or another character's motion. Registered as
+      // `<motion>-driver` so the transferred clip's provenance can name it.
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
+      requireFile(dir, uri, "--file");
+      const from = requireFlag(values.from, "--from").trim();
+      const library = libraryEntry(from);
+      const upload = from === "upload";
+      if (!library && !upload && !from.includes("/")) {
+        fail(`--from: a library entry (${MOTION_LIBRARY.map((e) => e.id).join(", ")}), 'upload' for the user's own video, or '<content set>/<motion>'`);
+      }
+      const assetId = `${motion.id}-driver`;
+      const probed = videoMetadata(join(dir, uri));
+      upsertAsset(doc, {
+        id: assetId, type: "video", uri, name: `${motion.id} driving clip`,
+        metadata: { ...probed.metadata }, createdAt: now, status: "ready", tags: ["driver"],
+      }, `motion '${motion.id}'`);
+      setEdge(doc, upload
+        ? edge(assetId, [], operation("upload", now, {}, [], "human"))
+        // A library clip was filmed once for the workspace and is picked
+        // here, not paid for again: a select, naming the entry.
+        : edge(assetId, [], operation("select", now, library ? { library: library.id } : { from })));
+      motion.transfer = { from, video: assetId, ...(values.label || library ? { label: values.label ?? library.label } : {}) };
+      if (!motion.prompt) motion.prompt = transferPrompt({ character: doc.sprite.character }).prompt;
+      saveProject(dir, doc);
+      emit(values, motion, [`${motion.id}: driving clip ${assetId} (${library ? `library: ${library.label}` : upload ? "the user's video" : from})`]);
+      break;
+    }
+
+    case "set-storyboard": {
+      // A custom motion's beats, and the keyframe drawn or brought for a beat.
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      if (motion.kind === "pack" || motion.kind === "transition") fail(`--motion: a ${motion.kind} has no storyboard`);
+      const beats = values.clear ? [] : [...(motion.storyboard?.beats ?? [])];
+      for (const raw of values.beat ?? []) {
+        const m = /^\s*(\d+(?:\.\d+)?)\s*[:=]\s*(.+)$/.exec(raw);
+        if (!m) fail(`--beat: "<seconds>:<what happens>", got '${raw}'`);
+        const at = Number(m[1]);
+        const at3 = Math.round(at * 1000) / 1000;
+        const existing = beats.findIndex((b) => b.at === at3);
+        const beat = { at: at3, text: m[2].trim(), ...(existing >= 0 && beats[existing].keyframe ? { keyframe: beats[existing].keyframe } : {}) };
+        if (existing >= 0) beats[existing] = beat;
+        else beats.push(beat);
+      }
+      beats.sort((a, b) => a.at - b.at);
+      for (const raw of values.keyframe ?? []) {
+        const m = /^\s*(\d+(?:\.\d+)?)\s*=\s*(.+)$/.exec(raw);
+        if (!m) fail(`--keyframe: "<beat seconds>=<file>", got '${raw}'`);
+        const beat = beats.find((b) => b.at === Math.round(Number(m[1]) * 1000) / 1000);
+        if (!beat) fail(`--keyframe: no beat at ${m[1]}s (beats at ${beats.map((b) => `${b.at}s`).join(", ") || "none"})`);
+        const uri = toUri(dir, m[2].trim(), "--keyframe");
+        const file = requireFile(dir, uri, "--keyframe");
+        // Named by the beat's second, not its place: a beat added before it
+        // later would otherwise renumber this one onto another's picture.
+        const index = beats.indexOf(beat) + 1;
+        const assetId = `${motion.id}-beat-${String(beat.at).replace(".", "p")}`;
+        upsertAsset(doc, {
+          id: assetId, type: "image", uri, name: `${motion.label} beat ${index}`,
+          metadata: imageMetadata(file, "--keyframe"), createdAt: now, status: "ready", tags: ["keyframe"],
+        }, `motion '${motion.id}'`);
+        const refs = doc.sprite.refs.filter((r) => r.role === "turnaround").map((r) => r.asset);
+        setEdge(doc, edge(assetId, refs, operation("generate", now, { model: values.model, prompt: values.prompt, beat: beat.at }, refs)));
+        beat.keyframe = assetId;
+      }
+      if (beats.length) motion.storyboard = { beats };
+      else delete motion.storyboard;
+      saveProject(dir, doc);
+      emit(values, motion, [`${motion.id}: ${beats.length} beats${beats.some((b) => b.keyframe) ? `, ${beats.filter((b) => b.keyframe).length} with a keyframe` : ""}`]);
+      break;
+    }
+
+    case "storyboard-prompt": {
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      const beats = motion.storyboard?.beats ?? [];
+      const duration = values.duration === undefined ? null : num(values.duration, "--duration", { min: 1 });
+      let built;
+      try {
+        built = storyboardPrompt({ character: doc.sprite.character, beats, duration });
+      } catch (error) {
+        fail(error.message);
+      }
+      motion.prompt = built.prompt;
+      delete motion.promptParts;
+      saveProject(dir, doc);
+      const turnaround = doc.sprite.refs.find((r) => r.role === "turnaround");
+      const files = [
+        turnaround ? doc.assets.find((a) => a.id === turnaround.asset)?.uri : null,
+        ...beats.filter((b) => b.keyframe).map((b) => doc.assets.find((a) => a.id === b.keyframe)?.uri),
+      ].filter(Boolean);
+      if (values.json) console.log(JSON.stringify({ prompt: built.prompt, attach: built.attach, refImages: files }));
+      else {
+        console.log(built.prompt);
+        console.error(`seedance-video.mjs --endpoint reference ${files.map((f) => `--ref-image ${join(relative(process.cwd(), dir) || ".", f)}`).join(" ")} …  (${built.attach.join("; ")})`);
+      }
+      break;
+    }
+
+    case "register-model": {
+      // What `rig-3d.mjs model` or `animate` wrote: the rigged character and
+      // its animation clips, as assets and as `sprite.model`.
+      const report = readJsonReport(requireFlag(values.report, "--report"), "--report");
+      if (report?.step !== "model" && report?.step !== "animate") fail("--report: not a 'rig-3d.mjs model|animate --json' report");
+      const doc = loadProject(dir);
+      // The report's paths are the ones rig-3d.mjs was given — relative to
+      // where it ran, not to the character.
+      const file = (path, label) => {
+        const uri = toUri(dir, resolve(path), label);
+        requireFile(dir, uri, label);
+        return uri;
+      };
+      const glb = (id, path, name, from, params) => {
+        const uri = file(path, "--report file");
+        upsertAsset(doc, {
+          id, type: "image", uri, name,
+          metadata: { container: "glb", size: fileSize(join(dir, uri)) }, createdAt: now, status: "ready", tags: ["3d"],
+        }, "the model");
+        setEdge(doc, edge(id, from ? [from] : [], operation(from ? "derive" : "generate", now, params)));
+      };
+      if (report.step === "model") {
+        if (!report.files?.model) fail("--report: the model step names no rigged model file");
+        // The picture rig-3d.mjs was given, found by its file; a URL or a file
+        // that is no reference of this character has no edge to hang off.
+        const imageUri = typeof report.image === "string" && !/^(https?:|data:)/.test(report.image)
+          ? (() => { try { return toUri(dir, resolve(report.image), "--report image"); } catch { return null; } })()
+          : null;
+        const source = imageUri
+          ? doc.sprite.refs.find((r) => doc.assets.find((a) => a.id === r.asset)?.uri === imageUri) ?? null
+          : null;
+        glb("model-glb", report.files.model, `${doc.sprite.character.name} 3D model`, source?.asset ?? null, { model: report.provider, endpoint: report.endpoint, rigged: true });
+        let thumbnail;
+        if (report.files.thumbnail) {
+          const uri = file(report.files.thumbnail, "--report thumbnail");
+          upsertAsset(doc, {
+            id: "model-thumbnail", type: "image", uri, name: "3D model thumbnail",
+            metadata: imageMetadata(join(dir, uri), "--report thumbnail"), createdAt: now, status: "ready", tags: ["3d"],
+          }, "the model");
+          setEdge(doc, edge("model-thumbnail", ["model-glb"], operation("derive", now, { step: "thumbnail" })));
+          thumbnail = "model-thumbnail";
+        }
+        const animations = [];
+        for (const a of report.files.animations ?? []) {
+          const id = `model-anim-${a.id}`;
+          glb(id, a.file, `${a.label ?? a.id} (3D)`, "model-glb", { step: "animate", action: a.action, model: report.provider });
+          animations.push({ id: a.id, label: a.label ?? titleCase(a.id), asset: id, ...(Number.isInteger(a.action) ? { action: a.action } : {}) });
+        }
+        doc.sprite.model = {
+          glb: "model-glb", provider: report.provider ?? "unknown",
+          ...(source ? { from: source.id } : {}), ...(thumbnail ? { thumbnail } : {}),
+          // A new model is a new character in 3D: the old clips were rigged
+          // on the old one and are dropped with it (the files stay).
+          animations,
+        };
+      } else {
+        if (!doc.sprite.model) fail("register-model: register the model step first — there is no model to animate");
+        const animations = [];
+        for (const a of report.files?.animations ?? []) {
+          const id = `model-anim-${a.id}`;
+          glb(id, a.file, `${a.label ?? a.id} (3D)`, doc.sprite.model.glb, { step: "animate", action: a.action, model: report.provider });
+          animations.push({ id: a.id, label: a.label ?? titleCase(a.id), asset: id, ...(Number.isInteger(a.action) ? { action: a.action } : {}) });
+        }
+        doc.sprite.model.animations = mergeAnimations(doc.sprite.model.animations ?? [], animations);
+      }
+      saveProject(dir, doc);
+      emit(values, doc.sprite.model, [`model: ${doc.sprite.model.animations.length} animations (${doc.sprite.model.animations.map((a) => a.id).join(", ")})`]);
+      break;
+    }
+
+    case "plan-moveset": {
+      // A whole move set booked at once: every state a planned motion (or,
+      // with --packs, a direction pack of every facing), with the defaults
+      // above, and one price for all of it — said before anything is paid.
+      const doc = loadProject(dir);
+      if (doc.sprite.set === "props") fail("plan-moveset: a props set has no move set — its items animate with add-pack");
+      const states = String(values.states ?? "idle,walk,run").split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
+      const unknown = states.filter((st) => !MOVESET[st]);
+      if (unknown.length) fail(`--states: no default for ${unknown.join(", ")} (known: ${Object.keys(MOVESET).join(", ")}) — add those with add-motion`);
+      const forced = values.source === undefined ? null : oneOf(values.source, ["sheet", "video"], "--source");
+      const planned = [];
+      let usd = 0;
+      for (const state of states) {
+        const spec = MOVESET[state];
+        if (values.packs) {
+          if (doc.sprite.motions.some((m) => m.id === `${state}-pack`)) continue;
+          runSelf(["add-pack", "--state", state]);
+          usd += MOVESET_PRICE.pack;
+          const eightWay = findMotion(loadProject(dir), `${state}-pack`).pack.cells.filter(Boolean).length > 4;
+          const warning = spec.fast && eightWay
+            ? `${state} rarely holds eight facings in one clip (0 of 6 measured takes passed the facing check) — expect retakes, or shoot it from a 4-way sheet`
+            : undefined;
+          planned.push({ id: `${state}-pack`, kind: "pack", source: "video", pinned: !!spec.pinned, usd: MOVESET_PRICE.pack, ...(warning ? { warning } : {}) });
+          continue;
+        }
+        if (doc.sprite.motions.some((m) => m.id === state)) continue;
+        const source = forced ?? spec.source;
+        const grid = source === "sheet" ? sheetGrid(spec.frames) : { rows: 1, cols: 1 };
+        runSelf(["add-motion", "--id", state, "--label", titleCase(state), "--rows", String(grid.rows), "--cols", String(grid.cols),
+          "--fps", String(spec.fps), spec.loop ? "--loop" : "--no-loop", "--source", source]);
+        usd += MOVESET_PRICE[source];
+        planned.push({ id: state, source, frames: spec.frames, fps: spec.fps, loop: spec.loop, pinned: source === "video" && !!spec.pinned, usd: MOVESET_PRICE[source] });
+      }
+      const quote = { usd: Math.round(usd * 100) / 100, clips: planned.filter((p) => p.source === "video").length, sheets: planned.filter((p) => p.source === "sheet").length };
+      emit(values, { planned, quote }, [
+        `planned ${planned.length} ${values.packs ? "packs" : "motions"}: ${planned.map((p) => `${p.id} (${p.kind ?? p.source}${p.pinned ? ", pinned" : ""})`).join(", ") || "none — every state already exists"}`,
+        `quote: ≈ $${quote.usd.toFixed(2)} — ${quote.clips} clip${quote.clips === 1 ? "" : "s"} (2–7 min each, they render side by side), ${quote.sheets} sheet${quote.sheets === 1 ? "" : "s"} (≈ 30 s each)`,
+        ...planned.filter((p) => p.warning).map((p) => `warning: ${p.warning}`),
+      ]);
       break;
     }
 

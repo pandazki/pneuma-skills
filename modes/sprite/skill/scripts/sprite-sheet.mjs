@@ -82,6 +82,7 @@ import {
   paste as pasteImage, upscale, writePalette,
 } from "./pixel-lattice.mjs";
 import { DEFAULT_SAFE_MARGIN_RATIO, guideGeometry, guideRaster } from "./sheet-prompt.mjs";
+import { cellRects } from "./pack.mjs";
 import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } from "./mirror.mjs";
 import { CELL_MARGIN, alphaComponents, cutPoses, layoutPoses, locatePoses } from "./sheet-segment.mjs";
 import { SIZE_SPREAD_WARN, motionSize, sizeSpread, sizeWarning } from "./sizes.mjs";
@@ -352,6 +353,7 @@ const SUBCOMMANDS = [
   "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "sizes", "export", "rive",
   "fit", "breathe", "pixel",
   "mirror", "recolor", "recolor-palette",
+  "pack-split", "split-facings", "pack-plate", "split-items",
 ];
 
 /** A fraction as the percentage the help prints: 0.28 is "28%", never the
@@ -666,7 +668,7 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
 
   from-video <clip> --out <motionDir> --name <motionId> --frames N | --at t1,t2,…
       [--fps N] [--loop|--no-loop] [--anchor bottom|center] [--body-height N]
-      [--x-from feet|bbox|cell|trend|body] [--y-from anchor|clip] [--key auto|#rrggbb|none]
+      [--x-from feet|bbox|cell|trend|body] [--y-from anchor|clip] [--key auto|#rrggbb|none|alpha]
       [--trim-start s] [--trim-end s] [--no-clean] [--cell auto|WxH]
       [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--width W] [--no-webp]
       [--cols C] [--similarity ${DEFAULT_VIDEO_SIMILARITY}] [--blend ${DEFAULT_BLEND}] [--threshold ${DEFAULT_THRESHOLD}]
@@ -1326,6 +1328,12 @@ function cornerColor(image) {
     }
   }
   return toHex(median(reds), median(greens), median(blues));
+}
+
+/** A colour dark enough to be a letterbox bar rather than a plate. */
+function isNearBlack(hex) {
+  const n = parseInt(String(hex).slice(1), 16);
+  return Number.isFinite(n) && ((n >> 16) & 255) < 24 && ((n >> 8) & 255) < 24 && (n & 255) < 24;
 }
 
 function normalizeColor(value, flag) {
@@ -4283,12 +4291,15 @@ const NO_CYCLE_REASONS = {
  * to its first. `ambiguous` is `null` unless the doubled period repeats
  * about as well, and then carries both lengths.
  */
-function readCycle(thumbs, { fps, start, moves, gait }) {
+function readCycle(thumbs, { fps, start, moves, gait, D: givenD = null, features: givenFeatures = null }) {
   const at = (i) => round(start + i / fps, 3);
   const seconds = (frames) => round(frames / fps, 3);
-  const features = thumbs.map(premultiplied);
+  // A pack reads its cycle off every cell at once: the caller hands in the
+  // cells' averaged distances (and one cell's features, for the masses a
+  // one-shot reading weighs) instead of one clip's thumbnails.
+  const features = givenFeatures ?? thumbs.map(premultiplied);
   const n = features.length;
-  const D = distanceMatrix(features);
+  const D = givenD ?? distanceMatrix(features);
 
   const minLen = Math.max(2, Math.ceil(LOOP_PERIOD_MIN * fps));
   // Room to compare against: at least half a second (and eight frames) of the
@@ -4522,6 +4533,532 @@ function stepContact(clip, options) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Packs — one clip of a grid picture, cut into one motion per cell (0.6.0)
+// ---------------------------------------------------------------------------
+
+/**
+ * The thumbnails of a keyed clip, each shifted by whole pixels so its
+ * subject's bottom-centre lands where the median frame's does.
+ *
+ * Why. A cell of a pack clip is a figure walking in place inside a small
+ * window, and it drifts — a few pixels a second toward the way it faces.
+ * Measured on the 0.6.0 spike (Pip's 720p walk, the front-right cell): on
+ * the raw thumbnails the lag profile rose monotonically from 0.023 to 0.129
+ * and `contact` read no cycle at all; on the same frames registered this way
+ * the profile dips cleanly at 23 frames (0.96 s). A walk's sway survives the
+ * registration — only the slow travel goes.
+ */
+function registerThumbs(thumbs, size, threshold = 128) {
+  const { width, height } = size;
+  const anchors = thumbs.map((rgba) => {
+    let x0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (rgba[(y * width + x) * 4 + 3] < threshold) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y > y1) y1 = y;
+      }
+    }
+    return x1 < 0 ? null : { x: (x0 + x1) / 2, y: y1 };
+  });
+  const seen = anchors.filter(Boolean);
+  if (!seen.length) return thumbs;
+  const target = { x: median(seen.map((a) => a.x)), y: median(seen.map((a) => a.y)) };
+  return thumbs.map((rgba, i) => {
+    const a = anchors[i];
+    if (!a) return rgba;
+    const dx = Math.round(target.x - a.x);
+    const dy = Math.round(target.y - a.y);
+    if (!dx && !dy) return rgba;
+    const out = Buffer.alloc(rgba.length);
+    for (let y = 0; y < height; y++) {
+      const sy = y - dy;
+      if (sy < 0 || sy >= height) continue;
+      for (let x = 0; x < width; x++) {
+        const sx = x - dx;
+        if (sx < 0 || sx >= width) continue;
+        rgba.copy(out, (y * width + x) * 4, (sy * width + sx) * 4, (sy * width + sx) * 4 + 4);
+      }
+    }
+    return out;
+  });
+}
+
+/**
+ * A drawing's signature for telling cells apart: its ink box scaled to a
+ * fixed height and centred on a small canvas, premultiplied RGB. Pose
+ * changes move it a little; a different facing or a different item moves it
+ * a lot.
+ */
+const SIGNATURE = { width: 24, height: 40 };
+function drawingSignature(image, threshold = 128) {
+  const { width: w, height: h, data } = image;
+  const box = computeBbox(image, threshold).bbox;
+  const out = new Float32Array(SIGNATURE.width * SIGNATURE.height * 3);
+  if (!box) return out;
+  const scale = box.h / SIGNATURE.height;
+  const ox = (SIGNATURE.width - box.w / scale) / 2;
+  const step = Math.max(1, scale / 3);
+  for (let j = 0; j < SIGNATURE.height; j++) {
+    for (let i = 0; i < SIGNATURE.width; i++) {
+      const sx = box.x + (i - ox) * scale;
+      const sy = box.y + j * scale;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let dy = 0; dy < scale; dy += step) {
+        for (let dx = 0; dx < scale; dx += step) {
+          n++;
+          const x = Math.floor(sx + dx), y = Math.floor(sy + dy);
+          if (x < 0 || y < 0 || x >= w || y >= h) continue;
+          const k = (y * w + x) * 4;
+          const a = data[k + 3] / 255;
+          r += data[k] * a; g += data[k + 1] * a; b += data[k + 2] * a;
+        }
+      }
+      const o = (j * SIGNATURE.width + i) * 3;
+      out[o] = r / n / 255; out[o + 1] = g / n / 255; out[o + 2] = b / n / 255;
+    }
+  }
+  return out;
+}
+const signatureDistance = (a, b) => {
+  let t = 0;
+  for (let i = 0; i < a.length; i++) t += Math.abs(a[i] - b[i]);
+  return t / a.length;
+};
+/** Below this, two cells look more alike than their pictures do: a mix-up. */
+const PACK_COLLAPSE_RATIO = 0.6;
+
+/**
+ * Did the take keep its cells apart? Each pair of cells is compared twice —
+ * their first sampled frames, and the pictures they were shot from (a
+ * facing's anchor, an item's cut-out). A clip that kept every facing has the
+ * two distances about equal; one that scrambled the grid makes cells that
+ * should differ look alike. Measured on Pip (0.6.0): good walk and idle takes
+ * ≥ 0.83 for every pair; a run take whose rows had collapsed into the same
+ * three facings 0.23–0.30.
+ */
+function packFacingCheck(character, cells) {
+  const refs = character.doc.sprite.refs ?? [];
+  const items = character.doc.sprite.items ?? [];
+  const sources = [];
+  for (const cell of cells) {
+    const sourceAsset = cell.direction
+      ? refs.find((r) => r.role === "anchor" && r.direction === cell.direction)?.asset
+      : items.find((i) => i.id === cell.item)?.image;
+    const sourceFile = sourceAsset ? assetFile(character, sourceAsset) : null;
+    if (!sourceFile || !existsSync(sourceFile) || !cell.take) continue;
+    sources.push({ name: cell.direction ?? cell.item, picture: drawingSignature(readRgba(sourceFile)), take: cell.take });
+  }
+  if (sources.length < 2) return { checked: false, reason: "fewer than two cells have both a picture to compare and a frame" };
+  const pairs = [];
+  for (let i = 0; i < sources.length; i++) {
+    for (let j = i + 1; j < sources.length; j++) {
+      const apart = signatureDistance(sources[i].picture, sources[j].picture);
+      if (apart <= 0) continue;
+      pairs.push({ a: sources[i].name, b: sources[j].name, ratio: round(signatureDistance(sources[i].take, sources[j].take) / apart, 3) });
+    }
+  }
+  pairs.sort((x, y) => x.ratio - y.ratio);
+  const collapsed = pairs.filter((p) => p.ratio < PACK_COLLAPSE_RATIO);
+  return { checked: true, ok: collapsed.length === 0, lowest: pairs.slice(0, 3), collapsed, limit: PACK_COLLAPSE_RATIO };
+}
+
+/** One keyed frame of a cell's clip at `time`, as a drawing signature —
+ *  read before anything is cut, so a mixed-up take never reaches a motion. */
+function cellTakeSignature(clip, time, threshold) {
+  const work = mkdtempSync(join(tmpdir(), "sprite-take-"));
+  try {
+    const raw = ffmpegTo(join(work, "raw.png"), () => ["-ss", String(time), "-i", clip, "-frames:v", "1", "-pix_fmt", "rgba"], "pack-split take frame");
+    const plate = stepProbe(raw, threshold).cornerColor;
+    const keyed = ffmpegTo(join(work, "keyed.png"), () => [
+      "-i", raw, "-vf", `colorkey=${plate}:${DEFAULT_VIDEO_SIMILARITY}:${DEFAULT_BLEND},format=rgba`, "-frames:v", "1", "-pix_fmt", "rgba",
+    ], "pack-split take key");
+    return drawingSignature(readRgba(keyed));
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/** A pack's state words that loop by default; everything else plays once. */
+const PACK_LOOPING_STATES = ["idle", "walk", "run", "loop"];
+/** The states whose cells align on a trend line, as a walk cut from a clip does. */
+const PACK_TREND_STATES = ["walk", "run"];
+/** Frames per second a pack's cycle is sampled at when `--frames` is not given. */
+const PACK_SAMPLE_FPS = 12;
+
+/**
+ * Cut a pack's clip into its cells and every cell into a motion.
+ *
+ * The clip is a grid picture shot as one take (`pack.mjs`): a character's
+ * facings, or a props set's items. Each cell is cropped into its own clip
+ * under its motion's directory — that file is what the cell motion registers
+ * as a `crop` of the pack's clip — and then sampled with the whole
+ * `from-video` chain. Every cell is sampled on ONE window, read off all the
+ * cells at once (their registered distance matrices averaged), so the
+ * directions of a walk are in phase and have the same number of frames.
+ */
+function stepPackSplit(clip, options) {
+  const input = resolve(clip);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  const character = readCharacterProject(requireFlag(options.character, "--character"), "pack-split");
+  const pack = character.doc.sprite.motions.find((m) => m && m.id === options.pack);
+  if (!pack) fail(`pack-split: no motion '${options.pack}' in ${character.dir}`);
+  if (pack.kind !== "pack" || !pack.pack) fail(`pack-split: '${pack.id}' is not a pack — add one with sprite-project.mjs add-pack`);
+  const { rows, cols, cells, state } = pack.pack;
+  if (!Array.isArray(cells) || cells.length !== rows * cols) fail(`pack-split: '${pack.id}' has a broken cell list`);
+
+  const size = probeSize(input, "pack-split");
+  const rects = cellRects(size.width, size.height, rows, cols);
+  const cellSize = { width: rects[0].w, height: rects[0].h };
+  const window = clipWindow(input, { trimStart: options.trimStart, trimEnd: options.trimEnd, label: "pack-split" });
+  const stream = probeVideoStream(input);
+  const warnings = [];
+  const stem = basename(input, extname(input));
+
+  // 1. Crop every cell into its own clip. Near-lossless: the cell is sampled
+  // and keyed after this, and a second lossy pass would soften the edge the
+  // keyer reads.
+  const cut = [];
+  cells.forEach((cell, index) => {
+    if (!cell) return;
+    const rect = rects[index];
+    const motionDir = join(character.dir, "motions", cell.motion);
+    mkdirSync(motionDir, { recursive: true });
+    const out = join(motionDir, `cell-${stem}.mp4`);
+    ffmpegTo(out, () => [
+      "-i", input, "-vf", `crop=${rect.w}:${rect.h}:${rect.x}:${rect.y}`,
+      "-an", "-c:v", "libx264", "-crf", "10", "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+    ], `pack-split cell ${cell.motion}`);
+    cut.push({ ...cell, index, row: rect.row, col: rect.col, rect: { x: rect.x, y: rect.y, w: rect.w, h: rect.h }, clip: out, motionDir });
+  });
+  if (!cut.length) fail(`pack-split: '${pack.id}' has no cells to cut`);
+
+  // 2. One window for every cell.
+  const loop = options.loop ?? PACK_LOOPING_STATES.includes(state);
+  let start = window.start;
+  let end = Math.min(window.end, window.duration);
+  let period = null;
+  let cycle = null;
+  let oneShots = [];
+  if (options.trimStart === null && options.trimEnd === null) {
+    let span = end - start;
+    if (span > MAX_ANALYSIS_SECONDS) span = MAX_ANALYSIS_SECONDS;
+    const fps = round(Math.min(stream.fps ?? MIN_ANALYSIS_FPS, Math.max(MIN_ANALYSIS_FPS, MAX_CYCLE_FRAMES / span)), 3);
+    let sum = null;
+    let firstFeatures = null;
+    let moves = false;
+    let n = 0;
+    for (const cell of cut) {
+      const keyFrame = ffmpegTo(join(tmpdir(), `sprite-pack-key-${process.pid}-${cell.index}.png`), () => [
+        "-ss", String(start), "-i", cell.clip, "-frames:v", "1", "-pix_fmt", "rgba",
+      ], "pack-split key frame");
+      const keyColor = stepProbe(keyFrame, options.threshold).cornerColor;
+      rmSync(keyFrame, { force: true });
+      const { thumbs, masks } = decodeThumbs(cell.clip, {
+        start, span, key: keyColor, similarity: options.similarity, blend: options.blend, fps, size: cellSize,
+      });
+      if (readMotion(masks, { fps, start }).stillStart !== null) moves = true;
+      const registered = registerThumbs(thumbs, thumbSize(cellSize.width, cellSize.height));
+      const features = registered.map(premultiplied);
+      const D = distanceMatrix(features);
+      if (sum === null) {
+        sum = new Float64Array(D.length);
+        firstFeatures = features;
+        n = features.length;
+      }
+      if (features.length !== n) fail(`pack-split: cell ${cell.motion} decoded ${features.length} frames, the first cell ${n}`);
+      for (let i = 0; i < D.length; i++) sum[i] += D[i];
+    }
+    const averaged = Float32Array.from(sum, (v) => v / cut.length);
+    const read = readCycle(null, { fps, start, moves, gait: options.gait, D: averaged, features: firstFeatures });
+    cycle = (({ sentence, ...rest }) => rest)(read.cycle);
+    oneShots = read.oneShots;
+    if (read.cycle.sentence) warnings.push(read.cycle.sentence);
+    if (loop && read.loops.length) {
+      ({ start, end, period } = read.loops[0]);
+    } else if (loop) {
+      warnings.push("no shared cycle was found across the cells — every cell is sampled over the whole clip; look at the frames, or pass --trim-start/--trim-end");
+    } else if (read.oneShots.length) {
+      ({ start, end } = read.oneShots[0]);
+    }
+  }
+
+  const frames = options.frames ?? Math.max(6, Math.min(16, Math.round((period ?? Math.min(end - start, 2)) * PACK_SAMPLE_FPS)));
+  if (frames > MAX_FRAMES) fail(`--frames ${frames} is over the ${MAX_FRAMES}-frame limit`);
+  const xFrom = options.xFrom ?? (PACK_TREND_STATES.includes(state) ? "trend" : "feet");
+
+  // Did the take keep its cells apart? Checked on each cell's first frame
+  // BEFORE any cell motion is written: a refused take must not overwrite
+  // the frames a registered one left.
+  for (const cell of cut) cell.take = cellTakeSignature(cell.clip, start, options.threshold);
+  const facing = packFacingCheck(character, cut);
+  if (facing.checked && !facing.ok && !options.force) {
+    fail(`pack-split: the take mixed up its cells: ${facing.collapsed.slice(0, 4).map((p) => `${p.a} and ${p.b}`).join(", ")} look more alike than their pictures (ratio ${facing.collapsed[0].ratio} < ${PACK_COLLAPSE_RATIO}) — the clip turned or swapped copies; nothing was cut. Shoot it again, or --force after you have looked`);
+  }
+  // An item floats in its cell; a figure stands on a ground line.
+  const items = cut.some((c) => c.item);
+  const anchor = options.fromVideo.anchor ?? (items ? "center" : "bottom");
+  const yFrom = options.fromVideo.yFrom ?? (items ? "cell" : "anchor");
+
+  // 3. Every cell through the same chain, on the same window.
+  const out = [];
+  for (const cell of cut) {
+    const run = stepFromVideo(cell.clip, {
+      ...options.fromVideo,
+      anchor,
+      yFrom,
+      out: cell.motionDir,
+      name: cell.motion,
+      frames,
+      at: null,
+      loop,
+      xFrom,
+      trimStart: round(start, 3),
+      trimEnd: round(end, 3),
+    });
+    out.push({
+      motion: cell.motion,
+      ...(cell.direction ? { direction: cell.direction } : {}),
+      ...(cell.item ? { item: cell.item } : {}),
+      row: cell.row,
+      col: cell.col,
+      rect: cell.rect,
+      clip: cell.clip,
+      run,
+    });
+    for (const w of run.warnings ?? []) warnings.push(`${cell.motion}: ${w}`);
+  }
+
+  if (facing.checked && !facing.ok) {
+    warnings.unshift(`the take mixed up its cells (cut anyway, --force): ${facing.collapsed.slice(0, 4).map((p) => `${p.a} and ${p.b}`).join(", ")} look more alike than their pictures (ratio ${facing.collapsed[0].ratio} < ${PACK_COLLAPSE_RATIO})`);
+  }
+
+  return {
+    kind: "pack",
+    clip: input,
+    pack: pack.id,
+    facingCheck: facing,
+    state,
+    grid: { rows, cols },
+    cellSize,
+    window: { start: round(start, 3), end: round(end, 3), period, frames, loop, shared: true },
+    ...(cycle ? { cycle } : {}),
+    ...(oneShots.length ? { oneShots } : {}),
+    cells: out,
+    warnings,
+  };
+}
+
+/** The share of a cell's height the tallest drawing gets on a pack plate. */
+const PACK_PLATE_FILL = 0.62;
+
+/**
+ * Lay a cut-out grid picture (a facing sheet, an item sheet) onto a flat
+ * plate for its pack clip: every cell's drawing re-placed in the middle of
+ * its cell, all at ONE scale so the tallest stands `fill` of the cell, the
+ * drawings sharing a baseline.
+ *
+ * Why. The image model draws each copy wherever it likes in its cell, often
+ * nearly filling it — and the video model then reframes by a few percent.
+ * Measured on the 0.6.0 spike: Pip's facing sheet left the hats about 7 % of
+ * the cell from the top edge, and in the 720p clip of it every cell's
+ * drawing touched its cell's edge in 6 of 11 sampled frames (the top row's
+ * hats cut off). A plate with room in every cell is the same fix `flatten
+ * --room` is for a single clip.
+ */
+function stepPackPlate(image, { character: characterDir, ref: refId, pack: packId, out, fill, bg, size, threshold }) {
+  const character = readCharacterProject(requireFlag(characterDir, "--character"), "pack-plate");
+  const work = mkdtempSync(join(tmpdir(), "sprite-plate-"));
+  // Where each cell's drawing comes from. A facing sheet (--ref) is cut by
+  // its own layout; an items pack (--pack) takes each item's registered
+  // cut-out, because the pack's grid is not the item sheet's.
+  const drawn = [];
+  let rows;
+  let cols;
+  let aspect;
+  try {
+    if (packId) {
+      const pack = character.doc.sprite.motions.find((m) => m && m.id === packId);
+      if (!pack || pack.kind !== "pack" || !pack.pack) fail(`pack-plate: '${packId}' is not a pack of ${character.dir}`);
+      ({ rows, cols } = pack.pack);
+      aspect = rows / cols;
+      const items = Array.isArray(character.doc.sprite.items) ? character.doc.sprite.items : [];
+      if (image) fail("pack-plate: an items pack is laid out from the items' own cut-outs — pass no picture with --pack");
+      pack.pack.cells.forEach((cell, index) => {
+        if (!cell) return;
+        if (!cell.item) fail(`pack-plate: '${packId}' is a facing pack — lay it out from its facing sheet with --ref`);
+        const item = items.find((i) => i.id === cell.item);
+        const file = item ? assetFile(character, item.image) : null;
+        if (!file || !existsSync(file)) fail(`pack-plate: item '${cell.item}' has no picture on disk`);
+        const picture = readRgba(file);
+        const box = computeBbox(picture, threshold).bbox;
+        if (!box) fail(`pack-plate: item '${cell.item}' is an empty picture`);
+        const trimmed = writeRgbaPng(join(work, `cell-${index}.png`), {
+          width: box.w, height: box.h, data: cropBuffer(picture, box.x, box.y, box.w, box.h),
+        }, `pack-plate ${cell.item}`);
+        drawn.push({ index, cell: cell.item, box, file: trimmed });
+      });
+    } else {
+      const ref = (character.doc.sprite.refs ?? []).find((r) => r && r.id === refId);
+      if (!ref || !ref.layout) fail(`pack-plate: '${refId}' is not a grid reference of ${character.dir} (a facing sheet: add-ref --role directions --layout 8)`);
+      const input = resolve(requirePositional(image ? [image] : [], "<facing sheet cut-out>"));
+      const picture = readRgba(input);
+      if (!hasAlpha(picture)) fail(`pack-plate: ${input} has no transparency — cut the sheet out first (remove-background.mjs)`);
+      ({ rows, cols } = ref.layout);
+      aspect = picture.height / picture.width;
+      const rects = cellRects(picture.width, picture.height, rows, cols);
+      ref.layout.cells.forEach((cell, index) => {
+        if (!cell) return;
+        const rect = rects[index];
+        const cellImage = { width: rect.w, height: rect.h, data: cropBuffer(picture, rect.x, rect.y, rect.w, rect.h) };
+        const box = computeBbox(cellImage, threshold).bbox;
+        if (!box) fail(`pack-plate: the ${cell} cell is empty`);
+        const file = writeRgbaPng(join(work, `cell-${index}.png`), {
+          width: box.w, height: box.h, data: cropBuffer(cellImage, box.x, box.y, box.w, box.h),
+        }, `pack-plate ${cell}`);
+        drawn.push({ index, cell, box, file });
+      });
+    }
+    if (!drawn.length) fail("pack-plate: the layout names no cell");
+    const outWidth = size ?? Math.max(1024, cols * 512);
+    const outHeight = Math.max(2, Math.round((outWidth * aspect) / 2) * 2);
+    const outRects = cellRects(outWidth, outHeight, rows, cols);
+    const cellW = outRects[0].w;
+    const cellH = outRects[0].h;
+    const tallest = Math.max(...drawn.map((d) => d.box.h));
+    const widest = Math.max(...drawn.map((d) => d.box.w));
+    // One scale for every cell: the tallest drawing stands `fill` of the
+    // cell, and nothing is wider than `fill` of it either.
+    const scale = Math.min((fill * cellH) / tallest, (fill * cellW) / widest);
+    // A shared baseline, the margin split evenly above the tallest and below.
+    // An item is centred in its cell instead: it stands on nothing.
+    const baseline = Math.round(cellH * (1 - (1 - fill) / 2));
+    const inputs = [];
+    const chain = [];
+    let last = "[0:v]";
+    drawn.forEach((d, i) => {
+      const w = Math.max(2, Math.round(d.box.w * scale));
+      const h = Math.max(2, Math.round(d.box.h * scale));
+      const o = outRects[d.index];
+      const x = o.x + Math.round((cellW - w) / 2);
+      const y = packId ? o.y + Math.round((cellH - h) / 2) : o.y + baseline - h;
+      inputs.push("-i", d.file);
+      chain.push(`[${i + 1}:v]scale=${w}:${h}:flags=lanczos,format=rgba[s${i}]`);
+      chain.push(`${last}[s${i}]overlay=${x}:${y}:format=auto[o${i}]`);
+      last = `[o${i}]`;
+      d.placed = { x, y, w, h };
+    });
+    const written = ffmpegTo(out, () => [
+      "-f", "lavfi", "-i", `color=c=${bg.replace("#", "0x")}:s=${outWidth}x${outHeight}`,
+      ...inputs,
+      "-filter_complex", chain.join(";"), "-map", last, "-frames:v", "1", "-pix_fmt", "rgb24",
+    ], "pack-plate");
+    return {
+      kind: "plate",
+      ...(packId ? { pack: packId } : { ref: refId }),
+      out: written,
+      size: { width: outWidth, height: outHeight },
+      fill,
+      scale: round(scale, 4),
+      bg,
+      cells: drawn.map((d) => ({ cell: d.cell, placed: d.placed })),
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Cut an item sheet into its items: each cell's drawing trimmed to its ink
+ * and centred on one square canvas the same size for every item — the
+ * largest drawing plus `pad` — so a set reads as one family in an
+ * inventory grid and every icon has the same slot size. A drawing that
+ * touches its cell's edge probably crosses into the next one: warned.
+ */
+function stepSplitItems(image, { rows, cols, ids, out, pad, threshold }) {
+  const input = resolve(image);
+  const picture = readRgba(input);
+  if (!hasAlpha(picture)) fail(`split-items: ${input} has no transparency — cut the sheet out first (remove-background.mjs)`);
+  if (ids.length > rows * cols) fail(`split-items: ${ids.length} ids for a ${cols}x${rows} grid of ${rows * cols} cells`);
+  if (new Set(ids).size !== ids.length) fail("split-items: --ids names an item twice");
+  const rects = cellRects(picture.width, picture.height, rows, cols);
+  const warnings = [];
+  const cut = [];
+  ids.forEach((id, index) => {
+    const rect = rects[index];
+    const cellImage = { width: rect.w, height: rect.h, data: cropBuffer(picture, rect.x, rect.y, rect.w, rect.h) };
+    const box = computeBbox(cellImage, threshold).bbox;
+    if (!box) {
+      warnings.push(`${id}: its cell is empty — the model drew fewer items than asked`);
+      return;
+    }
+    if (box.x === 0 || box.y === 0 || box.x + box.w >= rect.w || box.y + box.h >= rect.h) {
+      warnings.push(`${id}: the drawing touches its cell's edge — it may be cut, or cross into the next cell; look at it`);
+    }
+    cut.push({ id, index, box, data: cropBuffer(cellImage, box.x, box.y, box.w, box.h) });
+  });
+  if (!cut.length) fail("split-items: every cell is empty");
+  const side = Math.max(...cut.map((c) => Math.max(c.box.w, c.box.h))) + pad * 2;
+  const outDir = resolve(out);
+  mkdirSync(outDir, { recursive: true });
+  const files = cut.map((c) => {
+    const canvas = Buffer.alloc(side * side * 4);
+    const ox = Math.floor((side - c.box.w) / 2);
+    const oy = Math.floor((side - c.box.h) / 2);
+    for (let y = 0; y < c.box.h; y++) {
+      c.data.copy(canvas, ((oy + y) * side + ox) * 4, y * c.box.w * 4, (y + 1) * c.box.w * 4);
+    }
+    const file = writeRgbaPng(join(outDir, `${c.id}.png`), { width: side, height: side, data: canvas }, `split-items ${c.id}`);
+    return { id: c.id, file, width: side, height: side, cell: c.index, drawn: { width: c.box.w, height: c.box.h } };
+  });
+  return { kind: "items", sheet: input, grid: { rows, cols }, canvas: { width: side, height: side }, files, warnings };
+}
+
+/**
+ * Cut a facing sheet into one anchor per direction: each cell cropped,
+ * trimmed to its drawing plus `pad`, written as `anchor-<direction>.png`.
+ * The sheet must already be cut out (alpha): a white plate is white inside
+ * the character too. A drawing that touches its cell's edge probably
+ * crosses into the next one — warned, never "fixed".
+ */
+function stepSplitFacings(image, { character: characterDir, ref: refId, out, pad, threshold }) {
+  const input = resolve(image);
+  const character = readCharacterProject(requireFlag(characterDir, "--character"), "split-facings");
+  const ref = (character.doc.sprite.refs ?? []).find((r) => r && r.id === refId);
+  if (!ref) fail(`split-facings: no reference '${refId}' in ${character.dir}`);
+  if (ref.role !== "directions" || !ref.layout) fail(`split-facings: '${refId}' is not a facing sheet (add-ref --role directions --layout 8)`);
+  const picture = readRgba(input);
+  if (!hasAlpha(picture)) fail(`split-facings: ${input} has no transparency — cut the sheet out first (remove-background.mjs)`);
+  const { rows, cols, cells } = ref.layout;
+  const rects = cellRects(picture.width, picture.height, rows, cols);
+  const outDir = resolve(out);
+  mkdirSync(outDir, { recursive: true });
+  const files = [];
+  const warnings = [];
+  cells.forEach((direction, index) => {
+    if (!direction) return;
+    const rect = rects[index];
+    const cellImage = { width: rect.w, height: rect.h, data: cropBuffer(picture, rect.x, rect.y, rect.w, rect.h) };
+    const box = computeBbox(cellImage, threshold).bbox;
+    if (!box) {
+      warnings.push(`${direction}: the cell is empty`);
+      return;
+    }
+    if (box.x === 0 || box.y === 0 || box.x + box.w >= rect.w || box.y + box.h >= rect.h) {
+      warnings.push(`${direction}: the drawing touches its cell's edge — it may cross into the next cell; look at the anchor before using it`);
+    }
+    const x = Math.max(0, box.x - pad);
+    const y = Math.max(0, box.y - pad);
+    const w = Math.min(rect.w, box.x + box.w + pad) - x;
+    const h = Math.min(rect.h, box.y + box.h + pad) - y;
+    const file = writeRgbaPng(join(outDir, `anchor-${direction}.png`), { width: w, height: h, data: cropBuffer(cellImage, x, y, w, h) }, `split-facings ${direction}`);
+    files.push({ direction, file, width: w, height: h });
+  });
+  return { kind: "facings", ref: refId, image: input, layout: ref.layout, files, warnings };
+}
+
 /**
  * The subject's height, in clip pixels, in the clip's first frame (t = 0):
  * keyed with the clip's own key — the colorkey `filter` in the decode, or the
@@ -4615,10 +5152,13 @@ function stepFromVideo(clip, options) {
 
   // ffmpeg writes nothing and still exits 0 when a seek lands past the last
   // frame, so a missing file here is turned into the sentence that names why.
+  // A matted clip carries its own alpha (`--key alpha`): VP9 has to be read
+  // with libvpx, which keeps the alpha plane ffmpeg's own decoder drops.
+  const decode = options.key === "alpha" ? alphaDecodeArgs(input) : [];
   const extract = (time, index, filter) => {
     try {
       return ffmpegTo(join(cellsDir, frameName(index)), () => [
-        "-ss", String(time), "-i", input, "-frames:v", "1",
+        "-ss", String(time), ...decode, "-i", input, "-frames:v", "1",
         ...(filter ? ["-vf", filter] : []),
         "-pix_fmt", "rgba",
       ], `from-video frame ${index}`);
@@ -4637,13 +5177,21 @@ function stepFromVideo(clip, options) {
   let plate = null;
   let filter = null;
   let firstPlate = null;
-  if (options.key !== "none") {
+  if (options.key !== "none" && options.key !== "alpha") {
     extract(times[0], 0, null);
     const first = readRgba(join(cellsDir, frameName(0)));
     keyColor = options.key === "auto" ? cornerColor(first) : normalizeColor(options.key, "--key");
     firstPlate = options.keyer === "unmix" ? keyPlate([first], options.key, options.similarity) : null;
     keyer = resolveKeyer(options.keyer, firstPlate, "from-video");
     if (keyer === "colorkey") filter = `colorkey=${keyColor}:${options.similarity}:${options.blend},format=rgba`;
+    // A clip whose corners are black was not shot on its plate edge to edge:
+    // the video model letterboxed a still of a shape it does not take (a
+    // tall standing figure, measured 0.6.0 on Kael — a 0.35-wide still came
+    // back as a 640² clip with black bars either side and the sword drawn
+    // over them). One colour cannot key both, so it is said, not guessed at.
+    if (options.key === "auto" && isNearBlack(keyColor)) {
+      warnings.push("the clip's corners are black — it came back letterboxed, or was shot on black: a still of a shape the video model does not take is padded with black bars, and one key colour cannot remove both the bars and the plate. Flatten the still with --room square and shoot it again, or key a black plate on purpose with --key #000000");
+    }
   }
   const radius = keyRadius(options.similarity);
 
@@ -4661,7 +5209,7 @@ function stepFromVideo(clip, options) {
   let bodyHeight = null;
   let rescale = null;
   if (options.bodyHeight) {
-    if (!keyer) fail("--body-height measures the subject against its plate: it needs a keyed clip, not --key none");
+    if (!keyer) fail(`--body-height measures the subject against its plate: it needs a keyed clip, not --key ${options.key}`);
     // The un-mixing keyer measures its plate over a spread of the samples,
     // which do not exist yet; frame 0's plate — the one that chose the keyer —
     // keys the standing frame.
@@ -8830,6 +9378,29 @@ const OPTIONS = {
     keyer: { type: "string" },
     "no-clean": { type: "boolean", default: false }, "body-height": { type: "string" },
   },
+  "pack-split": {
+    character: { type: "string" }, pack: { type: "string" }, frames: { type: "string" },
+    loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
+    gait: { type: "string" }, "x-from": { type: "string" }, "y-from": { type: "string" }, anchor: { type: "string" },
+    "trim-start": { type: "string" }, "trim-end": { type: "string" },
+    pad: { type: "string" }, scale: { type: "string" }, cols: { type: "string" }, width: { type: "string" },
+    "no-webp": { type: "boolean", default: false }, threshold: { type: "string" },
+    similarity: { type: "string" }, blend: { type: "string" }, keyer: { type: "string" },
+    "no-clean": { type: "boolean", default: false }, "body-height": { type: "string" },
+    force: { type: "boolean", default: false },
+  },
+  "split-facings": {
+    character: { type: "string" }, ref: { type: "string" }, out: { type: "string" }, pad: { type: "string" },
+    threshold: { type: "string" },
+  },
+  "split-items": {
+    rows: { type: "string" }, cols: { type: "string" }, ids: { type: "string" }, out: { type: "string" },
+    pad: { type: "string" }, threshold: { type: "string" },
+  },
+  "pack-plate": {
+    character: { type: "string" }, ref: { type: "string" }, pack: { type: "string" }, out: { type: "string" }, fill: { type: "string" },
+    bg: { type: "string" }, size: { type: "string" }, threshold: { type: "string" },
+  },
   retime: {
     keep: { type: "string" }, out: { type: "string" }, fps: { type: "string" },
   },
@@ -9464,7 +10035,7 @@ function main() {
     case "from-video": {
       noteUnmixIgnores(values, "from-video");
       const key = values.key ?? "auto";
-      if (key !== "auto" && key !== "none") normalizeColor(key, "--key");
+      if (key !== "auto" && key !== "none" && key !== "alpha") normalizeColor(key, "--key");
       const at = values.at === undefined ? null : parseSampleTimes(values.at);
       if (at) {
         for (const flag of ["frames", "trim-start", "trim-end"]) {
@@ -9512,6 +10083,106 @@ function main() {
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} sampled from ${basename(out.video)} at ${out.fps}fps → ${out.motionDir}`,
         ...residueLine(out.inspect),
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "pack-split": {
+      if (values.loop && values["no-loop"]) fail("--loop and --no-loop contradict each other");
+      const trimStart = num(values["trim-start"], "--trim-start", { min: 0, fallback: null });
+      const trimEnd = num(values["trim-end"], "--trim-end", { min: 0, fallback: null });
+      const similarity = num(values.similarity, "--similarity", { min: 0, fallback: DEFAULT_VIDEO_SIMILARITY });
+      const blend = num(values.blend, "--blend", { min: 0, fallback: DEFAULT_BLEND });
+      const out = stepPackSplit(requirePositional(positionals, "<clip>"), {
+        character: values.character,
+        pack: requireFlag(values.pack, "--pack"),
+        frames: values.frames === undefined ? null : num(values.frames, "--frames", { integer: true, min: 2 }),
+        loop: values.loop ? true : values["no-loop"] ? false : null,
+        gait: pickGait(values.gait),
+        xFrom: values["x-from"] === undefined ? null : pickXFrom(values["x-from"]),
+        trimStart,
+        trimEnd,
+        threshold,
+        similarity,
+        blend,
+        force: values.force,
+        fromVideo: {
+          fps: null,
+          // Absent means the pack's default: an item floats (centre, kept
+          // height), a figure stands on its feet.
+          anchor: values.anchor === undefined ? null : pickAnchor(values.anchor),
+          yFrom: values["y-from"] === undefined ? null : pickYFrom(values["y-from"]),
+          key: "auto",
+          cell: null,
+          pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+          smooth: false,
+          scale: num(values.scale, "--scale", { min: 0.01, fallback: 1 }),
+          nearest: false,
+          cols: values.cols === undefined ? null : num(values.cols, "--cols", { integer: true, min: 1 }),
+          width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 1 }),
+          webp: !values["no-webp"],
+          threshold,
+          similarity,
+          blend,
+          keyer: pickKeyer(values.keyer),
+          clean: !values["no-clean"],
+          bodyHeight: values["body-height"] === undefined
+            ? null
+            : num(values["body-height"], "--body-height", { integer: true, min: 1 }),
+        },
+      });
+      emit(values, out, [
+        `${out.pack}: ${out.cells.length} cells of ${out.cellSize.width}x${out.cellSize.height} cut from ${basename(out.clip)}, ${out.window.frames} frames each from ${out.window.start}–${out.window.end}s${out.window.period ? ` (period ${out.window.period}s)` : ""}`,
+        ...out.cells.map((c) => `  ${c.motion}: ${c.run.frames.length} frames → ${c.run.motionDir}`),
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "pack-plate": {
+      const fill = num(values.fill, "--fill", { min: 0.2, fallback: PACK_PLATE_FILL });
+      if (fill > 0.95) fail(`--fill: a share of the cell up to 0.95, got ${fill}`);
+      if ((values.ref === undefined) === (values.pack === undefined)) fail("pack-plate: name the grid by --ref <facing sheet> or --pack <pack motion>, one of them");
+      const out = stepPackPlate(positionals[0] ?? null, {
+        character: values.character,
+        ref: values.ref ?? null,
+        pack: values.pack ?? null,
+        out: requireFlag(values.out, "--out"),
+        fill,
+        bg: normalizeColor(values.bg ?? "#00ff00", "--bg"),
+        size: values.size === undefined ? null : num(values.size, "--size", { integer: true, min: 64 }),
+        threshold,
+      });
+      emit(values, out, [`${out.cells.length} cells re-placed at ×${out.scale} (tallest ${Math.round(out.fill * 100)} % of a cell) on ${out.bg} → ${out.out}`]);
+      break;
+    }
+    case "split-items": {
+      const ids = String(requireFlag(values.ids, "--ids")).split(",").map((v) => v.trim()).filter(Boolean);
+      const out = stepSplitItems(requirePositional(positionals, "<item sheet cut-out>"), {
+        rows: num(requireFlag(values.rows, "--rows"), "--rows", { integer: true, min: 1 }),
+        cols: num(requireFlag(values.cols, "--cols"), "--cols", { integer: true, min: 1 }),
+        ids,
+        out: requireFlag(values.out, "--out"),
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+        threshold,
+      });
+      emit(values, out, [
+        `${out.files.length} items cut from ${basename(out.sheet)} onto ${out.canvas.width}x${out.canvas.height} squares`,
+        ...out.files.map((f) => `  ${f.id}: ${f.file}`),
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "split-facings": {
+      const out = stepSplitFacings(requirePositional(positionals, "<facing sheet cut-out>"), {
+        character: values.character,
+        ref: requireFlag(values.ref, "--ref"),
+        out: requireFlag(values.out, "--out"),
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+        threshold,
+      });
+      emit(values, out, [
+        `${out.files.length} anchors cut from ${basename(out.image)}`,
+        ...out.files.map((f) => `  ${f.direction}: ${f.file} (${f.width}x${f.height})`),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;

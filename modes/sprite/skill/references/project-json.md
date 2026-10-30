@@ -859,3 +859,78 @@ There is no `character` key in the ViewerAddress vocabulary because the
 character *is* the content set: `{ "contentSet": "lumi", "motion": "attack" }`.
 A new character is a new top-level directory with its own `project.json` —
 never a second entry inside an existing one.
+
+## The game asset pipeline (0.6.0)
+
+Every field below is optional and absent in a 0.5.x file, which loads — and
+is rewritten by any command — as before. The loader drops a value it does
+not recognise. Commands and measured behaviour: `game-assets.md`.
+
+```ts
+type Direction = "front" | "back" | "left" | "right"
+               | "front-left" | "front-right" | "back-left" | "back-right";
+
+interface SpriteSidecar {
+  set?: "props";                  // a props set; absent = a character
+  items?: PropItem[];             // props sets only (`register-items`)
+  model?: CharacterModel;         // `register-model`
+  …
+}
+
+interface SpriteCharacter {
+  view?: "side" | "topdown" | "isometric";   // stated by every built prompt
+  variantOf?: { contentSet: string; note: string };   // `init --variant-of`
+  …
+}
+
+interface SpriteRef {
+  role: … | "directions";         // a facing sheet
+  layout?: { rows: number; cols: number; cells: Array<Direction | null> };
+                                  // exactly on a facing sheet; one without a
+                                  // usable layout loads as custom
+}
+
+interface PropItem {
+  id: string; label: string;
+  image: string;                  // `item-<id>`, the cut-out
+  sheet?: string;                 // `items-sheet-<n>` it was cut from
+  loop?: string;                  // its `<id>-loop` motion, once ready
+}
+
+interface CharacterModel {
+  glb: string;                    // `model-glb` (image, metadata.container "glb")
+  provider: string;               // "meshy-7.1"
+  from?: string;                  // the ref it was made from
+  thumbnail?: string;             // `model-thumbnail`
+  animations: Array<{ id: string; label: string; asset: string; action?: number }>;
+                                  // `model-anim-<id>`; `action` the library id
+}
+
+interface Motion {
+  kind?: … | "pack" | "cutscene";
+  pack?: {                        // kind "pack" only, whole or absent
+    state: string;                // "walk"; "loop" on an items pack
+    rows: number; cols: number;
+    cells: Array<{ motion: string; direction?: Direction; item?: string } | null>;
+  };
+  packOf?: string;                // a cell motion: its pack's id
+  storyboard?: { beats: Array<{ at: number; text: string; keyframe?: string }> };
+                                  // keyframes are `<motion>-beat-<n>`
+  restyleOf?: { contentSet?: string; motion: string; note?: string };
+  transfer?: { from: string; label?: string; video: string };
+                                  // `from` a library id, "upload" or
+                                  // "<set>/<motion>"; `video` the
+                                  // `<motion>-driver` asset
+}
+
+type GeneratedVideoModel = … | "kling-mc" | "wan-animate";
+type GeneratedVideoMode  = … | "motion-transfer" | "v2v";
+// MotionVideo.op gains "crop": a pack cell's clip, `derivedFrom` naming the
+// pack's clip as "<pack motion>/<video id>".
+```
+
+Asset ids added: `items-sheet-<n>`, `item-<id>`, `<motion>-driver`,
+`<motion>-beat-<n>`, `model-glb`, `model-thumbnail`, `model-anim-<id>`.
+`remove-motion` on a pack removes its cells with it; on a cell alone it is
+refused. `register-pack` refuses a take whose `facingCheck` failed unless
+`--force`.

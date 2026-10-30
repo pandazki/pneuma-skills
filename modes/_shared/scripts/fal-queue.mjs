@@ -552,6 +552,7 @@ const MEDIA_MIME = {
   ".ogg": "audio/ogg",
   ".opus": "audio/ogg",
   ".m4a": "audio/mp4",
+  ".glb": "model/gltf-binary",
 };
 
 /** What a single data URI may carry. Bigger inputs have to be hosted. */

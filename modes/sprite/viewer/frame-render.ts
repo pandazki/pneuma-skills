@@ -35,6 +35,8 @@ export interface StageImages {
   frames: ReadonlyArray<HTMLImageElement | null>;
   /** The sheet for a `raw-sheet` source; null otherwise. */
   sheet: HTMLImageElement | null;
+  /** A `pack` source's frames, per cell (row-major, `null` an empty cell). */
+  grid?: ReadonlyArray<ReadonlyArray<HTMLImageElement | null> | null>;
   /** True once every image has settled (loaded or failed). */
   ready: boolean;
   /** How many images failed to decode. */
@@ -316,6 +318,8 @@ export function drawStage(
   ctx.clearRect(0, 0, width, height);
   paintBackground(ctx, width, height, opts.background, opts.theme);
 
+  if (opts.source.kind === "pack") return drawPack(ctx, opts, opts.source);
+
   const count = opts.source.kind === "none" ? 0 : opts.source.count;
   // The playhead belongs to the MOTION; the source on screen may briefly be
   // something else (a reference image, or a re-run that came back shorter).
@@ -411,6 +415,78 @@ export function drawStage(
     drew: current !== null,
     pivot,
   };
+}
+
+/**
+ * A pack on the stage: its grid, each cell's motion at the shared playhead,
+ * every cell at ONE scale (the largest frame of any cell fits its cell), the
+ * empty cells left empty. Thin rules between the cells, so the grid reads as
+ * the facings it is rather than eight loose figures.
+ */
+function drawPack(
+  ctx: CanvasRenderingContext2D,
+  opts: DrawStageOptions,
+  source: Extract<FrameSource, { kind: "pack" }>,
+): DrawStageResult {
+  const { width, height } = opts;
+  const grid = opts.images.grid ?? [];
+  let maxW = 0;
+  let maxH = 0;
+  for (const cell of grid) {
+    for (const image of cell ?? []) {
+      if (image?.naturalWidth) {
+        maxW = Math.max(maxW, image.naturalWidth);
+        maxH = Math.max(maxH, image.naturalHeight);
+      }
+    }
+  }
+  if (!maxW || !maxH) {
+    return { scale: 1, frameWidth: 0, frameHeight: 0, drew: false, pivot: { x: 0, y: 0, measured: false } };
+  }
+  const pad = 12;
+  const cellW = (width - pad * 2) / source.cols;
+  const cellH = (height - pad * 2) / source.rows;
+  const fit = Math.min(cellW / maxW, cellH / maxH);
+  const scale = opts.zoom === "1x" ? Math.min(1, fit) : opts.zoom === "2x" ? Math.min(2, fit) : fit;
+  const gridW = cellW * source.cols;
+  const gridH = cellH * source.rows;
+  const ox = (width - gridW) / 2;
+  const oy = (height - gridH) / 2;
+  ctx.imageSmoothingEnabled = scale < 1;
+  let drew = false;
+  source.cells.forEach((cell, index) => {
+    const frames = grid[index];
+    if (!cell || !frames || !frames.length) return;
+    const image = frames[opts.frame % frames.length] ?? frames.find((f) => f?.naturalWidth) ?? null;
+    if (!image?.naturalWidth) return;
+    const col = index % source.cols;
+    const row = Math.floor(index / source.cols);
+    const dw = image.naturalWidth * scale;
+    const dh = image.naturalHeight * scale;
+    const dx = Math.round(ox + col * cellW + (cellW - dw) / 2);
+    const dy = Math.round(oy + row * cellH + (cellH - dh) / 2);
+    ctx.drawImage(image, dx, dy, dw, dh);
+    drew = true;
+  });
+  ctx.save();
+  ctx.strokeStyle = opts.theme === "dark" ? "rgba(249, 115, 22, 0.28)" : "rgba(234, 88, 12, 0.3)";
+  ctx.lineWidth = 1;
+  for (let c = 1; c < source.cols; c++) {
+    const x = Math.round(ox + c * cellW) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, oy + 6);
+    ctx.lineTo(x, oy + gridH - 6);
+    ctx.stroke();
+  }
+  for (let r = 1; r < source.rows; r++) {
+    const y = Math.round(oy + r * cellH) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(ox + 6, y);
+    ctx.lineTo(ox + gridW - 6, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+  return { scale, frameWidth: maxW, frameHeight: maxH, drew, pivot: { x: 0, y: 0, measured: false } };
 }
 
 /**

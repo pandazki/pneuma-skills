@@ -51,7 +51,7 @@ export const GENERATION_CELL_MAX = 512;
 export const SHEET_FRAME_COUNTS = [2, 3, 4, 6, 8, 9, 12, 16];
 
 /** The motion families with guards of their own; anything else is generic. */
-export const SHEET_STATES = ["idle", "walk", "run", "jump", "attack", "wave"];
+export const SHEET_STATES = ["idle", "walk", "run", "jump", "attack", "wave", "hurt", "death", "cast", "guard", "victory"];
 
 /**
  * Frame counts measured to read best, per state. idle: E1 (2026-09-27,
@@ -64,9 +64,30 @@ export const RECOMMENDED_FRAMES = { idle: 8 };
  *  --no-guide is given. Set from E2; see `references/prompting.md`. */
 export const GUIDE_DEFAULT = false;
 
-const DIRECTIONS = ["front", "back", "left", "right"];
-/** The side view a mirror of each side view would be. */
-const OPPOSITE = { left: "right", right: "left" };
+/** Every facing a motion or an anchor can have: the four of a top-down or
+ *  side game, then the four diagonals an 8-direction (isometric) game adds.
+ *  In compass terms, as an isometric game names them: front = S, back = N,
+ *  left = W, right = E, front-left = SW, front-right = SE, back-left = NW,
+ *  back-right = NE. `domain.ts`'s DIRECTIONS is the same tuple. */
+export const DIRECTIONS = ["front", "back", "left", "right", "front-left", "front-right", "back-left", "back-right"];
+/** The side view a mirror of each side view would be — the diagonals too:
+ *  a front-left three-quarter view flipped is a front-right one. */
+export const OPPOSITE = {
+  left: "right", right: "left",
+  "front-left": "front-right", "front-right": "front-left",
+  "back-left": "back-right", "back-right": "back-left",
+};
+
+/** The camera a character is drawn from, when recorded (`character.view`). */
+export const CHARACTER_VIEWS = ["side", "topdown", "isometric"];
+
+/** The sentence every built prompt states for a recorded camera. Absent
+ *  view, no sentence — exactly the text a 0.5.x character gets. */
+export const VIEW_TEXT = {
+  side: "Side-on game camera at eye level, as in a 2D side-scroller.",
+  topdown: "Top-down RPG camera, looking down at the character from a high three-quarter angle, the way a classic top-down RPG shows its sprites.",
+  isometric: "Isometric game camera: the character is seen from an elevated three-quarter angle, looking down at about 30 degrees, as in a classic isometric RPG; the ground plane runs along the isometric diagonals.",
+};
 
 /**
  * Where the character's OWN right and left side are in a picture facing each
@@ -87,6 +108,10 @@ export const SIDE_GEOMETRY = {
   back: "Seen from behind, the character's own right side is on the right of the picture and their own left side is on the left of the picture.",
   left: "Facing left, toward the left of the picture, the character's own right side is the far side — turned away from the viewer and partly hidden behind the body — and their own left side is the near side, toward the viewer.",
   right: "Facing right, toward the right of the picture, the character's own right side is the near side, toward the viewer, and their own left side is the far side — turned away from the viewer and partly hidden behind the body.",
+  "front-left": "Facing down and to the left, a front three-quarter view, the character's own left side is the near side, toward the viewer and on the right of the picture, and their own right side is the far side, on the left of the picture and partly hidden behind the body.",
+  "front-right": "Facing down and to the right, a front three-quarter view, the character's own right side is the near side, toward the viewer and on the left of the picture, and their own left side is the far side, on the right of the picture and partly hidden behind the body.",
+  "back-left": "Facing up and to the left, a back three-quarter view turned away from the viewer, the character's own left side is the near side, toward the viewer and on the left of the picture, and their own right side is the far side, on the right of the picture and partly hidden behind the body.",
+  "back-right": "Facing up and to the right, a back three-quarter view turned away from the viewer, the character's own right side is the near side, toward the viewer and on the right of the picture, and their own left side is the far side, on the left of the picture and partly hidden behind the body.",
 };
 
 /** The side-geometry sentence for a facing, and what it asks of every
@@ -105,6 +130,11 @@ const STATE_WORDS = {
   jump: ["jump", "jumping", "hop", "hopping", "leap", "leaping"],
   attack: ["attack", "attacking", "slash", "strike", "swing", "punch", "kick", "stab", "thrust", "smash"],
   wave: ["wave", "waving", "greet", "greeting", "hello"],
+  hurt: ["hurt", "hit", "damage", "damaged", "flinch", "stagger", "knockback"],
+  death: ["death", "die", "dying", "dead", "defeat", "ko", "faint"],
+  cast: ["cast", "casting", "spell", "magic", "summon", "channel"],
+  guard: ["guard", "block", "blocking", "parry", "defend", "shield"],
+  victory: ["victory", "win", "cheer", "celebrate", "celebration", "taunt"],
 };
 
 // ---------------------------------------------------------------------------
@@ -277,10 +307,10 @@ function readGuards(guards) {
     let m;
     if ((m = /^pixel:(\d+)$/.exec(id)) && Number(m[1]) > 0) read.pixel = Number(m[1]);
     else if (id === "guide") read.guide = true;
-    else if ((m = /^direction:(\w+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.direction = m[1];
-    else if ((m = /^anchor:(\w+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.anchor = m[1];
+    else if ((m = /^direction:([\w-]+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.direction = m[1];
+    else if ((m = /^anchor:([\w-]+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.anchor = m[1];
     else if (id === "asymmetric") read.asymmetric = true;
-    else if ((m = /^rhythm:(\w+)$/.exec(id)) && OPPOSITE[m[1]]) read.rhythm = m[1];
+    else if ((m = /^rhythm:([\w-]+)$/.exec(id)) && OPPOSITE[m[1]]) read.rhythm = m[1];
     else if ((m = /^state:(\w+)$/.exec(id)) && (SHEET_STATES.includes(m[1]) || m[1] === "generic")) read.state = m[1];
     else if (id === "row-continuity") read.rowContinuity = true;
     else if (id === "loop-close" || id === "one-shot-end") read.ending = id;
@@ -311,6 +341,10 @@ const FACING_LOCK = {
   back: "Every cell faces away from the viewer (back view, no visible face); lock the whole sheet to that facing and do not drift into a three-quarter or side view.",
   right: "Every cell is a pure side profile facing camera-right; lock the whole sheet to that facing and do not drift into a front or three-quarter view.",
   left: "Every cell is a pure side profile facing camera-left; lock the whole sheet to that facing and do not drift into a front or three-quarter view.",
+  "front-left": "Every cell is a front three-quarter view facing down and to the camera-left; lock the whole sheet to that facing and do not drift into a front, side or back view.",
+  "front-right": "Every cell is a front three-quarter view facing down and to the camera-right; lock the whole sheet to that facing and do not drift into a front, side or back view.",
+  "back-left": "Every cell is a back three-quarter view facing up and to the camera-left, turned away from the viewer; lock the whole sheet to that facing and do not drift into a back, side or front view.",
+  "back-right": "Every cell is a back three-quarter view facing up and to the camera-right, turned away from the viewer; lock the whole sheet to that facing and do not drift into a back, side or front view.",
 };
 
 /**
@@ -340,6 +374,16 @@ function stateText(state, direction) {
       return "This is an attack made with the body and what it already holds: windup, strike, follow-through, recovery. Every grip stays as the references show — one hand stays one hand, both hands stay both hands, nothing is let go or switched to the other hand — and a hand the attack does not use keeps what it holds where it is. The weapon or prop stays inside the safe area of its own cell in every phase. No slash arcs, speed lines, impact flashes, sparks or trails.";
     case "wave":
       return "This is a gesture made with the arm alone — arm down, arm raised, hand tilted, arm returning; the feet stay planted unless the action asks for a step. No wave marks, motion arcs, lines, sparkles or symbols around the hand.";
+    case "hurt":
+      return "This is a hit reaction, played once: the impact jolts the body back and away from the blow, the head snaps and the arms fly up a little, then the character recovers to its stance. The feet stay on the ground line, the facing never changes, and everything held stays held. No blood, hit sparks, impact flashes, stars or symbols.";
+    case "death":
+      return "This is a defeat, played once: the character staggers, loses balance and collapses to the ground, ending lying still on the ground line inside its own cell. Draw the character small enough that the fallen pose stays inside the safe area. No blood, ghosts, souls, sparkles or symbols.";
+    case "cast":
+      return "This is a spell cast made with the body and what it already holds: gather (the hands or the focus draw in), build (the stance widens, the arms rise), release (the hands or the focus thrust forward), recovery. Show it through pose; no magic circles, glows, particles or effects detached from the character.";
+    case "guard":
+      return "This is a guard: the character raises its arms, its weapon or its shield to block and holds the defensive stance, braced, the feet planted on the ground line. Every grip stays as the references show. No impact flashes or symbols.";
+    case "victory":
+      return "This is a victory pose: a short celebration — a fist or the held prop raised, a small hop or a cheer — that settles into a proud stance. The feet return to the ground line. No confetti, sparkles, stars or symbols.";
     default:
       return "Carry the action in the body — pose, weight and contacts — one readable phase after the next.";
   }
@@ -394,6 +438,7 @@ export function renderSheetPrompt({ character, motion }, parts) {
   if (g.anchor) {
     text.push(`The attached ${g.anchor}-facing anchor is authoritative for that facing: match its view in every cell, while the other references carry the identity.`);
   }
+  if (VIEW_TEXT[character.view]) text.push(VIEW_TEXT[character.view]);
   text.push("Fixed camera: consistent body proportions, drawing scale and camera distance in every cell, and ground contacts share one baseline while the character stands on the ground.");
   text.push("The references own the identity — face, hair shape, markings, palette, outline weight, proportions, outfit and props stay exactly as they show, and whatever is worn or held on one side stays on that side. This sheet owns motion only: spend the variation on pose, limb contacts, body height, torso lean, head bob, and hair and cloth follow-through. Prefer a subtler animation over any change that alters the character's identity.");
   if (g.asymmetric) {

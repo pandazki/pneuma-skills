@@ -404,18 +404,20 @@ describe("the skill install surface", () => {
 });
 
 describe("showcase copy", () => {
-  test("five highlights with localized titles and non-placeholder copy", () => {
-    // Five, not three: the sheet-vs-video choice, the style/grid range and the
-    // seamless-loop workflow are separate claims, and none is implied by the
-    // others.
+  test("the nine game-pipeline highlights, then the two the mode alone has", () => {
+    // 0.6.0: one highlight per section of the game-asset pipeline, each a
+    // video recorded from real assets (`record.mjs`), then the breathing
+    // picture and the pixel lattice, which no other tool in the comparison
+    // offers.
     const showcase = JSON.parse(read("modes/sprite/showcase/showcase.json"));
     expect(showcase.hero).toBe("hero.png");
-    expect(showcase.highlights).toHaveLength(5);
+    expect(showcase.highlights).toHaveLength(11);
     expect(Object.keys(showcase.tagline).sort()).toEqual(["en", "ja", "zh-CN"]);
-    for (const highlight of showcase.highlights) {
+    for (const [i, highlight] of showcase.highlights.entries()) {
       expect(Object.keys(highlight.title).sort()).toEqual(["en", "ja", "zh-CN"]);
       expect(highlight.description.en.length).toBeGreaterThan(80);
-      expect(highlight.media).toMatch(/^highlight-[\w-]+\.png$/);
+      expect(highlight.media).toMatch(i < 9 ? /^highlight-[\w-]+\.mp4$/ : /^highlight-[\w-]+\.png$/);
+      expect(highlight.mediaType ?? "image").toBe(i < 9 ? "video" : "image");
       expect(JSON.stringify(highlight)).not.toContain("TODO");
     }
   });

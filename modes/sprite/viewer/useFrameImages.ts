@@ -94,6 +94,7 @@ function release(images: Iterable<HTMLImageElement>): void {
 /** Identity for a source: the exact bytes it points at, cache buster and all. */
 export function sourceKey(source: FrameSource): string {
   if (source.kind === "frames") return `frames:${source.frames.join("|")}`;
+  if (source.kind === "pack") return `pack:${source.cols}x${source.rows}:${source.cells.map((c) => (c ? c.frames.join(",") : "-")).join("|")}`;
   if (source.kind === "raw-sheet") return `sheet:${source.url}:${source.cols}x${source.rows}`;
   return "none";
 }
@@ -149,10 +150,14 @@ export function useFrameImages(source: FrameSource): StageImages {
     if (source.kind === "none") return;
 
     let cancelled = false;
+    // A pack loads every cell's frames as one set, cell after cell, and
+    // hands them back sliced per cell.
     const urls =
       source.kind === "frames"
         ? source.frames
-        : [source.url];
+        : source.kind === "pack"
+          ? source.cells.flatMap((c) => (c ? c.frames : []))
+          : [source.url];
     const decoded: (HTMLImageElement | null)[] = urls.map(() => null);
     let settled = 0;
     let failed = 0;
@@ -167,9 +172,20 @@ export function useFrameImages(source: FrameSource): StageImages {
         staleRef.current = staleRef.current.concat(shownRef.current);
         shownRef.current = elements;
       }
+      let offset = 0;
       setImages({
         frames: source.kind === "frames" ? decoded.slice() : [],
         sheet: source.kind === "raw-sheet" ? decoded[0] : null,
+        ...(source.kind === "pack"
+          ? {
+            grid: source.cells.map((c) => {
+              if (!c) return null;
+              const slice = decoded.slice(offset, offset + c.frames.length);
+              offset += c.frames.length;
+              return slice;
+            }),
+          }
+          : {}),
         ready,
         failed,
       });

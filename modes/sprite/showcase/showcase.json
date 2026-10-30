@@ -1,24 +1,136 @@
 {
   "tagline": {
-    "en": "From a game move set to a picture that breathes",
-    "zh-CN": "从游戏角色的一整套动作，到一张会呼吸的图",
-    "ja": "ゲームキャラのモーション一式から、呼吸する一枚の絵まで"
+    "en": "One character in, a game's worth of art out",
+    "zh-CN": "一个角色进来，一整套游戏素材出去",
+    "ja": "キャラ一体から、ゲーム一本ぶんの素材へ"
   },
   "hero": "hero.png",
   "highlights": [
     {
       "title": {
-        "en": "Say What It's For",
-        "zh-CN": "说清用途就行",
-        "ja": "用途を言うだけ"
+        "en": "Whole Move Sets",
+        "zh-CN": "整套动作",
+        "ja": "モーション一式"
       },
       "description": {
-        "en": "A game character, your own picture brought to life, a loop for a web page, or a mascot an app switches from code. Say which, and the agent asks only that route's few questions, quotes its price first, and finishes at its files.",
-        "zh-CN": "游戏角色、让自己的图动起来、网页上的循环动画，还是应用里靠代码切换状态的吉祥物——说出是哪一种，助手就只问这条路线需要的那几个问题，先报价，最后交付该交的文件。",
-        "ja": "ゲームキャラ、手持ちの絵を動かす、Web ページのループ、アプリがコードで切り替えるマスコット。どれかを伝えれば、エージェントはそのルートに必要な質問だけをして、先に費用を伝え、決まったファイルで仕上げます。"
+        "en": "One picture or description in; idle, walk, run and the rest planned in one go with the price up front, each cut into aligned frames, a packed sheet and an atlas.",
+        "zh-CN": "给一张图或一句描述，待机、走、跑等整套动作一次排好，先报价；每个动作都切成对齐的帧、打包好的图集和 atlas。",
+        "ja": "絵か説明をひとつ渡せば、待機・歩き・走りなどを一度に計画し、先に費用を伝えます。各モーションは揃ったフレーム、パック済みシート、アトラスになります。"
       },
-      "media": "highlight-say-what-its-for.png",
-      "mediaType": "image"
+      "media": "highlight-move-sets.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Beat-by-Beat Motions",
+        "zh-CN": "按节拍编排动作",
+        "ja": "ビートで作るモーション"
+      },
+      "description": {
+        "en": "Describe a custom move as timed beats and pin the key poses with keyframes; one clip performs them in order and becomes frames like any other motion.",
+        "zh-CN": "把自定义动作写成带时间点的节拍，关键姿势用关键帧钉住；一段视频按顺序演完，再像其他动作一样切成帧。",
+        "ja": "カスタムの動きを時刻つきのビートで書き、要のポーズはキーフレームで固定。一本のクリップが順に演じ、他と同じくフレームになります。"
+      },
+      "media": "highlight-storyboard.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Eight Directions, One Take",
+        "zh-CN": "8 个方向，一次拍完",
+        "ja": "8 方向をワンテイクで"
+      },
+      "description": {
+        "en": "The character is drawn once per facing on one sheet, and every state is one clip of all eight moving in sync — the same identity in every direction, every loop in phase.",
+        "zh-CN": "角色在一张图上按 8 个朝向各画一次，每个动作只拍一段视频，8 个方向同步动起来——每个方向都是同一个角色，循环节奏也一致。",
+        "ja": "1 枚のシートに向きごとに一度ずつ描き、各ステートは 8 方向が同時に動く 1 本のクリップ。どの向きも同じキャラのまま、ループの位相も揃います。"
+      },
+      "media": "highlight-eight-directions.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Props for Your World",
+        "zh-CN": "配套的道具",
+        "ja": "世界観に合う小物"
+      },
+      "description": {
+        "en": "Weapons, potions and pickups drawn together in one visual language, cut into clean icons on one slot size — and one clip brings the whole set to life.",
+        "zh-CN": "武器、药水、拾取物在一张图里按同一种画风一起画出，切成同尺寸的干净图标；再拍一段视频，让整套道具都动起来。",
+        "ja": "武器・薬・拾得物を同じ画風で一緒に描き、同じ枠サイズのきれいなアイコンに切り出します。クリップ 1 本でセット全体が動き出します。"
+      },
+      "media": "highlight-props.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Same Character, New Looks",
+        "zh-CN": "同一个角色，换套装",
+        "ja": "同じキャラ、新しい装い"
+      },
+      "description": {
+        "en": "Keep the face, the hair and the proportions; change the outfit. Each variation keeps the original's style, scale and camera, ready to animate.",
+        "zh-CN": "脸、发型、身材比例都不变，只换衣服。每个变体都沿用原版的画风、尺寸和镜头，可以直接拿去做动画。",
+        "ja": "顔も髪も体型もそのまま、衣装だけを変えます。どのバリエーションも元の画風・スケール・カメラを引き継ぎ、すぐに動かせます。"
+      },
+      "media": "highlight-outfits.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Keep the Motion, Change the Look",
+        "zh-CN": "动作不变，换个样子",
+        "ja": "動きはそのまま、見た目を変える"
+      },
+      "description": {
+        "en": "A finished motion drives a new look frame for frame — the same steps and timing in a new outfit, with no motion rebuilt from scratch.",
+        "zh-CN": "用做好的动作逐帧驱动新造型——同样的步伐和节奏，换一身装扮，不用从头再做一遍动作。",
+        "ja": "完成したモーションが新しい見た目をフレームごとに動かします。同じ歩みとタイミングのまま、衣装だけが変わり、動きを作り直す必要はありません。"
+      },
+      "media": "highlight-restyle.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Any Move, Any Character",
+        "zh-CN": "任何动作，套到任何角色",
+        "ja": "どんな動きも、どのキャラにも"
+      },
+      "description": {
+        "en": "Pick a performance from the motion library or bring your own video, and every character performs it in their own look.",
+        "zh-CN": "从动作库里挑一段表演，或者上传自己的视频，每个角色都能按自己的样子演出来。",
+        "ja": "モーションライブラリから演技を選ぶか、自分の動画を持ち込めば、どのキャラも自分の姿のまま演じます。"
+      },
+      "media": "highlight-motion-library.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Picture to Animated 3D",
+        "zh-CN": "从一张图到会动的 3D",
+        "ja": "一枚の絵から動く 3D へ"
+      },
+      "description": {
+        "en": "One picture becomes a textured, rigged 3D model, animated from a library of hundreds of moves and turned on the stage from any angle.",
+        "zh-CN": "一张图变成带贴图、已绑骨的 3D 模型，从几百种动作库里挑动画，在舞台上随意转动查看。",
+        "ja": "一枚の絵が、テクスチャ付きでリグ済みの 3D モデルに。数百の動きのライブラリから動かし、ステージ上でどの角度からでも見られます。"
+      },
+      "media": "highlight-3d-model.mp4",
+      "mediaType": "video"
+    },
+    {
+      "title": {
+        "en": "Cutscenes With Your Cast",
+        "zh-CN": "你的角色来演过场",
+        "ja": "自分のキャストでカットシーン"
+      },
+      "description": {
+        "en": "Your characters, cast from their own references, in a scored cinematic cutscene — shot by shot, with music and sound.",
+        "zh-CN": "用角色自己的参考图选角，生成带配乐的电影感过场动画——分镜头拍摄，有音乐也有音效。",
+        "ja": "キャラ自身の参照画像でキャスティングし、音楽と効果音つきの映画的なカットシーンをショットごとに作ります。"
+      },
+      "media": "highlight-cutscene.mp4",
+      "mediaType": "video"
     },
     {
       "title": {
@@ -46,34 +158,6 @@
         "ja": "画像モデルが描く、にじんで不揃いなブロックを 1 ブロック 1 ピクセルに揃え直し、パレットも固定します。カラバリは全モーション共通の厳密な色の置き換えなので、目もハイライトも変わりません。"
       },
       "media": "highlight-pixel-stays-pixel.png",
-      "mediaType": "image"
-    },
-    {
-      "title": {
-        "en": "Every Pose Cut Whole",
-        "zh-CN": "每个姿势都切得完整",
-        "ja": "ポーズは欠けずに切り出す"
-      },
-      "description": {
-        "en": "Image models don't always draw the grid they were asked for. When a pose crosses a grid line, the sheet is cut where the poses actually are, so no boot, blade or tail is lost, and the drawing itself is never touched.",
-        "zh-CN": "图像模型不一定按要求的网格来画。只要有姿势越过格线，就改为按每个姿势实际所在的位置来切，靴子、刀刃、尾巴都不会被切掉，原图也一笔不动。",
-        "ja": "画像モデルは頼んだグリッドどおりに描くとは限りません。ポーズが線をはみ出したら、実際にポーズがある位置で切り直すので、ブーツも刃も尻尾も欠けず、元の絵には一切手を加えません。"
-      },
-      "media": "highlight-every-pose-whole.png",
-      "mediaType": "image"
-    },
-    {
-      "title": {
-        "en": "Clean Edges, Warm Colours",
-        "zh-CN": "暖色边缘也干净",
-        "ja": "暖色のふちもきれいに"
-      },
-      "description": {
-        "en": "Copper hair shot on a green screen used to keep a yellow-green rim that a hue check cannot see. The keyer now reads each edge pixel against the character's own colours, and measures what is left.",
-        "zh-CN": "在绿幕前拍的铜色头发，以前边上总留着一圈黄绿色，按色相判断根本发现不了。现在抠像时，每个边缘像素都会拿角色自己的颜色来比对，剩下多少也会量出来。",
-        "ja": "グリーンバックで撮った銅色の髪には、色相では見分けられない黄緑のふちが残っていました。いまのキーヤーはふちの 1 ピクセルずつをキャラ自身の色と照らし合わせ、残りも数値で測ります。"
-      },
-      "media": "highlight-clean-warm-edges.png",
       "mediaType": "image"
     }
   ]

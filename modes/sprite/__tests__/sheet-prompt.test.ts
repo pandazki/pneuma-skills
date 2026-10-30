@@ -124,7 +124,13 @@ describe("sheet-prompt.mjs — the builder", () => {
     expect(stateOf({ id: "lantern-swing" })).toBe("attack");
     expect(stateOf({ id: "m3", label: "Big Hop" })).toBe("jump");
     expect(stateOf({ id: "hello" })).toBe("wave");
-    expect(stateOf({ id: "celebrate", label: "Celebrate" })).toBe("generic");
+    expect(stateOf({ id: "ponder", label: "Ponder" })).toBe("generic");
+    // 0.6.0's states: a hit reaction, a defeat, a spell, a block, a cheer.
+    expect(stateOf({ id: "hurt-front" })).toBe("hurt");
+    expect(stateOf({ id: "death" })).toBe("death");
+    expect(stateOf({ id: "fireball", label: "Cast spell" })).toBe("cast");
+    expect(stateOf({ id: "block" })).toBe("guard");
+    expect(stateOf({ id: "celebrate", label: "Celebrate" })).toBe("victory");
     // The id wins over the label, and the first matching token wins.
     expect(stateOf({ id: "attack", label: "Walk" })).toBe("attack");
     expect(stateOf({ id: "run-attack" })).toBe("run");
@@ -140,7 +146,12 @@ describe("sheet-prompt.mjs — the builder", () => {
     expect(guard("jump").prompt).toContain("This is one jump, not repeated hops");
     expect(guard("attack").prompt).toContain("one hand stays one hand, both hands stay both hands");
     expect(guard("wave").prompt).toContain("This is a gesture made with the arm alone");
-    const generic = guard("celebrate");
+    expect(guard("hurt").prompt).toContain("This is a hit reaction, played once");
+    expect(guard("death").prompt).toContain("ending lying still on the ground line");
+    expect(guard("cast").prompt).toContain("This is a spell cast");
+    expect(guard("guard").prompt).toContain("This is a guard");
+    expect(guard("victory").prompt).toContain("This is a victory pose");
+    const generic = guard("ponder");
     expect(generic.parts.guards).toContain("state:generic");
     expect(generic.prompt).toContain("Carry the action in the body");
     expect(generic.prompt).not.toContain("This is ");
@@ -243,7 +254,7 @@ describe("sheet-prompt.mjs — side geometry", () => {
     expect(SIDE_GEOMETRY.right).toMatch(/Facing right, .*own right side is the near side, toward the viewer, and their own left side is the far side/);
     expect(SIDE_GEOMETRY.front).toMatch(/own right side is on the left of the picture and their own left side is on the right of the picture/);
     expect(SIDE_GEOMETRY.back).toMatch(/own right side is on the right of the picture and their own left side is on the left of the picture/);
-    expect(Object.keys(SIDE_GEOMETRY)).toEqual(["front", "back", "left", "right"]);
+    expect(Object.keys(SIDE_GEOMETRY)).toEqual(["front", "back", "left", "right", "front-left", "front-right", "back-left", "back-right"]);
     expect(sideClause("left")).toBe(`${SIDE_GEOMETRY.left} Place every side-specific detail by the character's own right and left, as they fall in this view.`);
     expect(sideClause("up")).toBeNull();
     expect(sideClause(undefined)).toBeNull();

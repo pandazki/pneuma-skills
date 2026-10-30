@@ -2832,8 +2832,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         // No other role takes a direction.
         expect(project(dir, "add-ref", "--id", "t", "--file", uri, "--role", "turnaround", "--direction", "front", "--uploaded").err)
           .toMatch(/--direction: only an anchor/);
-        expect(project(dir, "add-ref", "--id", "x", "--file", uri, "--role", "anchor", "--direction", "front-left", "--uploaded").err)
-          .toMatch(/--direction: expected one of front, back, left, right/);
+        // 0.6.0: the diagonals are directions; a word that is not one is refused.
+        expect(project(dir, "add-ref", "--id", "x", "--file", uri, "--role", "anchor", "--direction", "north", "--uploaded").err)
+          .toMatch(/--direction: expected one of front, back, left, right, front-left, front-right, back-left, back-right/);
+        projectJson(dir, "add-ref", "--id", "anchor-front-left", "--file", uri, "--role", "anchor", "--direction", "front-left", "--uploaded");
         const shown = projectJson(dir, "show").refs.find((r: any) => r.id === "anchor-left");
         expect(shown).toMatchObject({ role: "anchor", direction: "left", origin: "uploaded" });
       });

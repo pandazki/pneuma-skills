@@ -70,6 +70,9 @@ const LOOP_FORMATS: LoopFormat[] = ["webp", "apng", "webm", "lottie"];
  * that cannot do anything.
  */
 export function panelTabs(motion: Motion | null): PanelTab[] {
+  // A pack is its take (its cells are motions of their own); a cutscene is
+  // nothing but its clip.
+  if (motion?.kind === "pack" || motion?.kind === "cutscene") return ["video"];
   if (motion?.kind === "transition") {
     // A transition is its take and its frames: no GIF, no loop files, no
     // atlas. A reverse was never shot — it is its source played backwards —
@@ -93,7 +96,7 @@ export function panelTabs(motion: Motion | null): PanelTab[] {
  * panel somewhere nobody asked for.
  */
 export function defaultTab(motion: Motion | null): PanelTab {
-  if (motion?.kind === "transition") return panelTabs(motion)[0];
+  if (motion?.kind === "transition" || motion?.kind === "pack" || motion?.kind === "cutscene") return panelTabs(motion)[0];
   return motion?.kind === "loop" ? "loop" : "gif";
 }
 
@@ -136,11 +139,28 @@ export function labelNamesDirection(label: string, direction: Direction | undefi
  * and grouped by target every exit back to the hub would pile up under it
  * while its entry sat under another loop.
  */
-export function railGroups(project: CharacterProject): { motions: Motion[]; transitions: Motion[] } {
+export function railGroups(project: CharacterProject): {
+  motions: Motion[];
+  transitions: Motion[];
+  /** A pack's cell motions, by pack id, in the pack's cell order — they sit
+   *  under their pack instead of in the list (0.6.0). */
+  cells: Record<string, Motion[]>;
+} {
   const all = project.sprite.motions;
+  const cells: Record<string, Motion[]> = {};
+  const inPack = new Set<string>();
+  for (const pack of all) {
+    if (pack.kind !== "pack" || !pack.pack) continue;
+    const members = pack.pack.cells
+      .map((cell) => (cell ? all.find((m) => m.id === cell.motion) : undefined))
+      .filter((m): m is Motion => !!m);
+    cells[pack.id] = members;
+    for (const m of members) inPack.add(m.id);
+  }
   return {
-    motions: all.filter((m) => m.kind !== "transition"),
+    motions: all.filter((m) => m.kind !== "transition" && !inPack.has(m.id)),
     transitions: all.filter((m) => m.kind === "transition"),
+    cells,
   };
 }
 

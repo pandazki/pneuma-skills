@@ -22,8 +22,18 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.5.2",
+  version: "0.6.0",
   changelog: {
+    "0.6.0": [
+      "Eight directions from one picture and one clip: the character is drawn once per facing on a 3×3 facing sheet, every state is one clip of all eight walking or idling in sync (a fast run is safer as a 4-way pack), and each facing becomes a motion of its own — the stage plays the whole compass at once",
+      "Props for a game world: a props set draws every item on one sheet in one visual language, cuts each into a clean icon, and one clip brings them all to life — a flame along a blade, a glint on a ring",
+      "A whole move set booked at once (idle, walk, run, jump, attack, hurt, death, cast, guard, victory) with one price before anything is paid; hit reactions, defeats, spells, blocks and cheers have their own sheet guards",
+      "Outfits and skins: a variant keeps the character and changes one thing, and the rail shows the family of looks",
+      "Borrow a movement: a library of filmed performances, the user's own video or another character's motion drives this character through it (Kling Motion Control) — and the same move gives an existing motion a new look, frame for frame",
+      "Storyboards: timed beats and keyframes for a custom motion, shown above the stage, shot as one clip",
+      "A rigged 3D model from the character's picture, with animations from Meshy's library, turned and played on the stage",
+      "Cutscenes with the characters in them, played on the stage",
+    ],
     "0.5.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.5.1": [
       "Before handing a character over, the agent opens the Export tab and looks at it the way you will, instead of reading a file list",
@@ -89,10 +99,10 @@ const spriteManifest: ModeManifest = {
     ja: "スプライト",
   },
   description: {
-    en: "Bring a character to life for whatever you are making: a move set your game engine loads (pixel art and four facings included), a seamless transparent loop for a web page, a mascot that switches states in one Rive file, or a gentle breathing idle from a picture you already have. Design the character once, or start from your own image; every motion stays on-model, keyed, aligned and previewed on a live stage.",
+    en: "Everything a game needs to move, from one character: a whole move set your engine loads, eight directions from one picture and one clip, props and icons in one visual language, new outfits, moves borrowed from any video, storyboarded custom motions, a rigged 3D model and cutscenes — plus seamless loops for a web page, a Rive mascot, or a breathing idle from a picture you already have. Every motion stays on-model, keyed, aligned and previewed on a live stage.",
     "zh-CN":
-      "游戏、网页、应用，或者手上的一张图，都能让角色动起来：一套游戏引擎直接能用的动作（像素画、四个朝向都支持），网页上首尾无缝的透明循环动画，能在几种状态间切换的应用吉祥物（一个 Rive 文件），或者让你的图先轻轻呼吸起来。角色设计一次就行，也可以直接从你的图开始；每个动作都自动抠背景、对齐，在舞台上实时预览。",
-    ja: "ゲーム、Web ページ、アプリ、手元の一枚の絵 —— 用途に合わせてキャラクターを動かします。ゲームエンジンにそのまま読み込めるモーション一式（ドット絵・4 方向にも対応）、継ぎ目のない透過ループ、状態を切り替えるアプリのマスコット（Rive ファイル 1 つ）、あるいは一枚の絵から始まる穏やかな呼吸アニメーション。キャラクターは一度設計するだけ、手持ちの絵から始めることもでき、どのモーションも背景抜き・整列まで自動で、ステージでそのままプレビューできます。",
+      "从一个角色出发，做出游戏需要的一整套会动的素材：引擎直接能用的整套动作、一张图加一段视频得到的 8 个方向、画风统一的道具和图标、换装、从任意视频借来的动作、按分镜编排的自定义动作、绑好骨骼的 3D 模型和过场动画——也能做网页上的无缝循环、Rive 吉祥物，或者让你手上的一张图轻轻呼吸。每个动作都保持角色一致，自动抠背景、对齐，在舞台上实时预览。",
+    ja: "キャラクター一体から、ゲームに必要な動く素材をまとめて。エンジンにそのまま読み込めるモーション一式、一枚の絵と一本のクリップから作る 8 方向、同じ画風の小物やアイコン、衣装替え、どんな動画からでも借りられる動き、絵コンテで組むカスタムモーション、リグ済みの 3D モデル、カットシーン —— Web ページのループ、Rive のマスコット、手元の絵の呼吸アニメも。どのモーションもキャラを保ったまま、背景抜きと整列まで自動で、ステージでそのままプレビューできます。",
   },
   // Methods ported from and adapted after it this round are itemised in
   // NOTICE.md, with upstream's license shipped under licenses/.
@@ -106,7 +116,7 @@ const spriteManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-sprite",
-    mdScene: `You and the user are bringing a character to life for what they are making — a move set for a game, a loop for a web page, a mascot for an app, or their own picture, breathing. The user watches a motion stage: a refs rail, a motion list, and a player that runs the selected motion at its own fps beside its GIF, video, atlas and an Export tab. You tell the route from what they say, design the character or take it from their image, run the generation and the deterministic pipeline, then look through the stage — playback state, the inspect report, a capture — before you tell them a motion is done.`,
+    mdScene: `You and the user are making what a game, a page or an app needs to move — a character's whole move set in two or eight directions, props for its world, new outfits, borrowed movements, a 3D model, a cutscene, a loop for a web page, a mascot for an app, or their own picture, breathing. The user watches a motion stage: a refs rail, a motion list, and a player that runs the selected motion at its own fps beside its GIF, video, atlas and an Export tab. You tell the route from what they say, design the character or take it from their image, run the generation and the deterministic pipeline, then look through the stage — playback state, the inspect report, a capture — before you tell them a motion is done.`,
     envMapping: {
       OPENROUTER_API_KEY: "openrouterApiKey",
       FAL_KEY: "falApiKey",
@@ -125,6 +135,7 @@ const spriteManifest: ModeManifest = {
       "remove-background.mjs",
       "remove-video-background.mjs",
       "interpolate-video.mjs",
+      "motion-transfer.mjs",
     ],
   },
 
@@ -191,7 +202,7 @@ const spriteManifest: ModeManifest = {
           address: {
             type: "object",
             description:
-              "ViewerAddress, e.g. `{ \"contentSet\": \"lumi\", \"motion\": \"attack\", \"frame\": 7 }`. `motion` selects a motion; `ref` opens a reference image in the stage instead (mutually exclusive with `motion`); `frame` seeks to that 0-based frame and pauses.",
+              "ViewerAddress, e.g. `{ \"contentSet\": \"lumi\", \"motion\": \"attack\", \"frame\": 7 }`. `motion` selects a motion (a pack plays its whole grid); `ref` opens a reference image in the stage instead (mutually exclusive with `motion`); `item` opens a props set's item (its loop when it has a ready one); `frame` seeks to that 0-based frame and pauses.",
             required: true,
           },
           tab: {

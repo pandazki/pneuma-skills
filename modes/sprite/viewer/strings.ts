@@ -142,6 +142,22 @@ export interface SpriteStrings {
 
   // ── Rail ────────────────────────────────────────────────────────────────
   references: string;
+  /** A props set's items, and what the rail says when it has none. */
+  items: string;
+  noItems: string;
+  itemAnimated: string;
+  driverClip: string;
+  restyleOf: (source: string) => string;
+  looks: string;
+  variantOf: (name: string, note: string) => string;
+  originalLook: string;
+  storyboard: string;
+  model3d: string;
+  model3dTitle: string;
+  model3dBadge: string;
+  modelLoading: string;
+  modelFailed: string;
+  cutsceneNoClip: string;
   motions: string;
   /** The rail's second list: the clips between loops. */
   transitions: string;
@@ -434,6 +450,21 @@ const en: SpriteStrings = {
   noAsset: "no asset",
 
   references: "References",
+  items: "Items",
+  noItems: "No items yet. Name the items you want — one sheet draws them all in one style.",
+  itemAnimated: "animated — plays its loop",
+  driverClip: "movement from",
+  restyleOf: (source) => `Same movement as ${source}, a new look.`,
+  looks: "Looks",
+  variantOf: (name, note) => `A variant of ${name}: ${note}`,
+  originalLook: "original",
+  storyboard: "Storyboard",
+  model3d: "3D model",
+  model3dTitle: "The rigged 3D model and its animations — drag to turn it",
+  model3dBadge: "3D",
+  modelLoading: "Loading the model…",
+  modelFailed: "The model could not be loaded.",
+  cutsceneNoClip: "No take yet — the clip appears here when it lands.",
   motions: "Motions",
   transitions: "Transitions",
   noReferences:
@@ -458,14 +489,28 @@ const en: SpriteStrings = {
     portrait: "portrait",
     expression: "expression",
     anchor: "direction anchor",
+    directions: "facing sheet",
     custom: "custom",
   },
-  direction: { front: "front", back: "back", left: "left", right: "right" },
+  direction: {
+    front: "front",
+    back: "back",
+    left: "left",
+    right: "right",
+    "front-left": "front-left",
+    "front-right": "front-right",
+    "back-left": "back-left",
+    "back-right": "back-right",
+  },
   directionTitle: {
     front: "Faces the viewer",
     back: "Faces away from the viewer",
     left: "Faces left",
     right: "Faces right",
+    "front-left": "Faces down and to the left",
+    "front-right": "Faces down and to the right",
+    "back-left": "Faces up and to the left",
+    "back-right": "Faces up and to the right",
   },
   missingAsset: "missing",
   motionMeta: (m) =>
@@ -635,7 +680,7 @@ const en: SpriteStrings = {
   riveRetry: "Try again",
 
   derivedClip: (parent, op, model) =>
-    `${{ matte: "matte", interpolate: "interpolation", retime: "retime" }[op]} of ${parent} · ${model}`,
+    `${{ matte: "matte", interpolate: "interpolation", retime: "retime", crop: "cell" }[op]} of ${parent} · ${model}`,
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":
@@ -690,11 +735,16 @@ const en: SpriteStrings = {
   modelHint: {
     "seedance-2.5": "cheap and quick at 480p",
     "h3-max": "stronger motion, slower, min 5 s",
+    "kling-mc": "a driving clip's movement on this character",
+    "kling-mc-pro": "the same, Kling's Pro quality",
+    "wan-animate": "a driving clip's movement, cheaper",
   },
   modeHint: {
     i2v: "from the first frame",
     "first-last": "from the first and last frames",
     r2v: "frames as references, new footage",
+    "motion-transfer": "the character performs a driving clip",
+    v2v: "another clip's movement, a new look",
   },
   notePlaceholder: {
     emphasis: "Anything the clip should emphasise? (optional)",
@@ -752,7 +802,17 @@ const zhCN: SpriteStrings = {
     ]
       .filter(Boolean)
       .join(" · "),
-  facing: (direction) => ({ front: "正面", back: "背面", left: "朝左", right: "朝右" })[direction],
+  facing: (direction) =>
+    ({
+      front: "正面",
+      back: "背面",
+      left: "朝左",
+      right: "朝右",
+      "front-left": "左前",
+      "front-right": "右前",
+      "back-left": "左后",
+      "back-right": "右后",
+    })[direction],
   refCount: (count) => `${count} 张参考图`,
   motionCount: (count) => `${count} 个动作`,
   transitionCount: (count) => `${count} 段过渡`,
@@ -834,6 +894,21 @@ const zhCN: SpriteStrings = {
   noAsset: "缺文件",
 
   references: "参考图",
+  items: "道具",
+  noItems: "还没有道具。说出想要哪些道具，一张图就能按同一种画风把它们画出来。",
+  itemAnimated: "有动画，点开播放",
+  driverClip: "动作来源",
+  restyleOf: (source) => `沿用 ${source} 的动作，换了一个样子。`,
+  looks: "造型",
+  variantOf: (name, note) => `${name} 的变体：${note}`,
+  originalLook: "原版",
+  storyboard: "分镜",
+  model3d: "3D 模型",
+  model3dTitle: "绑好骨骼的 3D 模型和它的动画——拖动可以转着看",
+  model3dBadge: "3D",
+  modelLoading: "正在加载模型…",
+  modelFailed: "模型加载失败。",
+  cutsceneNoClip: "还没有成片——视频生成好就会出现在这里。",
   motions: "动作",
   transitions: "过渡",
   noReferences: "还没有身份参考图。它们是每张动作图不跑形的依据。",
@@ -857,14 +932,28 @@ const zhCN: SpriteStrings = {
     portrait: "头像",
     expression: "表情",
     anchor: "朝向参考",
+    directions: "多朝向图",
     custom: "自定义",
   },
-  direction: { front: "正面", back: "背面", left: "朝左", right: "朝右" },
+  direction: {
+    front: "正面",
+    back: "背面",
+    left: "朝左",
+    right: "朝右",
+    "front-left": "左前",
+    "front-right": "右前",
+    "back-left": "左后",
+    "back-right": "右后",
+  },
   directionTitle: {
     front: "面朝观众",
     back: "背对观众",
     left: "面朝左边",
     right: "面朝右边",
+    "front-left": "面朝左下",
+    "front-right": "面朝右下",
+    "back-left": "面朝左上",
+    "back-right": "面朝右上",
   },
   missingAsset: "缺文件",
   motionMeta: (m) =>
@@ -1018,7 +1107,7 @@ const zhCN: SpriteStrings = {
   riveRetry: "重试",
 
   derivedClip: (parent, op, model) =>
-    `${parent} 的${{ matte: "抠像", interpolate: "补帧", retime: "重剪" }[op]} · ${model}`,
+    `${parent} 的${{ matte: "抠像", interpolate: "补帧", retime: "重剪", crop: "分格" }[op]} · ${model}`,
   atlasNote: (note) => {
     switch (note.kind) {
       case "unmeasured":
@@ -1070,11 +1159,16 @@ const zhCN: SpriteStrings = {
   modelHint: {
     "seedance-2.5": "480p，便宜也快",
     "h3-max": "动作更强，更慢更贵，最短 5 秒",
+    "kling-mc": "把一段视频里的动作套到这个角色上",
+    "kling-mc-pro": "同上，Kling 的 Pro 画质",
+    "wan-animate": "套用视频里的动作，更便宜",
   },
   modeHint: {
     i2v: "从第一帧生成",
     "first-last": "给首尾两帧，中间补出来",
     r2v: "把帧当参考，重新拍一段",
+    "motion-transfer": "角色照着一段视频来动",
+    v2v: "沿用另一段的动作，换个样子",
   },
   notePlaceholder: {
     emphasis: "这段视频要突出什么？（可不填）",

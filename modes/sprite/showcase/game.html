@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sprite showcase — the game asset pipeline</title>
+  <script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
+  <style>
+    @font-face{font-family:DM;src:url('/fonts/dmsans/v17-normal-latin.woff2');font-weight:300 700}
+    @font-face{font-family:Fraunces;src:url('/fonts/fraunces/v38-normal-latin.woff2');font-weight:400}
+    *{box-sizing:border-box}
+    body{margin:0;width:1376px;height:768px;overflow:hidden;background:#09090b;color:#f4f2ef;font-family:DM,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+    body:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 80% -10%,#5a341f2a,transparent 60%),radial-gradient(ellipse at 0% 110%,#3a1f5a18,transparent 55%);pointer-events:none}
+    .page{position:relative;width:1376px;height:768px;padding:34px 52px 28px;display:none}
+    .page.active{display:block}
+    img{display:block}
+    .brand{display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a5a1a0}
+    .brand b{color:#f4f2ef;font-weight:600}
+    .brand i{height:17px;width:1px;background:#454044;margin:0 3px}
+    .dot{width:7px;height:7px;background:#f97316;border-radius:50%}
+    .folio{margin-left:auto;letter-spacing:1.6px;color:#aaa09b;font-size:12px}
+    .foot{position:absolute;bottom:18px;left:52px;right:52px;display:flex;justify-content:space-between;color:#7d7773;font-size:11.5px;letter-spacing:.2px}
+    .split{position:absolute;top:96px;left:52px;right:52px;bottom:52px;display:grid;grid-template-columns:400px 1fr;gap:44px;align-items:center}
+    .split.flip{grid-template-columns:1fr 400px}
+    .copy .num{display:flex;align-items:center;gap:10px;font-size:11.5px;letter-spacing:2px;color:#f9a665;text-transform:uppercase}
+    .copy .num b{font-family:ui-monospace,Menlo,monospace;color:#f97316;font-weight:600}
+    .copy .num i{width:1px;height:12px;background:#5a4a40}
+    .copy h1{font:400 44px/1.06 Fraunces,Georgia,serif;letter-spacing:-1.4px;margin:16px 0 16px}
+    .copy p{margin:0;color:#aaa5a3;font-size:16px;line-height:1.6}
+    .copy .facts{margin-top:22px;display:flex;flex-wrap:wrap;gap:7px}
+    .tag{font-size:11.5px;color:#d9cfc8;border:1px solid #3d3633;background:#ffffff06;border-radius:6px;padding:4px 9px}
+    .tag.hot{border-color:#6b4128;color:#ffb47c;background:#f9731612}
+    .visual{position:relative;height:100%;display:flex;align-items:center;justify-content:center}
+    .card{position:relative;border:1px solid #2f2b2e;border-radius:14px;background:#0f0f11;box-shadow:0 30px 60px #0007;overflow:hidden}
+    .chk{background-color:#121214;background-image:linear-gradient(45deg,#18181b 25%,transparent 25%,transparent 75%,#18181b 75%),linear-gradient(45deg,#18181b 25%,transparent 25%,transparent 75%,#18181b 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+    .arrow{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle,#f97316,#c2570c);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 6px #f9731622,0 0 30px #f9731655;flex:none}
+    .arrow:after{content:"";width:11px;height:11px;border-top:2.5px solid #1a0d05;border-right:2.5px solid #1a0d05;transform:rotate(45deg);margin-left:-4px}
+    .chips{display:flex;gap:6px;justify-content:center}
+    .chips span{font-size:11px;letter-spacing:1.4px;padding:5px 14px;border-radius:20px;border:1px solid #3a3436;color:#8d8783;text-transform:uppercase}
+    .chips span.on{border-color:#c4753d;color:#ffcfa6;background:#f9731618;box-shadow:0 0 14px #f9731630}
+    .prompt{border:1px solid #3a3133;border-left:3px solid #f97316;border-radius:9px;background:#141214;padding:9px 14px}
+    .prompt small{display:block;font-size:9.5px;letter-spacing:1.6px;color:#8d8783;margin-bottom:4px}
+    .prompt div{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#efe7e0;white-space:nowrap;overflow:hidden}
+    .prompt div:before{content:"> ";color:#f97316}
+    .caret{display:inline-block;width:8px;height:14px;background:#f97316;vertical-align:-2px;margin-left:2px}
+    .lbl{font-size:10.5px;letter-spacing:1.3px;color:#a29a95;text-transform:uppercase;text-align:center}
+    .lbl.hot{color:#f9b27c}
+    canvas.sprite{display:block;image-rendering:auto}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);border-radius:14px;overflow:hidden}
+    .grid3>div{position:relative;display:flex;align-items:center;justify-content:center;border-right:1px solid #f9731630;border-bottom:1px solid #f9731630}
+    .grid3>div:nth-child(3n){border-right:0}
+    .grid3>div:nth-child(n+7){border-bottom:0}
+    .glow{position:absolute;inset:auto;width:70%;height:18px;bottom:10%;left:15%;border-radius:50%;background:radial-gradient(ellipse,#f973162a,transparent 70%)}
+  </style>
+</head>
+<body>
+
+<!-- 00 · hero -->
+<section class="page" id="hero">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">The game asset pipeline</span></div>
+  <div style="position:absolute;top:84px;left:52px;right:52px;display:flex;align-items:flex-end;justify-content:space-between">
+    <h1 style="font:400 50px/1.04 Fraunces,Georgia,serif;letter-spacing:-1.8px;margin:0">One character in.<br>A game's worth of art out.</h1>
+    <p style="margin:0 0 6px;color:#a6a2a1;font-size:14.5px;line-height:1.6;text-align:right">Move sets · eight directions · props · outfits<br>borrowed moves · storyboards · 3D · cutscenes</p>
+  </div>
+  <div class="card" style="position:absolute;left:52px;right:52px;top:224px;height:478px;display:grid;grid-template-columns:250px 1fr 300px">
+    <div style="border-right:1px solid #262327;padding:16px 14px">
+      <div class="lbl" style="text-align:left;margin-bottom:9px">Looks</div>
+      <div id="hero-looks" style="display:flex;gap:6px;margin-bottom:16px"></div>
+      <div class="lbl" style="text-align:left;margin-bottom:9px">Motions</div>
+      <div id="hero-motions"></div>
+    </div>
+    <div class="chk" style="position:relative;display:flex;align-items:center;justify-content:center">
+      <div id="hero-grid" class="grid3" style="width:420px;height:420px"></div>
+      <div style="position:absolute;left:14px;top:12px" class="tag hot">Walk · 8 directions · one clip</div>
+    </div>
+    <div style="border-left:1px solid #262327;padding:16px 16px;display:flex;flex-direction:column;gap:12px">
+      <div class="lbl" style="text-align:left">Props · Relics of the Ember Vale</div>
+      <div id="hero-items" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"></div>
+      <div class="lbl" style="text-align:left;margin-top:6px">Kael · side view</div>
+      <div id="hero-kael" style="display:flex;gap:6px"></div>
+    </div>
+  </div>
+  <div class="foot"><span>Every sprite, item and model here was generated and processed by the sprite mode — real frames, not mockups</span><span>Seedance · Kling · GPT Image 2.5 · Meshy</span></div>
+</section>
+
+<!-- 01 · sprite to sheet -->
+<section class="page" id="moveset">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">01 · Move sets</span></div>
+  <div class="split">
+    <div class="copy">
+      <div class="num"><b>01</b><i></i>Sprite to spritesheet</div>
+      <h1>One picture in, a whole move set out</h1>
+      <p>Start from one image or a description. Plan idle, walk, run and the rest in one go, with the price up front. Each motion comes out as aligned frames, a packed sheet and an atlas.</p>
+      <div class="facts"><span class="tag hot">idle · walk · run</span><span class="tag">attack · jump · hurt · death</span><span class="tag">atlas + sheet</span></div>
+    </div>
+    <div class="visual" style="flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:center;gap:34px">
+        <div class="card" style="width:230px;height:360px;display:flex;align-items:center;justify-content:center;background:#f4f1ec"><img id="ms-still" style="height:330px"></div>
+        <div class="arrow"></div>
+        <div class="card chk" style="width:360px;height:360px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px"><canvas id="ms-sprite" class="sprite" width="360" height="330"></canvas></div>
+      </div>
+      <div class="chips" id="ms-chips"><span>Idle</span><span>Walk</span><span>Run</span></div>
+      <div class="card" style="width:640px;height:92px;display:flex;align-items:center;padding:0 10px" id="ms-strip"></div>
+    </div>
+  </div>
+  <div class="foot"><span>Kael · one turnaround, three Seedance clips at 480p, cut by the mode's own cycle reader</span><span>≈ $2.60 for the three</span></div>
+</section>
+
+<!-- 02 · storyboard -->
+<section class="page" id="storyboard">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">02 · Custom motions</span></div>
+  <div class="split">
+    <div class="copy">
+      <div class="num"><b>02</b><i></i>Custom animation</div>
+      <h1>Direct every motion, beat by beat</h1>
+      <p>Describe a custom move as timed beats, pin the ones that matter with keyframes, and the clip performs them in order — then becomes frames like any other motion.</p>
+      <div class="facts"><span class="tag hot">timed beats</span><span class="tag">keyframes</span><span class="tag">reference images</span></div>
+    </div>
+    <div class="visual" style="flex-direction:column;gap:14px">
+      <div id="sb-strip" style="display:flex;gap:8px"></div>
+      <div class="prompt" style="width:720px"><small>STORYBOARD</small><div id="sb-text"></div></div>
+      <div class="card chk" style="width:720px;height:380px;display:flex;align-items:center;justify-content:center"><canvas id="sb-sprite" class="sprite" width="420" height="370"></canvas></div>
+    </div>
+  </div>
+  <div class="foot"><span>Mira · five beats, three keyframes, one Seedance reference clip, matted and cut into 30 frames</span><span>≈ $2.66</span></div>
+</section>
+
+<!-- 03 · eight directions -->
+<section class="page" id="dirs">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">03 · Eight directions</span></div>
+  <div class="split">
+    <div class="copy">
+      <div class="num"><b>03</b><i></i>8-direction isometric motion</div>
+      <h1>Every direction, one take</h1>
+      <p>The character is drawn once per facing on one sheet, and each state is one clip of all eight moving in sync — so every direction keeps the same identity and loops in phase.</p>
+      <div class="facts"><span class="tag hot">idle · walk</span><span class="tag">8 facings · 1 clip</span><span class="tag">≈ $1.87 a state</span></div>
+    </div>
+    <div class="visual" style="flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:34px">
+        <div class="card" style="width:190px;height:300px;display:flex;align-items:center;justify-content:center;background:#f4f1ec"><img id="dir-anchor" style="height:250px"></div>
+        <div class="arrow"></div>
+        <div class="card" style="width:480px;height:480px;background:#0d0d10"><div id="dir-grid" class="grid3" style="width:100%;height:100%"></div></div>
+      </div>
+      <div class="chips" id="dir-chips"><span>Idle</span><span>Walk</span><span>Run</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>Pip · one facing sheet, two 720p Seedance clips, each cut into eight motions on one shared window</span><span>Pneuma Sprite 0.6.0</span></div>
+</section>
+
+<!-- 04 · props -->
+<section class="page" id="props">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">04 · Props</span></div>
+  <div class="split flip">
+    <div class="visual" style="flex-direction:column;gap:16px">
+      <div class="prompt" style="width:720px"><small>PROPS SET</small><div id="pr-text"></div></div>
+      <div class="card" style="width:720px;height:400px;background:#0d0d10"><div id="pr-grid" style="display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(2,1fr);height:100%"></div></div>
+    </div>
+    <div class="copy">
+      <div class="num"><b>04</b><i></i>Assets</div>
+      <h1>Props that match your world</h1>
+      <p>Icons, weapons, potions and pickups drawn together in one visual language, cut into clean icons on one slot size — and one clip brings the whole set to life.</p>
+      <div class="facts"><span class="tag hot">one sheet · ten items</span><span class="tag">animated loops</span><span class="tag">$0.03 for the set</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>Relics of the Ember Vale · one GPT Image 2.5 sheet, one 720p first-last clip of all ten</span><span>Pneuma Sprite 0.6.0</span></div>
+</section>
+
+<!-- 05 · character editing -->
+<section class="page" id="looks">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">05 · Outfits</span></div>
+  <div class="split">
+    <div class="copy">
+      <div class="num"><b>05</b><i></i>Outfit and skin variations</div>
+      <h1>Same character, new looks</h1>
+      <p>Keep the face, the hair and the proportions; change the outfit. Every variation keeps the original's style, scale and camera, ready to animate — and the stage shows the family side by side.</p>
+      <div class="facts"><span class="tag hot">one edit each</span><span class="tag">turnaround · facing sheet</span></div>
+    </div>
+    <div class="visual"><div id="lk-row" style="display:flex;gap:14px;align-items:flex-end"></div></div>
+  </div>
+  <div class="foot"><span>Pip and three variants · each one Sunburst edit of her turnaround</span><span>≈ $0.12 a look</span></div>
+</section>
+
+<!-- 06 · animation editing -->
+<section class="page" id="restyle">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">06 · Restyles</span></div>
+  <div class="split flip">
+    <div class="visual" style="flex-direction:column;gap:14px">
+      <div id="rs-row" style="display:flex;gap:12px"></div>
+      <div class="lbl"><span>Same character</span> · <span>Same movement</span> · <span class="hot" style="color:#f9b27c">different look</span></div>
+    </div>
+    <div class="copy">
+      <div class="num"><b>06</b><i></i>Animation editing</div>
+      <h1>Keep the motion, change the look</h1>
+      <p>A finished motion drives a new look frame for frame: the same steps, the same timing, a new outfit — no motion rebuilt from scratch.</p>
+      <div class="facts"><span class="tag hot">frame-for-frame</span><span class="tag">≈ $0.47 a motion</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>Pip's front walk driving three variants · Kling Motion Control, the original clip as the driver</span><span>Pneuma Sprite 0.6.0</span></div>
+</section>
+
+<!-- 07 · motion transfer -->
+<section class="page" id="transfer">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">07 · Borrowed moves</span></div>
+  <div class="split">
+    <div class="copy">
+      <div class="num"><b>07</b><i></i>Motion library</div>
+      <h1>Any move, onto any character</h1>
+      <p>Pick a performance from the motion library — or bring your own video — and every character performs it, keeping their own look.</p>
+      <div class="facts"><span class="tag hot">10 library moves</span><span class="tag">your own video</span><span class="tag">≈ $0.60 a character</span></div>
+    </div>
+    <div class="visual" style="gap:22px">
+      <div class="card" style="width:200px;height:356px;background:#000"><video id="tr-video" muted playsinline style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;top:10px;left:50%;transform:translateX(-50%)" class="tag hot">Motion source</div></div>
+      <div class="arrow"></div>
+      <div id="tr-row" style="display:flex;gap:10px"></div>
+    </div>
+  </div>
+  <div class="foot"><span>The victory-dance recipe, filmed once · Kling v3 Motion Control on Kael, Mira and Pip</span><span>Pneuma Sprite 0.6.0</span></div>
+</section>
+
+<!-- 08 · 3D -->
+<section class="page" id="model">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">08 · 3D</span></div>
+  <div class="split flip">
+    <div class="visual" style="gap:12px">
+      <div class="card" style="width:440px;height:560px;background:radial-gradient(ellipse at 50% 70%,#2a1a10,#0d0d10 70%)"><canvas id="m3-main" width="440" height="560"></canvas><div style="position:absolute;top:12px;left:12px" class="tag hot">Rigged model</div></div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="card" style="width:230px;height:178px;background:#0d0d10"><canvas id="m3-a" width="230" height="178"></canvas><div class="tag" style="position:absolute;top:8px;left:8px">Sword slash</div></div>
+        <div class="card" style="width:230px;height:178px;background:#0d0d10"><canvas id="m3-b" width="230" height="178"></canvas><div class="tag" style="position:absolute;top:8px;left:8px">Roll</div></div>
+        <div class="card" style="width:230px;height:178px;background:#0d0d10"><canvas id="m3-c" width="230" height="178"></canvas><div class="tag" style="position:absolute;top:8px;left:8px">Cast</div></div>
+      </div>
+    </div>
+    <div class="copy">
+      <div class="num"><b>08</b><i></i>3D model and animation</div>
+      <h1>From picture to animated 3D</h1>
+      <p>One picture becomes a textured, rigged 3D model; animations come from a library of hundreds of moves, played from any angle on the stage.</p>
+      <div class="facts"><span class="tag hot">rigged GLB</span><span class="tag">11 animations</span><span class="tag">$0.88</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>Pip's front anchor · Meshy 7.1 image-to-3D with rigging, Meshy multi-animation</span><span>Pneuma Sprite 0.6.0</span></div>
+</section>
+
+<!-- 09 · cutscene -->
+<section class="page" id="cutscene">
+  <div class="brand"><span class="dot"></span>Pneuma<i></i><b>Sprite</b><span class="folio">09 · Cutscenes</span></div>
+  <div class="split">
+    <div class="copy">
+      <div class="num"><b>09</b><i></i>Cutscene generation</div>
+      <h1>Turn a prompt into a cinematic moment</h1>
+      <p>Your characters, cast from their own references, in a scored cutscene — shot by shot, with music and sound.</p>
+      <div class="facts"><span class="tag hot">your cast</span><span class="tag">16:9 · 720p · audio</span><span class="tag">≈ $3.70 for 8 s</span></div>
+    </div>
+    <div class="visual" style="flex-direction:column;gap:14px">
+      <div class="prompt" style="width:760px"><small>CUTSCENE</small><div id="cs-text"></div></div>
+      <div class="card" style="width:760px;height:428px;background:#000"><video id="cs-video" muted playsinline style="width:100%;height:100%;object-fit:cover"></video></div>
+    </div>
+  </div>
+  <div class="foot"><span>Kael and Mira · one Seedance reference clip, both turnarounds as references</span><span>Pneuma Sprite 0.6.0</span></div>
+</section>
+
+<script type="module">
+const params = new URLSearchParams(location.search);
+const view = params.get("view") ?? "hero";
+document.getElementById(view)?.classList.add("active");
+
+const projects = {};
+async function project(set) {
+  projects[set] ??= await (await fetch(`/art/${set}/project.json`)).json();
+  return projects[set];
+}
+const loadImage = (src) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error(src)); i.src = src; });
+async function motion(set, id) {
+  const p = await project(set);
+  const m = p.sprite.motions.find((x) => x.id === id);
+  const uri = (aid) => p.assets.find((a) => a.id === aid)?.uri;
+  const frames = await Promise.all(m.frames.map((f) => loadImage(`/art/${set}/${uri(f)}`)));
+  return { frames, fps: m.fps, loop: m.loop };
+}
+async function asset(set, assetId) {
+  const p = await project(set);
+  return `/art/${set}/${p.assets.find((a) => a.id === assetId)?.uri}`;
+}
+async function refUrl(set, refId) {
+  const p = await project(set);
+  const r = p.sprite.refs.find((x) => x.id === refId);
+  return asset(set, r.asset);
+}
+/** Draw a motion's frame for time t into a canvas, fit and bottom-centred. */
+function drawer(canvas, m, { scale = null, offset = 0, bottom = 0, center = false } = {}) {
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const fw = Math.max(...m.frames.map((f) => f.naturalWidth));
+  const fh = Math.max(...m.frames.map((f) => f.naturalHeight));
+  const s = scale ?? Math.min(W / fw, (H - bottom) / fh);
+  return (t) => {
+    const n = m.frames.length;
+    const i = m.loop ? Math.floor((t + offset) * m.fps) % n : Math.min(n - 1, Math.floor((t + offset) * m.fps) % (n + 6));
+    const f = m.frames[Math.min(i, n - 1)];
+    ctx.clearRect(0, 0, W, H);
+    ctx.imageSmoothingQuality = "high";
+    const w = f.naturalWidth * s, h = f.naturalHeight * s;
+    ctx.drawImage(f, (W - w) / 2, center ? (H - h) / 2 : H - bottom - h, w, h);
+  };
+}
+function canvasIn(el, w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; c.className = "sprite"; el.appendChild(c); return c; }
+const typed = (el, text, cps = 38) => (t) => { const n = Math.min(text.length, Math.floor(t * cps)); el.innerHTML = `${text.slice(0, n).replace(/&/g, "&amp;").replace(/</g, "&lt;")}<span class="caret"></span>`; };
+
+const updates = [];
+const videos = [];
+const DIRS = ["back-left", "back", "back-right", "left", null, "right", "front-left", "front", "front-right"];
+
+async function packGrid(el, set, state, cellPx, { scale = null } = {}) {
+  el.innerHTML = "";
+  const ms = await Promise.all(DIRS.map((d) => (d ? motion(set, `${state}-${d}`) : null)));
+  const fh = Math.max(...ms.filter(Boolean).flatMap((m) => m.frames.map((f) => f.naturalHeight)));
+  const fw = Math.max(...ms.filter(Boolean).flatMap((m) => m.frames.map((f) => f.naturalWidth)));
+  const s = scale ?? Math.min(cellPx * 0.94 / fw, cellPx * 0.94 / fh);
+  const draws = ms.map((m) => {
+    const cell = document.createElement("div");
+    el.appendChild(cell);
+    if (!m) return null;
+    const c = canvasIn(cell, cellPx, cellPx);
+    return drawer(c, m, { scale: s, bottom: cellPx * 0.03 });
+  });
+  return (t) => draws.forEach((d) => d && d(t));
+}
+
+const views = {
+  async hero() {
+    const looks = ["pip", "pip-witch", "pip-frost", "pip-pirate"];
+    for (const [i, s] of looks.entries()) {
+      const d = document.createElement("div");
+      d.style.cssText = `width:50px;height:58px;border-radius:8px;border:1px solid ${i ? "#2f2b2e" : "#c4753d"};background:${i ? "#121214" : "#f9731612"};display:flex;align-items:flex-end;justify-content:center;overflow:hidden`;
+      const img = await loadImage(await refUrl(s, "anchor-front").catch(() => refUrl(s, "front")));
+      img.style.height = "54px"; d.appendChild(img); document.getElementById("hero-looks").appendChild(d);
+    }
+    const rows = [["Walk", "8 directions · 12 frames", true], ["Run", "8 directions · 14 frames"], ["Idle", "8 directions · 16 frames"], ["Victory dance", "from the motion library"], ["3D model", "rigged · 11 animations"]];
+    document.getElementById("hero-motions").innerHTML = rows.map(([a, b, on]) => `<div style="padding:8px 10px;border:1px solid ${on ? "#c4753d" : "#2b282b"};border-radius:8px;margin-bottom:6px;background:${on ? "#f973120d" : "#111113"}"><div style="display:flex;justify-content:space-between;font-size:12.5px;color:${on ? "#f9be92" : "#ded7d1"}">${a}<span style="font-size:9.5px;letter-spacing:.8px;color:#6ee7a0;border:1px solid #1f5f3b;border-radius:4px;padding:1px 6px">READY</span></div><div style="font-size:10.5px;color:#8d8783;margin-top:3px">${b}</div></div>`).join("");
+    updates.push(await packGrid(document.getElementById("hero-grid"), "pip", "walk", 140));
+    const items = document.getElementById("hero-items");
+    const p = await project("relics");
+    for (const it of p.sprite.items.slice(0, 8)) {
+      const cell = document.createElement("div"); cell.style.cssText = "height:62px;border:1px solid #2b282b;border-radius:7px;background:#121214;display:flex;align-items:center;justify-content:center"; items.appendChild(cell);
+      const c = canvasIn(cell, 58, 58); updates.push(drawer(c, await motion("relics", it.loop), { center: true }));
+    }
+    const kael = document.getElementById("hero-kael");
+    for (const id of ["idle", "walk", "run"]) {
+      const cell = document.createElement("div"); cell.style.cssText = "flex:1;height:118px;border:1px solid #2b282b;border-radius:7px;display:flex;align-items:flex-end;justify-content:center"; cell.className = "chk"; kael.appendChild(cell);
+      const c = canvasIn(cell, 86, 112); updates.push(drawer(c, await motion("kael", id)));
+    }
+  },
+  async moveset() {
+    document.getElementById("ms-still").src = await refUrl("kael", "side");
+    const ms = { idle: await motion("kael", "idle"), walk: await motion("kael", "walk"), run: await motion("kael", "run") };
+    const canvas = document.getElementById("ms-sprite");
+    const hmax = Math.max(...Object.values(ms).flatMap((m) => m.frames.map((f) => f.naturalHeight)));
+    const draws = Object.fromEntries(Object.entries(ms).map(([k, m]) => [k, drawer(canvas, m, { scale: 320 / hmax })]));
+    const chips = [...document.querySelectorAll("#ms-chips span")];
+    const strip = document.getElementById("ms-strip");
+    const stripImgs = {};
+    for (const [k, m] of Object.entries(ms)) {
+      const row = document.createElement("div"); row.style.cssText = "display:none;gap:4px;align-items:flex-end;height:80px";
+      m.frames.slice(0, 12).forEach((f) => { const i = new Image(); i.src = f.src; i.style.height = "78px"; row.appendChild(i); });
+      strip.appendChild(row); stripImgs[k] = row;
+    }
+    updates.push((t) => {
+      const k = ["idle", "walk", "run"][Math.floor(t / 2) % 3];
+      draws[k](t);
+      chips.forEach((c, i) => c.classList.toggle("on", ["idle", "walk", "run"][i] === k));
+      for (const [kk, row] of Object.entries(stripImgs)) row.style.display = kk === k ? "flex" : "none";
+    });
+  },
+  async storyboard() {
+    const p = await project("mira");
+    const m = p.sprite.motions.find((x) => x.id === "staff-ritual");
+    const strip = document.getElementById("sb-strip");
+    for (const b of m.storyboard.beats) {
+      const card = document.createElement("div");
+      card.style.cssText = "width:136px;border:1px solid #2f2b2e;border-radius:9px;background:#121214;padding:6px";
+      const imgSrc = b.keyframe ? await asset("mira", b.keyframe) : await refUrl("mira", "front");
+      card.innerHTML = `<div style="height:84px;border-radius:6px;background:#f4f1ec;display:flex;align-items:center;justify-content:center;overflow:hidden"><img src="${imgSrc}" style="height:80px"></div><div style="font-size:10.5px;color:#d9cfc8;margin-top:5px;line-height:1.35"><b style="font-family:ui-monospace,Menlo,monospace;color:#f97316;font-weight:600">${b.at}s</b> ${b.text}</div>`;
+      strip.appendChild(card);
+    }
+    updates.push(typed(document.getElementById("sb-text"), "Twirl the staff overhead, slam it down in a swirl of leaves, raise the glowing orb, settle."));
+    const mm = await motion("mira", "staff-ritual");
+    const d = drawer(document.getElementById("sb-sprite"), mm, { bottom: 6 });
+    updates.push((t) => d(t % (mm.frames.length / mm.fps + 0.6)));
+  },
+  async dirs() {
+    document.getElementById("dir-anchor").src = await refUrl("pip", "anchor-front-right");
+    const grids = {};
+    const el = document.getElementById("dir-grid");
+    const p = await project("pip");
+    const ready = (st) => p.sprite.motions.some((m) => m.id === `${st}-pack` && m.status === "ready");
+    const states = ["walk", "run", "idle"].filter(ready);
+    document.querySelectorAll("#dir-chips span").forEach((c) => { if (!states.includes(c.textContent.toLowerCase())) c.remove(); });
+    for (const st of states) {
+      const holder = document.createElement("div"); holder.className = "grid3"; holder.style.cssText = "width:100%;height:100%;display:none"; el.appendChild(holder);
+      grids[st] = { holder, draw: await packGrid(holder, "pip", st, 158) };
+    }
+    el.className = ""; el.style.cssText = "width:100%;height:100%";
+    const chips = [...document.querySelectorAll("#dir-chips span")];
+    updates.push((t) => {
+      const st = states[Math.floor(t / 2.5) % states.length];
+      for (const [k, g] of Object.entries(grids)) g.holder.style.display = k === st ? "grid" : "none";
+      grids[st].draw(t);
+      chips.forEach((c) => c.classList.toggle("on", c.textContent.toLowerCase() === st));
+    });
+  },
+  async props() {
+    const p = await project("relics");
+    const grid = document.getElementById("pr-grid");
+    for (const [i, it] of p.sprite.items.entries()) {
+      const cell = document.createElement("div");
+      cell.style.cssText = `display:flex;align-items:center;justify-content:center;border-right:${i % 5 === 4 ? 0 : 1}px solid #f9731628;border-bottom:${i < 5 ? 1 : 0}px solid #f9731628`;
+      grid.appendChild(cell);
+      const c = canvasIn(cell, 138, 196);
+      updates.push(drawer(c, await motion("relics", it.loop), { center: true }));
+    }
+    updates.push(typed(document.getElementById("pr-text"), "Ember Sword, Frost Staff, Healing Potion, Mana Potion, Golden Key, Treasure Chest, Ancient Scroll, Crystal Shard, Dragon Shield, Ruby Ring"));
+  },
+  async looks() {
+    const row = document.getElementById("lk-row");
+    const looks = [["pip", "Original"], ["pip-witch", "Witch"], ["pip-frost", "Frost mage"], ["pip-pirate", "Pirate"]];
+    for (const [i, [s, label]] of looks.entries()) {
+      const card = document.createElement("div");
+      card.style.cssText = "display:flex;flex-direction:column;gap:10px;align-items:center";
+      const src = await refUrl(s, "turnaround");
+      card.innerHTML = `<div class="card" style="width:170px;height:470px;background:#f4f1ec;${i === 0 ? "outline:2px solid #c4753d;outline-offset:3px" : ""}"><img src="${src}" style="height:470px;width:470px;max-width:none;margin-left:-4px"></div><div class="lbl ${i === 0 ? "" : "hot"}">${label}</div>`;
+      row.appendChild(card);
+    }
+  },
+  async restyle() {
+    const row = document.getElementById("rs-row");
+    const looks = [["pip", "Original"], ["pip-witch", "Variation 01"], ["pip-frost", "Variation 02"], ["pip-pirate", "Variation 03"]];
+    const ms = await Promise.all(looks.map(([s]) => motion(s, "walk-front")));
+    const hmax = Math.max(...ms.flatMap((m) => m.frames.map((f) => f.naturalHeight)));
+    for (const [i, [s, label]] of looks.entries()) {
+      const card = document.createElement("div");
+      card.style.cssText = "display:flex;flex-direction:column;gap:9px;align-items:center";
+      card.innerHTML = `<div class="card chk" style="width:178px;height:330px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;${i ? "" : "outline:1px solid #3d3633"}"></div><div class="lbl ${i ? "hot" : ""}">${label}</div>`;
+      row.appendChild(card);
+      const c = canvasIn(card.firstChild, 170, 312);
+      updates.push(drawer(c, ms[i]));
+    }
+  },
+  async transfer() {
+    const v = document.getElementById("tr-video");
+    v.src = "/art/pip/motions/victory-dance/driver.mp4"; videos.push(v);
+    const row = document.getElementById("tr-row");
+    for (const s of ["kael", "mira", "pip"]) {
+      const card = document.createElement("div"); card.className = "card chk";
+      card.style.cssText = "width:168px;height:356px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px";
+      row.appendChild(card);
+      const m = await motion(s, "victory-dance");
+      const c = canvasIn(card, 164, 340);
+      updates.push(drawer(c, { ...m, loop: true }, { bottom: 0 }));
+    }
+  },
+  async model() {
+    const THREE = await import("three");
+    const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+    const loader = new GLTFLoader();
+    const stage = async (id, file, { dist = 2.7, height = 0.5, spin = 0 } = {}) => {
+      const canvas = document.getElementById(id);
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x302018, 1.8));
+      const key = new THREE.DirectionalLight(0xffffff, 2); key.position.set(2, 4, 3); scene.add(key);
+      const rim = new THREE.DirectionalLight(0xff9a50, 1.4); rim.position.set(-3, 2, -2); scene.add(rim);
+      const gltf = await loader.loadAsync(`/art/pip/model/${file}`);
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model); const size = box.getSize(new THREE.Vector3()); const c = box.getCenter(new THREE.Vector3());
+      model.position.x -= c.x; model.position.z -= c.z; model.position.y -= box.min.y;
+      scene.add(model);
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(size.y * 0.42, 48), new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.16 }));
+      disc.rotation.x = -Math.PI / 2; scene.add(disc);
+      const camera = new THREE.PerspectiveCamera(28, canvas.width / canvas.height, 0.01, 100);
+      const mixer = gltf.animations.length ? new THREE.AnimationMixer(model) : null;
+      const action = mixer ? mixer.clipAction(gltf.animations[0]) : null; action?.play();
+      const dur = gltf.animations[0]?.duration ?? 1;
+      return (t) => {
+        if (mixer) mixer.setTime(t % dur);
+        const a = spin * t + 0.5;
+        camera.position.set(Math.sin(a) * size.y * dist, size.y * (height + 0.25), Math.cos(a) * size.y * dist);
+        camera.lookAt(0, size.y * height, 0);
+        renderer.render(scene, camera);
+      };
+    };
+    updates.push(await stage("m3-main", "anim-walk.glb", { dist: 3.2, spin: 0.35 }));
+    updates.push(await stage("m3-a", "anim-sword-slash.glb", { dist: 2.4 }));
+    updates.push(await stage("m3-b", "anim-roll.glb", { dist: 2.6 }));
+    updates.push(await stage("m3-c", "anim-cast.glb", { dist: 2.4 }));
+  },
+  async cutscene() {
+    const v = document.getElementById("cs-video");
+    v.src = "/art/kael/motions/intro-cutscene/video-seedance-1.mp4"; videos.push(v);
+    updates.push(typed(document.getElementById("cs-text"), "Dawn over a lava valley. Kael draws his sword; Mira raises her staff. A dragon rises.", 30));
+  },
+};
+
+await views[view]?.();
+for (const v of videos) await new Promise((ok) => { if (v.readyState >= 2) ok(); else v.addEventListener("loadeddata", ok, { once: true }); });
+
+/** Render the composition at `t` seconds — the recorder calls this per frame. */
+window.renderAt = async (t) => {
+  for (const u of updates) u(t);
+  await Promise.all(videos.map((v) => new Promise((ok) => {
+    const target = t % Math.max(0.1, v.duration - 0.05);
+    if (Math.abs(v.currentTime - target) < 0.001) return ok();
+    v.addEventListener("seeked", ok, { once: true });
+    v.currentTime = target;
+  })));
+  await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+  return true;
+};
+window.ready = true;
+await window.renderAt(0);
+</script>
+</body>
+</html>

@@ -40,7 +40,7 @@ import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import {
   findMotion,
-  findRef,
+  findStill,
   resolveAssetUri,
   type Motion,
   type GeneratedVideoModel,
@@ -93,6 +93,8 @@ import {
   type PlaybackState,
 } from "./playback.js";
 import { Stage } from "./Stage.js";
+import { ModelStage } from "./ModelStage.js";
+import { CutsceneStage, StoryboardStrip, lookFamily } from "./showpieces.js";
 import { FilmIcon, RailIcon } from "./icons.js";
 import { selectionLabel, spriteStrings } from "./strings.js";
 import { useFrameImages, useSettledImageVersion } from "./useFrameImages.js";
@@ -120,6 +122,12 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   // ── Selection ────────────────────────────────────────────────────────────
   const [motionId, setMotionId] = useState<string | null>(null);
   const [refId, setRefId] = useState<string | null>(null);
+  /** The 3D model on the stage instead of a motion (0.6.0): which file —
+   *  "model" for the rigged character, else an animation's id. */
+  const [modelView, setModelView] = useState<string | null>(null);
+  // Another character's model is another set of animations.
+  const contentSetKey = character?.contentSet ?? null;
+  useEffect(() => setModelView(null), [contentSetKey]);
   const [fpsOverride, setFpsOverride] = useState<number | null>(null);
   const [loopOverride, setLoopOverride] = useState<boolean | null>(null);
 
@@ -202,7 +210,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   // the same draw, the same zoom and the same capture as everything else.
   const refUrl = useMemo(() => {
     if (!character || !refId) return null;
-    const ref = findRef(character, refId);
+    const ref = findStill(character, refId);
     const uri = ref ? resolveAssetUri(character, ref.asset) : undefined;
     return uri ? contentUrl(character.contentSet, uri, imageVersion) : null;
   }, [character, refId, imageVersion]);
@@ -239,6 +247,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const showMotion = useCallback(
     (id: string, options: { frame?: number | null; play?: boolean } = {}) => {
       showRef(null);
+      setModelView(null);
       // Overrides belong to the motion they were dialled in on.
       if (lastMotionRef.current !== id) {
         lastMotionRef.current = id;
@@ -250,7 +259,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       const target = character ? findMotion(character, id) : null;
       const frameTarget = clampFrame(
         options.frame ?? 0,
-        target ? declaredFrameCount(target) : 0,
+        target ? declaredFrameCount(target, character) : 0,
       );
       playRef.current = { frame: frameTarget, acc: 0, playing: options.play ?? false };
       setFrame(frameTarget);
@@ -262,8 +271,8 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   /** Whether a motion is worth autoplaying: it has to have something to play. */
   const playable = useCallback(
     (candidate: Motion | null | undefined): boolean =>
-      !!candidate && declaredFrameCount(candidate) > 1,
-    [],
+      !!candidate && declaredFrameCount(candidate, character) > 1,
+    [character],
   );
 
   // Land on something as soon as a character exists, and never keep pointing
@@ -353,13 +362,13 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   const reportRefSelection = useCallback(
     (id: string) => {
       if (!character) return;
-      const ref = findRef(character, id);
+      const ref = findStill(character, id);
       if (!ref) return;
       onSelect({
         type: "image",
         content: ref.label,
         label: ref.label,
-        address: { contentSet: character.contentSet, ref: ref.id },
+        address: { contentSet: character.contentSet, ...ref.address },
       });
     },
     [character, onSelect],
@@ -458,6 +467,8 @@ export default function SpritePreview(props: ViewerPreviewProps) {
       const address = parseAddress(raw);
       const resolution = resolveAddress(character, address, motionId);
       const target = resolution.target;
+      // Any navigation puts the 2D stage back in front of the 3D model.
+      if (target) setModelView(null);
       if (target?.kind === "ref") {
         showRef(target.refId);
         setPlay(false);
@@ -848,7 +859,21 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   }
 
   const identity = character.sprite.character;
-  const activeRef = refId ? findRef(character, refId) : null;
+  const family = lookFamily(roster, character, imageVersion);
+  const modelUrl = (view: string): string | null => {
+    const model = character.sprite.model;
+    if (!model) return null;
+    const asset = view === "model" ? model.glb : model.animations.find((a) => a.id === view)?.asset;
+    const uri = asset ? resolveAssetUri(character, asset) : undefined;
+    return uri ? contentUrl(character.contentSet, uri, imageVersion) : null;
+  };
+  const modelOptions = character.sprite.model
+    ? [
+      ...character.sprite.model.animations.map((a) => ({ id: a.id, label: a.label, url: modelUrl(a.id) ?? "" })),
+      { id: "model", label: t.model3d, url: modelUrl("model") ?? "" },
+    ]
+    : [];
+  const activeRef = refId ? findStill(character, refId) : null;
   const renderVideo = props.commands?.find(
     (command) => command.id === "render-video",
   );
@@ -923,8 +948,16 @@ export default function SpritePreview(props: ViewerPreviewProps) {
           <MotionRail
             project={character}
             imageVersion={imageVersion}
-            selectedMotionId={motionId}
+            selectedMotionId={modelView ? null : motionId}
             selectedRefId={refId}
+            family={family}
+            modelSelected={modelView !== null}
+            onSelectModel={() => {
+              showRef(null);
+              setPlay(false);
+              setModelView(character.sprite.model?.animations[0]?.id ?? "model");
+            }}
+            onSelectLook={(contentSet) => useStore.getState().setActiveContentSet(contentSet)}
             t={t}
             onSelectMotion={(id) => {
               const next = findMotion(character, id);
@@ -932,6 +965,7 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               reportSelection(next ?? null, null);
             }}
             onSelectRef={(id) => {
+              setModelView(null);
               showRef(id);
               setPlay(false);
               reportRefSelection(id);
@@ -941,6 +975,22 @@ export default function SpritePreview(props: ViewerPreviewProps) {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col">
+            {!modelView && !refId && motion?.storyboard ? (
+              <StoryboardStrip project={character} motion={motion} imageVersion={imageVersion} t={t} />
+            ) : null}
+            {modelView && character.sprite.model ? (
+              <ModelStage
+                url={modelUrl(modelView) ?? ""}
+                options={modelOptions}
+                selected={modelView}
+                onSelect={setModelView}
+                theme={props.theme}
+                onCanvas={handleCanvas}
+                t={t}
+              />
+            ) : !refId && motion?.kind === "cutscene" ? (
+              <CutsceneStage project={character} motion={motion} imageVersion={imageVersion} t={t} />
+            ) : (
             <Stage
               source={stageSource}
               images={images}
@@ -961,8 +1011,9 @@ export default function SpritePreview(props: ViewerPreviewProps) {
               fitFrame={stageFit}
               t={t}
             />
+            )}
 
-            {activeRef ? (
+            {modelView || (!refId && motion?.kind === "cutscene") ? null : activeRef ? (
               <div className="flex shrink-0 items-center gap-2 border-t border-cc-border bg-cc-surface/30 px-3 py-2 text-[11px]">
                 <span className="text-cc-muted">
                   {t.showingReference}{" "}

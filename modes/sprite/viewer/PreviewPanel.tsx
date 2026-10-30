@@ -354,11 +354,28 @@ function VideoTab({
   t: SpriteStrings;
   renderVideoLabel: string | null;
 }) {
-  if (motion.videos.length === 0) {
+  // A transferred motion shows where its movement came from first: the
+  // driving clip, then the takes made from it.
+  const driver = motion.transfer ? url(motion.transfer.video) : null;
+  if (motion.videos.length === 0 && !driver) {
     return <Empty>{t.noVideoYet(renderVideoLabel ?? t.tab.video)}</Empty>;
   }
   return (
     <div className="flex flex-col gap-3 p-3">
+      {driver && motion.transfer ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-cc-primary/40 bg-cc-primary/5 p-2">
+          <div className="flex items-center gap-1.5">
+            <Chip>{t.driverClip}</Chip>
+            <span className="truncate text-[11px] text-cc-muted">{motion.transfer.label ?? motion.transfer.from}</span>
+          </div>
+          <video src={driver} className="w-full rounded" controls loop muted playsInline preload="metadata" />
+        </div>
+      ) : null}
+      {motion.restyleOf ? (
+        <p className="text-[11px] text-cc-muted">
+          {t.restyleOf(`${motion.restyleOf.contentSet ? `${motion.restyleOf.contentSet}/` : ""}${motion.restyleOf.motion}`)}
+        </p>
+      ) : null}
       {motion.videos.map((video) => (
         <VideoCard key={video.id} video={video} href={url(video.asset)} t={t} />
       ))}

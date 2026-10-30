@@ -21,11 +21,14 @@
  * it joins, and an end that does not land is marked the way an open seam is.
  */
 
+import { Fragment } from "react";
+
 import type { CharacterProject, Motion, MotionStatus } from "../domain.js";
 import { resolveAssetUri } from "../domain.js";
 import { BreathIcon, BridgeIcon, FilmIcon, LoopIcon, WarnIcon } from "./icons.js";
 import { hasGeneratingVideo, joinVerdict } from "./metrics.js";
 import { labelNamesDirection, motionLabel, railGroups } from "./panel.js";
+import type { Look } from "./showpieces.js";
 import type { SpriteStrings } from "./strings.js";
 import { contentUrl } from "./urls.js";
 
@@ -70,6 +73,11 @@ export interface MotionRailProps {
   imageVersion: number;
   selectedMotionId: string | null;
   selectedRefId: string | null;
+  /** The character's looks — its original and variants (empty: none). */
+  family?: Look[];
+  modelSelected?: boolean;
+  onSelectModel?: () => void;
+  onSelectLook?: (contentSet: string) => void;
   t: SpriteStrings;
   onSelectMotion: (motionId: string) => void;
   onSelectRef: (refId: string) => void;
@@ -80,15 +88,127 @@ export function MotionRail({
   imageVersion,
   selectedMotionId,
   selectedRefId,
+  family = [],
+  modelSelected = false,
+  onSelectModel,
+  onSelectLook,
   t,
   onSelectMotion,
   onSelectRef,
 }: MotionRailProps) {
   const { refs, motions } = project.sprite;
+  const items = project.sprite.items ?? [];
   const groups = railGroups(project);
 
   return (
     <nav className="flex h-full w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-cc-border bg-cc-surface/30 px-3 py-3">
+      {family.length > 1 ? (
+        <section>
+          <h2 className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cc-muted">
+            {t.looks}
+          </h2>
+          <ul className="flex gap-1.5 overflow-x-auto pb-1">
+            {family.map((look) => {
+              const active = look.contentSet === project.contentSet;
+              return (
+                <li key={look.contentSet} className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onSelectLook?.(look.contentSet)}
+                    title={look.note ? t.variantOf(family[0].name, look.note) : look.name}
+                    className={`flex w-14 flex-col items-center gap-0.5 rounded-lg border p-1 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+                      active ? "border-cc-primary/60 bg-cc-primary/10" : "border-cc-border bg-cc-bg/40 hover:border-cc-primary/40"
+                    }`}
+                  >
+                    <span className="flex h-12 w-full items-center justify-center overflow-hidden rounded" style={CHECKER_STYLE}>
+                      {look.image ? <img src={look.image} alt="" className="max-h-12 max-w-full object-contain" draggable={false} /> : null}
+                    </span>
+                    <span className="w-full truncate text-center text-[9px] text-cc-fg">{look.note ? look.name : t.originalLook}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+      {project.sprite.model && onSelectModel ? (
+        <section>
+          <button
+            type="button"
+            onClick={onSelectModel}
+            title={t.model3dTitle}
+            className={`flex w-full items-center gap-2 rounded-lg border p-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+              modelSelected ? "border-cc-primary/60 bg-cc-primary/10" : "border-cc-border bg-cc-bg/40 hover:border-cc-primary/40"
+            }`}
+          >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded" style={CHECKER_STYLE}>
+              {project.sprite.model.thumbnail && resolveAssetUri(project, project.sprite.model.thumbnail) ? (
+                <img src={contentUrl(project.contentSet, resolveAssetUri(project, project.sprite.model.thumbnail)!, imageVersion)} alt="" className="max-h-12 max-w-full object-contain" draggable={false} />
+              ) : (
+                <span className="text-[10px] text-cc-muted">{t.model3dBadge}</span>
+              )}
+            </span>
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[12px] text-cc-fg">{t.model3d}</span>
+              <span className="truncate text-[10px] text-cc-muted">{project.sprite.model.animations.map((a) => a.label).join(" · ")}</span>
+            </span>
+          </button>
+        </section>
+      ) : null}
+      {project.sprite.set === "props" ? (
+        <section>
+          <h2 className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cc-muted">
+            {t.items}
+          </h2>
+          {items.length === 0 ? (
+            <p className="px-1 text-xs leading-relaxed text-cc-muted">{t.noItems}</p>
+          ) : (
+            <ul className="grid grid-cols-3 gap-1.5">
+              {items.map((item) => {
+                const uri = resolveAssetUri(project, item.image);
+                const loop = item.loop ? motions.find((m) => m.id === item.loop && m.status === "ready") : undefined;
+                const active = loop
+                  ? selectedMotionId === loop.id && !selectedRefId
+                  : selectedRefId === `item:${item.id}`;
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => (loop ? onSelectMotion(loop.id) : onSelectRef(`item:${item.id}`))}
+                      title={loop ? `${item.label} · ${t.itemAnimated}` : item.label}
+                      className={`relative flex w-full flex-col items-center gap-0.5 rounded-lg border p-1 transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+                        active
+                          ? "border-cc-primary/60 bg-cc-primary/10"
+                          : "border-cc-border bg-cc-bg/40 hover:border-cc-primary/40"
+                      }`}
+                    >
+                      <span className="flex h-12 w-full items-center justify-center overflow-hidden rounded" style={CHECKER_STYLE}>
+                        {uri ? (
+                          <img
+                            src={contentUrl(project.contentSet, uri, imageVersion)}
+                            alt={item.label}
+                            className="max-h-12 max-w-full object-contain"
+                            draggable={false}
+                          />
+                        ) : (
+                          <span className="text-[10px] text-cc-muted">{t.missingAsset}</span>
+                        )}
+                      </span>
+                      <span className="w-full truncate text-center text-[10px] text-cc-fg">{item.label}</span>
+                      {loop ? (
+                        <span className="absolute right-1 top-1 text-cc-primary" aria-hidden>
+                          <LoopIcon size={9} />
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
+      {project.sprite.set === "props" && refs.length === 0 ? null : (
       <section>
         <h2 className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cc-muted">
           {t.references}
@@ -147,6 +267,7 @@ export function MotionRail({
           </ul>
         )}
       </section>
+      )}
 
       {/* The rail scrolls as a whole; its sections keep their height. A
           section allowed to shrink (min-h-0) in this column let its rows
@@ -162,14 +283,24 @@ export function MotionRail({
         ) : (
           <ul className="flex flex-col gap-1">
             {groups.motions.map((motion) => (
-              <MotionRow
-                key={motion.id}
-                motion={motion}
-                label={motion.label}
-                t={t}
-                active={selectedMotionId === motion.id && !selectedRefId}
-                onSelect={() => onSelectMotion(motion.id)}
-              />
+              <Fragment key={motion.id}>
+                <MotionRow
+                  motion={motion}
+                  label={motion.label}
+                  frameCount={groups.cells[motion.id] ? Math.max(0, ...groups.cells[motion.id].map((c) => c.frames.length)) : undefined}
+                  t={t}
+                  active={selectedMotionId === motion.id && !selectedRefId}
+                  onSelect={() => onSelectMotion(motion.id)}
+                />
+                {groups.cells[motion.id]?.length ? (
+                  <PackCells
+                    cells={groups.cells[motion.id]}
+                    selectedMotionId={selectedRefId ? null : selectedMotionId}
+                    onSelect={onSelectMotion}
+                    t={t}
+                  />
+                ) : null}
+              </Fragment>
             ))}
           </ul>
         )}
@@ -198,14 +329,67 @@ export function MotionRail({
   );
 }
 
+/** The compass arrow a facing reads as, on a pack's cell chips. */
+const DIRECTION_ARROW: Record<string, string> = {
+  front: "↓", back: "↑", left: "←", right: "→",
+  "front-left": "↙", "front-right": "↘", "back-left": "↖", "back-right": "↗",
+};
+
+/**
+ * A pack's cell motions, one chip each, under the pack's row: the arrow it
+ * faces and its status at a glance. Pressing one puts that one direction on
+ * the stage alone — its own frames, atlas and exports.
+ */
+function PackCells({
+  cells,
+  selectedMotionId,
+  onSelect,
+  t,
+}: {
+  cells: Motion[];
+  selectedMotionId: string | null;
+  onSelect: (id: string) => void;
+  t: SpriteStrings;
+}) {
+  return (
+    <li className="-mt-0.5 mb-1 flex flex-wrap gap-1 pl-3">
+      {cells.map((cell) => {
+        const active = cell.id === selectedMotionId;
+        const warn = (cell.inspect?.warnings?.length ?? 0) > 0 && !cell.inspect?.acknowledged;
+        return (
+          <button
+            key={cell.id}
+            type="button"
+            onClick={() => onSelect(cell.id)}
+            title={`${cell.label}${cell.direction ? ` — ${t.directionTitle[cell.direction]}` : ""} · ${t.status[cell.status]}`}
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${
+              active
+                ? "border-cc-primary/60 bg-cc-primary/10 text-cc-primary"
+                : "border-cc-border text-cc-muted hover:bg-cc-hover hover:text-cc-fg"
+            }`}
+          >
+            <span aria-hidden>{cell.direction ? DIRECTION_ARROW[cell.direction] ?? "·" : "·"}</span>
+            <span>{cell.direction ? t.direction[cell.direction] : cell.label}</span>
+            {cell.status !== "ready" ? <span className="h-1 w-1 rounded-full bg-current opacity-60" /> : null}
+            {warn ? <span className="h-1 w-1 rounded-full bg-cc-warning" /> : null}
+          </button>
+        );
+      })}
+    </li>
+  );
+}
+
 function MotionRow({
   motion,
   label,
+  frameCount,
   active,
   t,
   onSelect,
 }: {
   motion: Motion;
+  /** A pack's frames are its cells': the count the row says. */
+  frameCount?: number;
   /** What the row is called: a transition is named by its two loops. */
   label: string;
   active: boolean;
@@ -325,7 +509,7 @@ function MotionRow({
           {t.motionMeta({
             cols: motion.kind === "loop" || transition ? null : motion.grid.cols,
             rows: motion.kind === "loop" || transition ? null : motion.grid.rows,
-            frames: motion.frames.length,
+            frames: frameCount ?? motion.frames.length,
             fps: motion.fps,
             loop: motion.loop && !transition,
           })}

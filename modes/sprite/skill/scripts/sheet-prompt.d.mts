@@ -7,12 +7,26 @@ export declare const SHEET_PROMPT_BUILDER: "sheet-prompt/2";
 export declare const DEFAULT_SAFE_MARGIN_RATIO: number;
 export declare const GENERATION_CELL_MAX: number;
 export declare const SHEET_FRAME_COUNTS: number[];
-export declare const SHEET_STATES: Array<"idle" | "walk" | "run" | "jump" | "attack" | "wave">;
+export declare const SHEET_STATES: Array<Exclude<SheetState, "generic">>;
 export declare const RECOMMENDED_FRAMES: Partial<Record<SheetState, number>>;
 export declare const GUIDE_DEFAULT: boolean;
 
-export type SheetState = "idle" | "walk" | "run" | "jump" | "attack" | "wave" | "generic";
-export type SheetDirection = "front" | "back" | "left" | "right";
+export type SheetState =
+  | "idle" | "walk" | "run" | "jump" | "attack" | "wave"
+  | "hurt" | "death" | "cast" | "guard" | "victory"
+  | "generic";
+export type SheetDirection =
+  | "front" | "back" | "left" | "right"
+  | "front-left" | "front-right" | "back-left" | "back-right";
+export type CharacterView = "side" | "topdown" | "isometric";
+
+/** Every facing, in the order `domain.ts` lists them. */
+export declare const DIRECTIONS: SheetDirection[];
+/** The side view a mirror of each side or three-quarter view would be. */
+export declare const OPPOSITE: Partial<Record<SheetDirection, SheetDirection>>;
+export declare const CHARACTER_VIEWS: CharacterView[];
+/** The camera sentence every built prompt states for a recorded view. */
+export declare const VIEW_TEXT: Record<CharacterView, string>;
 
 export interface Size { width: number; height: number }
 export interface Inset { x: number; y: number }
@@ -38,6 +52,7 @@ export interface SheetCharacter {
   facing?: "left" | "right";
   asymmetric?: string;
   pixel?: { logicalHeight?: number; palette?: string; colors?: number };
+  view?: CharacterView;
 }
 
 export interface SheetMotion {

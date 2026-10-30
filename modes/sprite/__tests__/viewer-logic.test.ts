@@ -20,7 +20,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 
-import { loadRoster, type CharacterProject, type Motion } from "../domain.js";
+import { DIRECTIONS, loadRoster, type CharacterProject, type Motion } from "../domain.js";
 import spriteManifest from "../manifest.js";
 import { atlasGeometry, atlasPivot } from "../viewer/atlas.js";
 import { characterFitFrame, pivotGuide, stageScale } from "../viewer/frame-render.js";
@@ -2798,13 +2798,18 @@ describe("routes, directions, breathe and mirror on the stage", () => {
   test("every direction and the anchor role have words in both languages", () => {
     for (const locale of ["en", "zh"]) {
       const t = spriteStrings(locale);
-      for (const d of ["front", "back", "left", "right"] as const) {
+      for (const d of DIRECTIONS) {
         expect(t.direction[d].length).toBeGreaterThan(0);
         expect(t.directionTitle[d].length).toBeGreaterThan(0);
+        expect(t.facing(d).length).toBeGreaterThan(0);
       }
       expect(t.refRole.anchor.length).toBeGreaterThan(0);
+      expect(t.refRole.directions.length).toBeGreaterThan(0);
     }
-    expect(spriteStrings("zh").direction).toEqual({ front: "正面", back: "背面", left: "朝左", right: "朝右" });
+    expect(spriteStrings("zh").direction).toEqual({
+      front: "正面", back: "背面", left: "朝左", right: "朝右",
+      "front-left": "左前", "front-right": "右前", "back-left": "左后", "back-right": "右后",
+    });
   });
 });
 

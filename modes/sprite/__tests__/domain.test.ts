@@ -1004,17 +1004,19 @@ describe("0.5.0 sidecar additions", () => {
         { id: "anchor-left", asset: "ref-anchor-left", role: "anchor", label: "Left", direction: "left" },
         { id: "anchor-lost", asset: "ref-anchor-lost", role: "anchor", label: "Lost" },
         { id: "anchor-diag", asset: "ref-anchor-diag", role: "anchor", label: "Diag", direction: "front-left" },
+        { id: "anchor-north", asset: "ref-anchor-north", role: "anchor", label: "North", direction: "north" },
         { id: "turnaround", asset: "ref-turnaround", role: "turnaround", label: "T", direction: "front" },
       ];
     }).sprite.refs;
     expect(refs).toEqual([
       { id: "anchor-left", asset: "ref-anchor-left", role: "anchor", label: "Left", direction: "left" },
       { id: "anchor-lost", asset: "ref-anchor-lost", role: "custom", label: "Lost" },
-      // four directions only: a diagonal is not one of them (yet)
-      { id: "anchor-diag", asset: "ref-anchor-diag", role: "custom", label: "Diag" },
+      // 0.6.0: the diagonals are directions; an unknown word is not
+      { id: "anchor-diag", asset: "ref-anchor-diag", role: "anchor", label: "Diag", direction: "front-left" },
+      { id: "anchor-north", asset: "ref-anchor-north", role: "custom", label: "North" },
       { id: "turnaround", asset: "ref-turnaround", role: "turnaround", label: "T" },
     ]);
-    expect([...DIRECTIONS]).toEqual(["front", "back", "left", "right"]);
+    expect([...DIRECTIONS]).toEqual(["front", "back", "left", "right", "front-left", "front-right", "back-left", "back-right"]);
   });
 
   test("a motion's direction survives; an unknown one, or an unknown source, is absent", () => {
