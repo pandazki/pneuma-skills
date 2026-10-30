@@ -10,7 +10,8 @@
     *{box-sizing:border-box}
     body{margin:0;width:1376px;height:768px;overflow:hidden;background:#09090b;color:#f4f2ef;font-family:DM,Arial,sans-serif;-webkit-font-smoothing:antialiased}
     body:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 80% -10%,#5a341f2a,transparent 60%),radial-gradient(ellipse at 0% 110%,#3a1f5a18,transparent 55%);pointer-events:none}
-    .page{position:relative;width:1376px;height:768px;padding:34px 52px 28px;display:none}
+    /* The launcher card is ≈ 1.55:1 and covers, so a 16:9 frame loses ≈ 92 px a side: draw in a centred safe area. */
+    .page{position:relative;width:1376px;height:768px;padding:34px 52px 28px;display:none;transform:scale(.86);transform-origin:center}
     .page.active{display:block}
     img{display:block}
     .brand{display:flex;align-items:center;gap:12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#a5a1a0}
