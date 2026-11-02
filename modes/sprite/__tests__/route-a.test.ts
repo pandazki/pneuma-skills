@@ -273,7 +273,21 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs breathe --name", () => {
     // A sprite run: frames, sheet, atlas, GIF (+webp), inspect — at 8 fps, looping.
     expect(json.frames).toHaveLength(12);
     expect(json.frames[0]).toBe(join(motionDir, "frames", "00.png"));
-    for (const key of ["sheet", "atlas", "gif", "webp"]) expect(existsSync(json[key])).toBe(true);
+    for (const key of ["sheet", "atlas", "gif"]) expect(existsSync(json[key])).toBe(true);
+    // WebP is an optional preview: the real run keeps its GIF and reports a
+    // missing animation encoder, rather than claiming a WebP was written.
+    const encoders = spawnSync("ffmpeg", ["-v", "error", "-hide_banner", "-encoders"], { encoding: "utf-8" });
+    expect(encoders.status, encoders.stderr).toBe(0);
+    const supportsWebp = encoders.stdout.split("\n").some((line) => line.trim().split(/\s+/)[1] === "libwebp_anim");
+    const webpWarning = "libwebp_anim encoder is not available in this ffmpeg build — skipped the WebP preview";
+    if (supportsWebp) {
+      expect(existsSync(json.webp)).toBe(true);
+      expect(json.warnings).not.toContain(webpWarning);
+    } else {
+      expect(json.webp).toBeUndefined();
+      expect(existsSync(join(motionDir, "preview.webp"))).toBe(false);
+      expect(json.warnings).toContain(webpWarning);
+    }
     expect({ fps: json.fps, loop: json.loop, xFrom: json.xFrom, grid: json.grid }).toEqual({ fps: 8, loop: true, xFrom: "cell", grid: { rows: 3, cols: 4 } });
     // The cell is what the frames reach plus the pad, not the still's canvas.
     expect(json.cell.width).toBeLessThan(160);

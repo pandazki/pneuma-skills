@@ -375,12 +375,23 @@ describe.skipIf(!HAS_FFMPEG)("pose geometry", () => {
       expect(existsSync(join(dir, "sizes.png"))).toBe(false);
     }, SLOW);
 
-    test("says nothing within the bar, and refuses a comparison of one", () => {
+    test("has no size warning within the bar, and refuses a comparison of one", () => {
       const dir = join(fresh(), "pip");
       twoMotions(dir, [50, 49]);
       const out = runJson("sizes", dir);
-      expect(out.warnings).toEqual([]);
+      // Labels are optional when drawtext or its font is unavailable. Probe
+      // rendering independently so an unrelated warning is still a failure.
+      const labels = spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=s=64x64:d=1",
+        "-vf", "drawtext=text='idle 50':x=4:y=4:fontsize=16:fontcolor=white", "-frames:v", "1", "-f", "null", "-"], { encoding: "utf-8" });
+      expect(labels.error).toBeUndefined();
+      if (labels.status !== 0) expect(labels.stderr).toMatch(/drawtext|font/i);
+      expect(out.warnings).toEqual(labels.status === 0 ? [] : [
+        "ffmpeg's drawtext filter could not run here (missing, or no font to draw with) — sizes.png carries no labels; its panels are in the order of `motions`",
+      ]);
+      expect(out.motions.map((motion: any) => [motion.id, motion.height.shipped])).toEqual([["idle", 50], ["walk", 49]]);
+      expect(out.spread).toBeLessThan(out.bar);
       expect(existsSync(join(dir, "sizes.png"))).toBe(true);
+      expect(readBbox(join(dir, "sizes.png"))).toMatchObject({ width: 336, height: 392, coverage: 1 });
       const one = run("sizes", dir, "--motions", "idle", "--json");
       expect(one.code).toBe(1);
       expect(one.err).toMatch(/--motions: name at least two motions/);
