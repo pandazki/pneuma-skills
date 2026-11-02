@@ -59,7 +59,7 @@ app.on("second-instance", (_event, argv) => {
   const url = argv.find(arg => arg.startsWith('pneuma://'));
   if (url) {
     if (startupComplete) handlePneumaUrl(url);
-    else pendingPneumaUrl = url;
+    else pendingPneumaUrls.push(url);
     return;
   }
 
@@ -76,7 +76,7 @@ app.on("second-instance", (_event, argv) => {
 // macOS: dock icon is shown by default, hidden when all windows close
 
 // ── URL scheme handler ────────────────────────────────────────────────────────
-let pendingPneumaUrl: string | null = process.argv.find((arg) => arg.startsWith("pneuma://")) ?? null;
+const pendingPneumaUrls = process.argv.filter((arg) => arg.startsWith("pneuma://"));
 
 function handlePneumaUrl(url: string) {
   if (isQuitting) return;
@@ -288,7 +288,7 @@ app.on('open-url', (event, url) => {
   if (startupComplete) {
     handlePneumaUrl(url);
   } else {
-    pendingPneumaUrl = url;
+    pendingPneumaUrls.push(url);
   }
 });
 
@@ -317,7 +317,7 @@ app.whenReady().then(async () => {
   if (!gotLock || isQuitting) return;
   // A pending background-handoff cold start must stay invisible: no splash,
   // no launcher window, no dock icon — only the hidden background session.
-  const bgColdStart = pendingPneumaUrl ? isBackgroundHandoffUrl(pendingPneumaUrl) : false;
+  const bgColdStart = pendingPneumaUrls.length > 0 && pendingPneumaUrls.every(isBackgroundHandoffUrl);
 
   // macOS application menu (replaces "Electron" in menu bar)
   if (process.platform === "darwin") {
@@ -485,21 +485,19 @@ app.whenReady().then(async () => {
   // Backend availability belongs to the launcher API. A missing Claude CLI
   // must not prevent a user from opening local work or choosing another backend.
   startupComplete = true;
-  const pendingUrl = pendingPneumaUrl;
-  pendingPneumaUrl = null;
-  const pendingBackgroundHandoff = pendingUrl ? isBackgroundHandoffUrl(pendingUrl) : bgColdStart;
-  if (pendingBackgroundHandoff) {
+  const pendingUrls = pendingPneumaUrls.splice(0);
+  const backgroundOnly = pendingUrls.length > 0 && pendingUrls.every(isBackgroundHandoffUrl);
+  if (backgroundOnly) {
     // Also cover a cold-launch URL delivered while the asynchronous shell runs.
     if (preparedLauncher && !preparedLauncher.isDestroyed()) preparedLauncher.destroy();
     closeSplash();
     if (process.platform === "darwin") app.dock?.hide();
   }
-  if (pendingUrl) {
-    handlePneumaUrl(pendingUrl);
-    // Foreground handoffs open a session, while the normal launcher remains
-    // available just as it does for an already-running desktop.
-    if (!pendingBackgroundHandoff && !launcherNavigationRequestedBy(pendingUrl)) void showLauncher();
-  } else if (!bgColdStart) {
+  // Every received request owns an intent; a later URL must not replace it.
+  for (const url of pendingUrls) handlePneumaUrl(url);
+  // Foreground handoffs open a session, while the normal launcher remains
+  // available just as it does for an already-running desktop.
+  if (!backgroundOnly && !pendingUrls.some(launcherNavigationRequestedBy)) {
     void showLauncher();
   }
 
