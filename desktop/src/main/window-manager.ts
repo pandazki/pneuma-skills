@@ -116,8 +116,10 @@ export function createLauncherWindow(url: string, options: { navigate?: boolean 
       win.destroy();
     });
   }
+  // On macOS a minimized window reports isVisible() === false. Restore it
+  // before testing visibility, while leaving a prepared, unshown window hidden.
+  if (win.isMinimized()) win.restore();
   if (win.isVisible()) {
-    if (win.isMinimized()) win.restore();
     win.focus();
   }
   return win;

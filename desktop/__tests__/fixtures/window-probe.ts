@@ -7,6 +7,8 @@ const errors: string[] = [];
 class FakeWindow extends EventEmitter {
   destroyed = false;
   visible = false;
+  minimized = false;
+  restores = 0;
   focused = 0;
   urls: string[] = [];
   failNext = false;
@@ -16,8 +18,9 @@ class FakeWindow extends EventEmitter {
   });
   constructor(public options: { show: boolean }) { super(); windows.push(this); }
   isDestroyed() { return this.destroyed; }
-  isVisible() { return this.visible; }
-  isMinimized() { return false; }
+  isVisible() { return this.visible && !this.minimized; }
+  isMinimized() { return this.minimized; }
+  restore() { this.minimized = false; this.visible = true; this.restores++; }
   focus() { this.focused++; }
   show() { this.visible = true; this.emit("show"); }
   destroy() { this.destroyed = true; this.emit("closed"); }
@@ -43,15 +46,27 @@ assert.equal(prepared.visible, false);
 assert.equal(createLauncherWindow("http://localhost:3000"), prepared);
 assert.deepEqual(prepared.urls, ["http://localhost:3000"]);
 assert.equal(prepared.visible, false);
+assert.equal(prepared.focused, 0);
+assert.equal(prepared.restores, 0);
 prepared.emit("ready-to-show");
 assert.equal(prepared.visible, true);
 createLauncherWindow("http://localhost:3000");
 assert.equal(windows.length, 1);
 assert.equal(prepared.urls.length, 1);
 assert.equal(prepared.focused, 1);
+prepared.minimized = true;
+assert.equal(prepared.isVisible(), false);
+createLauncherWindow("http://localhost:3000");
+assert.equal(prepared.minimized, false);
+assert.equal(prepared.restores, 1);
+assert.equal(prepared.focused, 2);
+assert.equal(prepared.urls.length, 1);
+prepared.minimized = true;
 createLauncherWindow("http://localhost:3000?importUrl=example", { navigate: true });
 assert.equal(prepared.urls.at(-1), "http://localhost:3000?importUrl=example");
-assert.equal(prepared.focused, 2);
+assert.equal(prepared.minimized, false);
+assert.equal(prepared.restores, 2);
+assert.equal(prepared.focused, 3);
 prepared.destroy();
 assert.equal(getLauncherWindow(), null);
 
