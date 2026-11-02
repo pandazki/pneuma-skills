@@ -15,6 +15,7 @@
     "dev:main": "tsup --watch",
     "dev:electron": "electron .",
     "build:main": "tsup",
+    "test:startup": "node scripts/e2e/startup.mjs",
     "build:frontend": "cd .. && bun run build",
     "download-bun": "node scripts/download-bun.mjs",
     "prepare-deps": "node scripts/prepare-deps.mjs",
@@ -32,6 +33,7 @@
     "dotenv": "^17.3.0",
     "electron": "^41.0.0",
     "electron-builder": "^26.8.1",
+    "playwright": "1.64.1",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3"
   }
