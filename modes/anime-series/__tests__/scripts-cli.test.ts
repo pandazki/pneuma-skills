@@ -852,7 +852,7 @@ describe.skipIf(!HAS_FFMPEG)("series.mjs media steps", () => {
     expect(ok(dir, ["status"], REAL).episodes[0].stage).toBe("reviewed");
   }, 60_000);
 
-  test("patch-range splices shots back into a rebuilt final; the season compiles behind title cards", () => {
+  test("patch-range splices shots back into a rebuilt final; the season compiles with optional title cards", () => {
     const out = ok(dir, ["patch-range", "--episode", "ep01", "--shots", "6-6"], REAL);
     expect(out.plan.covered).toEqual([6, 7]);
     expect(out.span).toEqual([16, 19]);
@@ -880,9 +880,28 @@ describe.skipIf(!HAS_FFMPEG)("series.mjs media steps", () => {
     expect(again.final).toMatchObject({ id: "ep01-final-1", unchanged: true, stage: { stage: "done" } });
     expect(project(dir).assets.filter((a: { id: string }) => a.id.startsWith("ep01-final-")).map((a: { id: string }) => a.id)).toEqual(["ep01-final-1"]);
     expect(ok(dir, ["final", "--episode", "ep01", "--force"], REAL).final).toMatchObject({ id: "ep01-final-2", unchanged: false });
-    const season = ok(dir, ["compile-season", "--titles"], REAL);
-    expect(season.compilation).toMatchObject({ id: "season-1", episodes: ["ep01"], titles: ["Clock Out"] });
-    expect(Math.abs(duration(join(dir, "season", "season-1.mp4")) - 31.5)).toBeLessThan(0.2);
+    const season = ok(dir, ["compile-season"], REAL);
+    expect(season.compilation).toMatchObject({ id: "season-1", episodes: ["ep01"], titles: [] });
+    expect(Math.abs(duration(join(dir, "season", "season-1.mp4")) - 30)).toBeLessThan(0.2);
+    expect(sidecarOf(dir).compilations).toEqual([{ asset: "season-1", episodes: ["ep01"], titles: false }]);
+
+    const filters = spawnSync("ffmpeg", ["-hide_banner", "-filters"], { encoding: "utf-8" });
+    expect(filters.status).toBe(0);
+    const hasDrawtext = filters.stdout.split("\n").some((line) => line.trim().split(/\s+/)[1] === "drawtext");
+    if (hasDrawtext) {
+      const titled = ok(dir, ["compile-season", "--titles"], REAL);
+      expect(titled.compilation).toMatchObject({ id: "season-2", episodes: ["ep01"], titles: ["Clock Out"] });
+      expect(Math.abs(duration(join(dir, "season", "season-2.mp4")) - 31.5)).toBeLessThan(0.2);
+      expect(sidecarOf(dir).compilations.at(-1)).toEqual({ asset: "season-2", episodes: ["ep01"], titles: true });
+    } else {
+      const before = readFileSync(join(dir, "project.json"), "utf-8");
+      const refused = run(dir, ["compile-season", "--titles", "--json", "--at", String(T0)], REAL);
+      expect(refused.code).toBe(1);
+      expect(refused.out).toBe("");
+      expect(refused.err).toContain("this ffmpeg has no drawtext filter (built without libfreetype) — run compile-season without --titles");
+      expect(existsSync(join(dir, "season", "season-2.mp4"))).toBe(false);
+      expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    }
   }, 120_000);
 
   test("a splice meets the cut the take really has, within half a second, and records both", () => {
