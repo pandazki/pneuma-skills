@@ -109,6 +109,12 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     await click(tile);
     expect(button("Launch").disabled).toBe(true);
     expect(host.textContent).toContain("Checking available agents");
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(requests.filter((path) => path === "/api/backends")).toHaveLength(1);
+    expect(signals.get("/api/backends")?.aborted).toBe(false);
     await act(async () => backend.resolve(Response.json(backends)));
     expect(host.querySelector("main")?.dataset.launcherBackendsReady).toBe("true");
     expect(button("Launch").disabled).toBe(false);
@@ -183,6 +189,46 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     expect(button("Launch").disabled).toBe(true);
     expect(host.textContent).toContain("Agent availability could not be checked");
     expect(requests.filter((path) => path === "/api/launch")).toHaveLength(0);
+  });
+
+  test.each(["focus", "visibilitychange"])("returning via %s rechecks unavailable agents and coalesces return events", async (firstEvent) => {
+    routes.set("/api/backends", () => Response.json({
+      ...backends, backends: [{ ...backends.backends[0], available: false, reason: "Not installed" }],
+    }));
+    await mount();
+    const tile = [...host.querySelectorAll("button")].find((node) => node.textContent?.includes("Local Board"))!;
+    await click(tile);
+    expect(button("Launch").disabled).toBe(true);
+
+    const installed = Promise.withResolvers<Response>();
+    routes.set("/api/backends", () => installed.promise);
+    await act(async () => {
+      const events = firstEvent === "focus" ? ["focus", "visibilitychange"] : ["visibilitychange", "focus"];
+      for (const event of events) (event === "focus" ? window : document).dispatchEvent(new Event(event));
+    });
+    expect(requests.filter((path) => path === "/api/backends")).toHaveLength(2);
+    expect(button("Launch").disabled).toBe(true);
+    await act(async () => installed.resolve(Response.json(backends)));
+    expect(button("Launch").disabled).toBe(false);
+  });
+
+  test.each([true, false])("settings backend changes update launch availability (initially disabled: %s)", async (initiallyDisabled) => {
+    let disabled = initiallyDisabled;
+    routes.set("/api/backends", () => Response.json({
+      ...backends, backends: [{ ...backends.backends[0], disabled }],
+    }));
+    routes.set("/api/backends/codex/disabled", () => {
+      disabled = !disabled;
+      return Response.json({ ok: true });
+    });
+    await mount();
+    await click(host.querySelector('button[title="Settings"]')!);
+    const settings = host.querySelector('[role="dialog"][aria-label="Settings"]')!;
+    await click(settings.querySelector(`button[title="${initiallyDisabled ? "Show" : "Hide"} this backend ${initiallyDisabled ? "in" : "from"} session-creation pickers"]`)!);
+    await click(settings.querySelector('button[aria-label="close"]')!);
+    const tile = [...host.querySelectorAll("button")].find((node) => node.textContent?.includes("Local Board"))!;
+    await click(tile);
+    expect(button("Launch").disabled).toBe(!initiallyDisabled);
   });
 
   test("gallery keeps empty pending and failed buckets visible and retries without losing cards", async () => {

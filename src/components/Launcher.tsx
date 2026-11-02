@@ -3334,7 +3334,7 @@ export function LaunchDialog({
 
 // ── Settings Panel (slide-out) ────────────────────────────────────────────
 
-function BackendsSection() {
+function BackendsSection({ onBackendsChanged }: { onBackendsChanged: () => void }) {
   const { t } = useTranslation("launcher");
   const [backends, setBackends] = useState<any[]>([]);
   const [togglingType, setTogglingType] = useState<string | null>(null);
@@ -3351,17 +3351,18 @@ function BackendsSection() {
   const toggleDisabled = useCallback(async (type: string, disabled: boolean) => {
     setTogglingType(type);
     try {
-      await fetch(`${getApiBase()}/api/backends/${encodeURIComponent(type)}/disabled`, {
+      const response = await fetch(`${getApiBase()}/api/backends/${encodeURIComponent(type)}/disabled`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disabled }),
       });
       refresh();
+      if (response.ok) onBackendsChanged();
     } catch { /* ignore — refresh on next mount */ }
     finally {
       setTogglingType(null);
     }
-  }, [refresh]);
+  }, [refresh, onBackendsChanged]);
 
   return (
     <div className="space-y-3">
@@ -4690,7 +4691,7 @@ function PublishToLibraryDialog({
   );
 }
 
-function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+function SettingsPanel({ open, onClose, onBackendsChanged }: { open: boolean; onClose: () => void; onBackendsChanged: () => void }) {
   const { t } = useTranslation("launcher");
   if (!open) return null;
 
@@ -4722,7 +4723,7 @@ function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }
         {/* Sections */}
         <div className="p-6 space-y-8">
           <CollaborationSetupGuide />
-          <BackendsSection />
+          <BackendsSection onBackendsChanged={onBackendsChanged} />
           <ApiKeysSection />
           <CloudStorageSection />
           <GitHubSection />
@@ -5053,6 +5054,7 @@ export default function Launcher() {
   const projects = projectsResource.data.projects;
   const archivedProjects = archivedResource.data.projects;
   const libraries = librariesResource.data.libraries;
+  const { refresh: refreshBackends } = backendResource;
   const { refresh: refreshModes } = modesResource;
   const { refresh: refreshSessions } = sessionsResource;
   const { refresh: refreshRunning } = runningResource;
@@ -5280,6 +5282,23 @@ export default function Launcher() {
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [refreshSessions, refreshRunning]);
+
+  // An agent may have been installed while the launcher was in the background.
+  // Recheck on return, coalescing the focus and visibility events from one return.
+  useEffect(() => {
+    let refreshing = false;
+    const handleReturn = () => {
+      if (backendResource.pending || document.visibilityState !== "visible" || refreshing) return;
+      refreshing = true;
+      void refreshBackends().finally(() => { refreshing = false; });
+    };
+    window.addEventListener("focus", handleReturn);
+    document.addEventListener("visibilitychange", handleReturn);
+    return () => {
+      window.removeEventListener("focus", handleReturn);
+      document.removeEventListener("visibilitychange", handleReturn);
+    };
+  }, [refreshBackends, backendResource.pending]);
 
   // Argument is the on-disk directory name under `~/.pneuma/modes/`
   // (i.e. `basename(mode.path)`), not the manifest's `name` field —
@@ -6147,7 +6166,7 @@ export default function Launcher() {
       )}
 
       {/* Settings slide-out panel */}
-      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} onBackendsChanged={refreshBackends} />
 
       {/* Import dialog */}
       <ImportDialog
