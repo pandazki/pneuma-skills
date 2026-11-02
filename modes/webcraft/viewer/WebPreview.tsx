@@ -1004,7 +1004,7 @@ export default function WebPreview({
   const [interactionError, setInteractionError] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const [commandBarCollapsed, setCommandBarCollapsed] = useState(false);
+  const [commandBarCollapsed, setCommandBarCollapsed] = useState(true);
 
   // Build command categories from manifest commands (runtime-injected via props)
   const commandCategories = useMemo(
