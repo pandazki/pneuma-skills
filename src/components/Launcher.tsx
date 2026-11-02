@@ -3229,10 +3229,23 @@ export function LaunchDialog({
           <div className="flex h-[560px]">
             {/* Left: showcase panel */}
             <div className="w-1/2 relative bg-cc-bg/60 flex items-center justify-center overflow-hidden">
-              {/* Images — object-contain to preserve aspect ratio */}
+              {/* Silent looping animations and stills preserve their aspect ratio. */}
               {highlights!.map((item, i) => {
                 const url = `${getApiBase()}/api/modes/${specifier}/showcase/${item.media}`;
-                return (
+                return item.mediaType === "video" ? (
+                  <video
+                    key={item.media}
+                    src={url}
+                    aria-label={item.title}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    controls={false}
+                    className="absolute inset-2 w-[calc(100%-16px)] h-[calc(100%-16px)] object-contain rounded transition-opacity duration-500"
+                    style={{ opacity: i === activeHighlight ? 1 : 0 }}
+                  />
+                ) : (
                   <img
                     key={item.media}
                     src={url}

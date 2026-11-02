@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.60.3] - 2026-11-03
+
+### Fixed
+- **Sprite showcase previews** — Opening Sprite now displays its animations correctly instead of broken images. The previews use silent WebM loops with no player controls in both the launch dialog and mode gallery.
+
 ## [3.60.2] - 2026-11-02
 
 ### Improved

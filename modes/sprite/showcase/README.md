@@ -9,28 +9,38 @@ committed), with the costs the footers quote. `game.html` lays each one out
 (`?view=hero|moveset|storyboard|dirs|props|looks|restyle|transfer|model|cutscene`)
 and draws every animated element for a time `t` — sprite frames at their own
 fps, clips seeked, the 3D model's mixer set — so `record.mjs` can render it
-frame by frame through headless Chrome and encode H.264:
+frame by frame through headless Chrome and encode silent VP9 WebM loops:
 
 ```bash
 bun modes/sprite/showcase/record.mjs .tmp-sprite-showcase            # every view
 bun modes/sprite/showcase/record.mjs .tmp-sprite-showcase dirs props # some
 ```
 
-Each view writes `<media>.mp4` and a poster `<media>.png` (the frame at a
-third of the way through); `hero.png` is the hero's poster.
+Each view writes `<media>.webm`. With `--posters`, it also writes `<media>.png`
+(the frame at a third of the way through); `hero.png` is always captured for the
+launcher card. The launcher displays
+WebM highlights as muted, autoplaying, inline loops without player controls.
+
+The existing H.264 captures were converted without resizing or changing their
+frame rate, using ffmpeg (the source captures remain in git history):
+
+```sh
+ffmpeg -i highlight-move-sets.mp4 -an -c:v libvpx-vp9 -crf 32 -b:v 0 \
+  -row-mt 1 -pix_fmt yuv420p highlight-move-sets.webm
+```
 
 | `showcase.json` media | `?view=` | What it shows (all real) |
 |---|---|---|
-| `hero.png` / `hero.mp4` | `hero` | Pip's 8-direction walk pack, her four looks, the relics, Kael's moves |
-| `highlight-move-sets.mp4` | `moveset` | Kael: one side view → idle, walk, run (Seedance, 480p) |
-| `highlight-storyboard.mp4` | `storyboard` | Mira: five beats, three keyframes, one reference clip, matted |
-| `highlight-eight-directions.mp4` | `dirs` | Pip: one facing sheet → idle and walk packs (720p) |
-| `highlight-props.mp4` | `props` | Relics of the Ember Vale: one item sheet, one clip of all ten |
-| `highlight-outfits.mp4` | `looks` | Pip and three Sunburst-edited variants |
-| `highlight-restyle.mp4` | `restyle` | Pip's front walk driving the three variants (Kling Motion Control) |
-| `highlight-motion-library.mp4` | `transfer` | The victory-dance recipe on Kael, Mira and Pip (Kling Motion Control) |
-| `highlight-3d-model.mp4` | `model` | Pip in 3D (Meshy 7.1, rigged) — walk, sword slash, roll, cast |
-| `highlight-cutscene.mp4` | `cutscene` | Kael and Mira in an 8 s Seedance reference cutscene |
+| `hero.png` / `hero.webm` | `hero` | Pip's 8-direction walk pack, her four looks, the relics, Kael's moves |
+| `highlight-move-sets.webm` | `moveset` | Kael: one side view → idle, walk, run (Seedance, 480p) |
+| `highlight-storyboard.webm` | `storyboard` | Mira: five beats, three keyframes, one reference clip, matted |
+| `highlight-eight-directions.webm` | `dirs` | Pip: one facing sheet → idle and walk packs (720p) |
+| `highlight-props.webm` | `props` | Relics of the Ember Vale: one item sheet, one clip of all ten |
+| `highlight-outfits.webm` | `looks` | Pip and three Sunburst-edited variants |
+| `highlight-restyle.webm` | `restyle` | Pip's front walk driving the three variants (Kling Motion Control) |
+| `highlight-motion-library.webm` | `transfer` | The victory-dance recipe on Kael, Mira and Pip (Kling Motion Control) |
+| `highlight-3d-model.webm` | `model` | Pip in 3D (Meshy 7.1, rigged) — walk, sword slash, roll, cast |
+| `highlight-cutscene.webm` | `cutscene` | Kael and Mira in an 8 s Seedance reference cutscene |
 
 What the round taught the pipeline (each is in `references/game-assets.md`
 and the scripts): a pack is shot from `pack-plate`, never the raw facing

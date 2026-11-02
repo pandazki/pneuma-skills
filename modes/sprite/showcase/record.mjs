@@ -4,7 +4,7 @@
  * highlight videos: each view rendered frame by frame at a fixed time step
  * (`window.renderAt(t)` — sprites, clips and 3D all driven by `t`, so a
  * frame is the same picture on every run), screenshotted through headless
- * Chrome's DevTools protocol and encoded to H.264.
+ * Chrome's DevTools protocol and encoded to silent VP9 WebM loops.
  *
  *   bun modes/sprite/showcase/record.mjs <artwork dir> [view …] [--fps 15] [--seconds 6] [--posters]
  *
@@ -30,16 +30,16 @@ const posterAt = args.indexOf("--posters");
 const posters = posterAt >= 0 ? Boolean(args.splice(posterAt, 1)) : false;
 const artwork = resolve(args.shift() ?? ".tmp-sprite-showcase");
 const VIEWS = {
-  hero: { file: "hero.mp4", seconds: 6 },
-  moveset: { file: "highlight-move-sets.mp4", seconds: 6 },
-  storyboard: { file: "highlight-storyboard.mp4", seconds: 5.6 },
-  dirs: { file: "highlight-eight-directions.mp4", seconds: 5 },
-  props: { file: "highlight-props.mp4", seconds: 4 },
-  looks: { file: "highlight-outfits.mp4", seconds: 1 },
-  restyle: { file: "highlight-restyle.mp4", seconds: 4 },
-  transfer: { file: "highlight-motion-library.mp4", seconds: 4.8 },
-  model: { file: "highlight-3d-model.mp4", seconds: 6 },
-  cutscene: { file: "highlight-cutscene.mp4", seconds: 8 },
+  hero: { file: "hero.webm", seconds: 6 },
+  moveset: { file: "highlight-move-sets.webm", seconds: 6 },
+  storyboard: { file: "highlight-storyboard.webm", seconds: 5.6 },
+  dirs: { file: "highlight-eight-directions.webm", seconds: 5 },
+  props: { file: "highlight-props.webm", seconds: 4 },
+  looks: { file: "highlight-outfits.webm", seconds: 1 },
+  restyle: { file: "highlight-restyle.webm", seconds: 4 },
+  transfer: { file: "highlight-motion-library.webm", seconds: 4.8 },
+  model: { file: "highlight-3d-model.webm", seconds: 6 },
+  cutscene: { file: "highlight-cutscene.webm", seconds: 8 },
 };
 const views = args.length ? args : Object.keys(VIEWS);
 
@@ -48,7 +48,7 @@ const roots = {
   "/fonts/": resolve(here, "../../../public/fonts"),
   "/three/": resolve(here, "../../../node_modules/three"),
 };
-const types = { ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".mp4": "video/mp4", ".glb": "model/gltf-binary", ".png": "image/png", ".woff2": "font/woff2" };
+const types = { ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".mp4": "video/mp4", ".webm": "video/webm", ".glb": "model/gltf-binary", ".png": "image/png", ".woff2": "font/woff2" };
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -112,7 +112,7 @@ try {
     const out = join(here, spec.file);
     const ffmpeg = spawn("ffmpeg", [
       "-loglevel", "error", "-y", "-f", "image2pipe", "-framerate", String(fps), "-i", "-",
-      "-c:v", "libx264", "-preset", "slow", "-crf", "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out,
+      "-an", "-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p", out,
     ], { stdio: ["pipe", "inherit", "inherit"] });
     for (let i = 0; i < frames; i++) {
       await evaluate(`window.renderAt(${(i / fps).toFixed(4)})`);
@@ -126,7 +126,7 @@ try {
     if (view === "hero" || posters) {
       await evaluate(`window.renderAt(${((spec.seconds ?? seconds) / 3).toFixed(4)})`);
       const poster = await send("Page.captureScreenshot", { format: "png" });
-      await Bun.write(out.replace(/\.mp4$/, ".png"), Buffer.from(poster.result.data, "base64"));
+      await Bun.write(out.replace(/\.webm$/, ".png"), Buffer.from(poster.result.data, "base64"));
     }
     console.log(`${view}: ${frames} frames → ${out}`);
   }

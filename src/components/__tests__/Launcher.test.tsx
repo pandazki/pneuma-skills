@@ -85,7 +85,10 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
   });
   afterAll(async () => { await win.happyDOM.close(); });
 
-  async function mountDialog(defaultWorkspace?: string) {
+  async function mountDialog(
+    defaultWorkspace?: string,
+    showcase?: import("react").ComponentProps<typeof import("../Launcher.js").LaunchDialog>["showcase"],
+  ) {
     const { createElement } = await import("react");
     const { createRoot } = await import("react-dom/client");
     const { LaunchDialog } = await import("../Launcher.js");
@@ -94,7 +97,7 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     const root = createRoot(host);
     unmount = async () => { await act(async () => root.unmount()); };
     await act(async () => root.render(createElement(LaunchDialog, {
-      specifier: "doc", displayName: "Document", homeDir: "/home/test", defaultWorkspace,
+      specifier: "doc", displayName: "Document", homeDir: "/home/test", defaultWorkspace, showcase,
       defaultBackendType: "claude-code", onClose: () => { closed = true; },
       backendOptions: [
         { type: "claude-code", label: "Claude Code", description: "Claude", implemented: true, available: true },
@@ -133,6 +136,28 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
       await act(async () => { response.resolve(Response.json(body, { status })); });
     };
   }
+
+  test("showcase animations loop silently without player controls alongside stills and GIFs", async () => {
+    await mountDialog(undefined, { highlights: [
+      { title: "Motion", description: "Loop", media: "motion.webm", mediaType: "video" },
+      { title: "GIF", description: "Loop", media: "motion.gif", mediaType: "gif" },
+      { title: "Still", description: "Image", media: "still.png", mediaType: "image" },
+      { title: "Default", description: "Image", media: "default.png" },
+    ] });
+    const video = host.querySelector("video");
+    expect(video).not.toBeNull();
+    expect(video!.getAttribute("src")).toBe("/api/modes/doc/showcase/motion.webm");
+    expect(video!.autoplay).toBe(true);
+    expect(video!.muted).toBe(true);
+    expect(video!.loop).toBe(true);
+    expect(video!.hasAttribute("playsinline")).toBe(true);
+    expect(video!.controls).toBe(false);
+    expect([...host.querySelectorAll("img")].map(image => [image.getAttribute("src"), image.alt])).toEqual([
+      ["/api/modes/doc/showcase/motion.gif", "GIF"],
+      ["/api/modes/doc/showcase/still.png", "Still"],
+      ["/api/modes/doc/showcase/default.png", "Default"],
+    ]);
+  });
 
   test("session launch waits for native opening and displays IPC failures without browser fallback", async () => {
     await mountDialog("/workspace");

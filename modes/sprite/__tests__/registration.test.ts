@@ -416,7 +416,7 @@ describe("showcase copy", () => {
     for (const [i, highlight] of showcase.highlights.entries()) {
       expect(Object.keys(highlight.title).sort()).toEqual(["en", "ja", "zh-CN"]);
       expect(highlight.description.en.length).toBeGreaterThan(80);
-      expect(highlight.media).toMatch(i < 9 ? /^highlight-[\w-]+\.mp4$/ : /^highlight-[\w-]+\.png$/);
+      expect(highlight.media).toMatch(i < 9 ? /^highlight-[\w-]+\.webm$/ : /^highlight-[\w-]+\.png$/);
       expect(highlight.mediaType ?? "image").toBe(i < 9 ? "video" : "image");
       expect(JSON.stringify(highlight)).not.toContain("TODO");
     }
