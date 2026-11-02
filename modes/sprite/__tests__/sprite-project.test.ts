@@ -39,8 +39,11 @@ if (MEDIA_TIER && !HAS_FFMPEG) {
   console.warn("(skip) modes/sprite sprite-project.mjs suite — ffmpeg/ffprobe not on PATH");
 }
 
-const HAS_LIBWEBP = HAS_FFMPEG &&
-  spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" }).stdout?.includes("libwebp") === true;
+const encoders = HAS_FFMPEG ? spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" }) : null;
+if (encoders && encoders.status !== 0) throw new Error(`could not inspect ffmpeg encoders: ${encoders.stderr}`);
+const hasEncoder = (name: string) => encoders?.stdout.split("\n").some((line) => line.trim().split(/\s+/)[1] === name) === true;
+const HAS_LIBWEBP_ANIM = hasEncoder("libwebp_anim");
+const HAS_LIBWEBP_STILL = hasEncoder("libwebp");
 
 const T0 = 1757400000000;
 const T1 = 1757400001000;
@@ -302,7 +305,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
   });
 
   describe("the WebP preview", () => {
-    test.skipIf(!HAS_LIBWEBP)("an animated preview.webp is registered with its real canvas size", () => {
+    test.skipIf(!HAS_LIBWEBP_ANIM)("an animated preview.webp is registered with its real canvas size", () => {
       const { dir, realRun } = seedMini({ webp: true });
       const webpPath = join(dir, "motions", "bounce", "preview.webp");
       expect(realRun.webp).toBe(webpPath);
@@ -2253,12 +2256,25 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
       expect(readProject(dir).sprite.exports).toBeUndefined();
     }, EXPORT_TIMEOUT_MS);
 
-    test("a lossless .riv says so in the sidecar", () => {
+    test.skipIf(!HAS_LIBWEBP_STILL)("a lossless .riv says so in the sidecar", () => {
       const { dir } = seedReady();
       const report = sheetJson("rive", dir, "--images", "webp-lossless");
       expect(report.images).toBe("webp-lossless");
       expect(register(dir, report).code).toBe(0);
       expect(asset(dir, `${basename(dir)}-export-riv`).metadata.images).toBe("webp-lossless");
+    }, EXPORT_TIMEOUT_MS);
+
+    test.skipIf(HAS_LIBWEBP_STILL)("a missing lossless WebP encoder refuses without an export or sidecar change", () => {
+      const { dir } = seedReady();
+      const before = readFileSync(join(dir, "project.json"), "utf-8");
+      const result = run(SHEET, ["rive", dir, "--images", "webp-lossless", "--json"]);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain("--images webp-lossless needs ffmpeg's libwebp encoder");
+      expect(result.err).toContain("use --images png");
+      expect(result.out).toBe("");
+      expect(existsSync(join(dir, "exports", `${basename(dir)}.riv`))).toBe(false);
+      expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+      expect(readProject(dir).sprite.exports).toBeUndefined();
     }, EXPORT_TIMEOUT_MS);
 
     test("the character's .riv is registered on the character, off every frame it holds", () => {
@@ -3252,7 +3268,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         expect({ grid: said.grid, fps: said.fps }).toEqual({ grid: { rows: 1, cols: 4 }, fps: 6 });
       });
 
-      test.skipIf(!HAS_LIBWEBP)("the real mirror of a real run registers on its source's grid, rate and loop", () => {
+      test.skipIf(!HAS_LIBWEBP_ANIM)("the real mirror of a real run registers on its source's grid, rate and loop", () => {
         const dir = readyBounce();
         projectJson(dir, "add-motion", "--id", "bounce-left", "--source", "mirror");
         const flipped = run(SHEET, ["mirror", join(dir, "motions", "bounce"), "--name", "bounce-left", "--json"]);

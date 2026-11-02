@@ -57,6 +57,10 @@ const HAS_LIBWEBP = HAS_FFMPEG &&
 const HAS_LIBWEBP_STILL = HAS_FFMPEG &&
   / libwebp\s/.test(spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf-8" }).stdout ?? "");
 
+const RIVE_PNG_WARNING = "This ffmpeg has no libwebp encoder, so the frames went in as PNG instead of the default WebP — lossless, but larger; an ffmpeg built with libwebp makes the smaller file";
+const RIVE_LOSSLESS_PNG_WARNING = "This ffmpeg has no libwebp encoder, so the frames went in as PNG instead of the default lossless WebP — lossless, but larger; an ffmpeg built with libwebp makes the smaller file";
+const DEFAULT_RIVE_WARNINGS = HAS_LIBWEBP_STILL ? [] : [RIVE_PNG_WARNING];
+
 /**
  * A PATH on which `ffmpeg` is this machine's ffmpeg, except that its encoder
  * list has no libwebp — an ffmpeg built without it, which is common enough
@@ -1967,7 +1971,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     /** Four encoders per run is most of this describe's wall time, so every
      *  case that is not about the deliverables asks for one of them. */
-    const WEBP_ONLY = ["--formats", "webp"];
+    const SINGLE_PREVIEW = ["--formats", HAS_LIBWEBP ? "webp" : "apng"];
+    const DEFAULT_LOOP_WARNINGS = HAS_LIBWEBP ? [] : ["this ffmpeg build has no libwebp_anim encoder — skipped loop.webp"];
 
     /** The seam-fill cases each build a clip and drive two whole `loop` runs —
      *  3.2s measured when one of them pays for the fixtures cold, which leaves
@@ -2066,7 +2071,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // The seam is one step of a constant-speed orbit, so it closes.
       expect(json.inspect.seam).toBeLessThan(2 * json.inspect.step);
       expect(json.inspect.maxStep).toBeGreaterThanOrEqual(json.inspect.step);
-      expect(json.warnings).toEqual([]);
+      expect(json.warnings).toEqual(DEFAULT_LOOP_WARNINGS);
 
       // Nothing a loop is not judged on.
       for (const absent of ["anchorDrift", "bodyDrift", "maxJump", "scaleDrift", "anchorPoint"]) {
@@ -2074,17 +2079,17 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       }
     });
 
-    test("writes all four deliverables in the containers they claim", () => {
+    test("writes supported deliverables in the containers they claim and names missing encoders", () => {
       const { dir, json } = loop("orbit", orbit());
-      expect(json.webp).toBe(join(dir, "loop.webp"));
+      expect(json.webp).toBe(HAS_LIBWEBP ? join(dir, "loop.webp") : undefined);
       expect(json.apng).toBe(join(dir, "loop.apng"));
       expect(json.webm).toBe(join(dir, "loop.webm"));
       expect(json.lottie).toBe(join(dir, "loop.json"));
-      for (const path of [json.webp, json.apng, json.webm, json.lottie]) {
+      for (const path of [...(HAS_LIBWEBP ? [json.webp] : []), json.apng, json.webm, json.lottie]) {
         expect({ path, exists: existsSync(path) }).toEqual({ path, exists: true });
       }
       expect(json.inspect.exports).toEqual({
-        webp: statSync(json.webp).size,
+        ...(HAS_LIBWEBP ? { webp: statSync(json.webp).size } : {}),
         apng: statSync(json.apng).size,
         webm: statSync(json.webm).size,
         lottie: statSync(json.lottie).size,
@@ -2094,18 +2099,22 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // all, so that one is identified by its own container.
       expect(codecOf(json.apng)).toBe("apng");
       expect(codecOf(json.webm)).toBe("vp9");
-      const webp = readFileSync(json.webp);
-      expect(webp.subarray(0, 4).toString("latin1")).toBe("RIFF");
-      expect(webp.subarray(8, 12).toString("latin1")).toBe("WEBP");
-      // One ANMF per frame, the file declares transparency, and the loop count
-      // is 0 = forever.
-      const animation = webpAnimation(json.webp);
-      expect(animation.frames).toHaveLength(24);
-      expect(animation.loops).toBe(0);
-      expect(animation.declaresAlpha).toBe(true);
+      expect(json.warnings).toEqual(DEFAULT_LOOP_WARNINGS);
+      if (HAS_LIBWEBP) {
+        const webp = readFileSync(json.webp);
+        expect(webp.subarray(0, 4).toString("latin1")).toBe("RIFF");
+        expect(webp.subarray(8, 12).toString("latin1")).toBe("WEBP");
+        // One ANMF per frame, the file declares transparency, and loops forever.
+        const animation = webpAnimation(json.webp);
+        expect(animation.frames).toHaveLength(24);
+        expect(animation.loops).toBe(0);
+        expect(animation.declaresAlpha).toBe(true);
+      } else {
+        expect(existsSync(join(dir, "loop.webp"))).toBe(false);
+      }
     });
 
-    test("the WebP shows each frame on its own, not stacked on the ones before", () => {
+    test.skipIf(!HAS_LIBWEBP)("the WebP shows each frame on its own, not stacked on the ones before", () => {
       const { json } = loop("orbit", orbit());
 
       // ffmpeg's still `libwebp` encoder — which this export used to go
@@ -2166,18 +2175,18 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
 
     test("--trim-holds drops a frozen tail and leaves a clip that never holds alone", () => {
-      const held = loop("frozen", frozenTail(), WEBP_ONLY).json;
+      const held = loop("frozen", frozenTail(), SINGLE_PREVIEW).json;
       expect(held.dropped.trailing).toBeGreaterThan(0);
       expect(held.dropped.leading).toBe(0);
       expect(held.inspect.frameCount).toBe(24 - held.dropped.trailing);
       expect(held.frames).toHaveLength(held.inspect.frameCount);
-      expect(frameNames(loop("frozen", frozenTail(), WEBP_ONLY).dir)).toHaveLength(held.inspect.frameCount);
+      expect(frameNames(loop("frozen", frozenTail(), SINGLE_PREVIEW).dir)).toHaveLength(held.inspect.frameCount);
 
       // The clip that moves from frame 1 and returns loses nothing.
       expect(loop("orbit", orbit()).json.dropped).toEqual({ leading: 0, trailing: 0 });
 
       // …and the trimming is a default, not a law.
-      const kept = loop("frozen-kept", frozenTail(), ["--no-trim-holds", ...WEBP_ONLY]).json;
+      const kept = loop("frozen-kept", frozenTail(), ["--no-trim-holds", ...SINGLE_PREVIEW]).json;
       expect(kept.dropped).toEqual({ leading: 0, trailing: 0 });
       expect(kept.inspect.frameCount).toBe(24);
     }, 20_000);
@@ -2196,7 +2205,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // was refused as "one pose throughout"; under the clip's own rule there
       // is no scale on which anything is held, so nothing is dropped and the
       // report says plainly that the loop has no motion in it.
-      const { json } = loop("static", staticClip(), WEBP_ONLY);
+      const { json } = loop("static", staticClip(), SINGLE_PREVIEW);
       expect(json.dropped).toEqual({ leading: 0, trailing: 0 });
       expect(json.inspect.frameCount).toBe(24);
       expect(json.inspect.step).toBe(0);
@@ -2238,7 +2247,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
       test("a near-still loop whose wrap is several steps of noise closes, with no in-betweens", () => {
         expect(Math.max(...clipFrameDeltas(nearStill()))).toBeGreaterThan(10);
-        const { json } = loop("near-still", nearStill(), ["--key", "alpha", ...WEBP_ONLY]);
+        const { json } = loop("near-still", nearStill(), ["--key", "alpha", ...SINGLE_PREVIEW]);
         // Over two steps — the rule without a floor would fill it (the
         // silhouette rule this replaced filled 3) — and under the floor.
         expect(json.inspect.seam).toBeGreaterThan(2 * json.inspect.step);
@@ -2262,7 +2271,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         expect(alphaDiff).toBe(0);
         expect(colourDiff).toBeGreaterThan(0);
 
-        const { json } = loop("blink", blink(), ["--key", "alpha", "--seam-fill", "none", ...WEBP_ONLY]);
+        const { json } = loop("blink", blink(), ["--key", "alpha", "--seam-fill", "none", ...SINGLE_PREVIEW]);
         expect(json.inspect.seam).toBeGreaterThan(json.inspect.seamLimit);
         const warning = json.warnings.find((w: string) => w.includes("does not close"));
         expect(warning).toContain(`it closes at ${json.inspect.seamLimit}`);
@@ -2277,7 +2286,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         mkdirSync(motionDir, { recursive: true });
         cpSync(nearStill(), join(motionDir, "video-veed-1.mov"));
         const json = runJson("loop", join(motionDir, "video-veed-1.mov"), "--out", motionDir, "--name", "idle",
-          "--key", "alpha", ...WEBP_ONLY);
+          "--key", "alpha", ...SINGLE_PREVIEW);
         expect(json.inspect.seamLimit).toBe(0.005);
         writeFileSync(join(motionDir, "run.json"), JSON.stringify(json));
         projectCmd(character, "add-motion", "--id", "idle", "--label", "Idle", "--kind", "loop", "--fps", "24");
@@ -2298,7 +2307,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // --seam-fill none, because "did this clip close" is a question about
       // the frames the model drew; what the default then does about the answer
       // is the next case.
-      const { json } = loop("sweep", sweep(), ["--seam-fill", "none", ...WEBP_ONLY]);
+      const { json } = loop("sweep", sweep(), ["--seam-fill", "none", ...SINGLE_PREVIEW]);
       expect(json.seamFill).toBe(0);
       expect(json.inspect.seam).toBeGreaterThan(2 * json.inspect.step);
       const seamWarning = json.warnings.find((w: string) => w.includes("does not close"));
@@ -2325,8 +2334,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // sweep is a poor witness here: minterpolate cross-fades a jump it
       // cannot track, and a mean colour difference scores each 1/5 fade as
       // about two steps, so its filled wrap lands 0.6 % over the limit.)
-      const { json } = loop("slow-sweep-auto", slowSweep(), WEBP_ONLY);
-      const shot = loop("slow-sweep", slowSweep(), ["--seam-fill", "none", ...WEBP_ONLY]).json;
+      const { json } = loop("slow-sweep-auto", slowSweep(), SINGLE_PREVIEW);
+      const shot = loop("slow-sweep", slowSweep(), ["--seam-fill", "none", ...SINGLE_PREVIEW]).json;
       expect(json.seamFill).toBe(4);
       expect(json.inspect.seamFill).toBe(4);
       expect(json.inspect.frameCount).toBe(shot.inspect.frameCount + 4);
@@ -2341,8 +2350,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // well: by the time the wrap is filled both paths are the same RGBA
       // sequence, and `minterpolate` is run on it in yuva444p — alpha
       // included — rather than on a plate that no longer exists here.
-      const plain = loop("matted", matted(), ["--key", "alpha", ...WEBP_ONLY]).json;
-      const { dir, json } = loop("matted-fill", matted(), ["--key", "alpha", "--seam-fill", "2", ...WEBP_ONLY]);
+      const plain = loop("matted", matted(), ["--key", "alpha", ...SINGLE_PREVIEW]).json;
+      const { dir, json } = loop("matted-fill", matted(), ["--key", "alpha", "--seam-fill", "2", ...SINGLE_PREVIEW]);
 
       expect(plain.seamFill).toBe(0);
       expect(json.seamFill).toBe(2);
@@ -2372,7 +2381,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     test("--seam-fill none leaves the wrap as shot; N fills one auto would not", () => {
       // `none` on the clip whose seam auto WOULD have filled: 24 shot frames,
       // every one of them with the timestamp it came from.
-      const raw = loop("sweep", sweep(), ["--seam-fill", "none", ...WEBP_ONLY]).json;
+      const raw = loop("sweep", sweep(), ["--seam-fill", "none", ...SINGLE_PREVIEW]).json;
       expect(raw.seamFill).toBe(0);
       expect(raw.inspect.seamFill).toBe(0);
       expect(raw.inspect.frameCount).toBe(24);
@@ -2380,7 +2389,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
       // …and a count on the clip auto leaves alone: an explicit number is what
       // the caller saw on the contact sheet, not something to second-guess.
-      const forced = loop("orbit-fill", orbit(), ["--seam-fill", "2", ...WEBP_ONLY]).json;
+      const forced = loop("orbit-fill", orbit(), ["--seam-fill", "2", ...SINGLE_PREVIEW]).json;
       expect(forced.seamFill).toBe(2);
       expect(forced.inspect.seamFill).toBe(2);
       expect(forced.inspect.frameCount).toBe(26);
@@ -2389,7 +2398,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     }, SEAM_FILL_TIMEOUT_MS);
 
     test("--key alpha decodes the clip's own matte instead of keying a plate", () => {
-      const { dir, json } = loop("matted", matted(), ["--key", "alpha", ...WEBP_ONLY]);
+      const { dir, json } = loop("matted", matted(), ["--key", "alpha", ...SINGLE_PREVIEW]);
       expect(json.keyColor).toBeUndefined();
       expect(json.inspect.keyColor).toBeUndefined();
       expect(json.inspect.frameCount).toBe(24);
@@ -2417,7 +2426,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
     });
 
     test("--fps interpolates the plate and keeps the wrap smooth", () => {
-      const { json } = loop("orbit48", orbit(), ["--fps", "48", ...WEBP_ONLY]);
+      const { json } = loop("orbit48", orbit(), ["--fps", "48", ...SINGLE_PREVIEW]);
       expect(json.fps).toBe(48);
       expect(json.inspect.frameCount).toBe(48);
       expect(json.duration).toBe(1);
@@ -2433,8 +2442,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // The box is 16 wide and orbits +-8, so the union bbox is 32 px across;
       // --pad 8 on each side makes the cell 48.
       expect(loop("orbit", orbit()).json.cell).toEqual({ width: 48, height: 48 });
-      expect(loop("orbit-pad0", orbit(), ["--pad", "0", ...WEBP_ONLY]).json.cell).toEqual({ width: 32, height: 32 });
-      expect(loop("orbit-nocrop", orbit(), ["--crop", "none", ...WEBP_ONLY]).json.cell).toEqual({ width: 64, height: 64 });
+      expect(loop("orbit-pad0", orbit(), ["--pad", "0", ...SINGLE_PREVIEW]).json.cell).toEqual({ width: 32, height: 32 });
+      expect(loop("orbit-nocrop", orbit(), ["--crop", "none", ...SINGLE_PREVIEW]).json.cell).toEqual({ width: 64, height: 64 });
     });
 
     test("the report records the rect it cut from the clip and the scale it drew that rect at", () => {
@@ -2452,17 +2461,17 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
       // The 40 px box swings ±8 in a 96 px clip: union 20..76, pad 8 → 72 px,
       // drawn at 32 px wide.
-      const scaled = loop("soft-32", soft(), ["--width", "32", ...WEBP_ONLY]).json;
+      const scaled = loop("soft-32", soft(), ["--width", "32", ...SINGLE_PREVIEW]).json;
       expect(scaled.crop).toEqual({ x: 12, y: 12, w: 72, h: 72 });
       expect(scaled.scale).toBe(0.4444);
 
       // --crop none keeps the whole clip, and says so the same way.
-      const whole = loop("orbit-nocrop", orbit(), ["--crop", "none", ...WEBP_ONLY]).json;
+      const whole = loop("orbit-nocrop", orbit(), ["--crop", "none", ...SINGLE_PREVIEW]).json;
       expect({ crop: whole.crop, scale: whole.scale }).toEqual({ crop: { x: 0, y: 0, w: 64, h: 64 }, scale: 1 });
     });
 
     test("--width scales in premultiplied alpha: no dark fringe, no colour under the transparency", () => {
-      const scaled = loop("soft-32", soft(), ["--width", "32", ...WEBP_ONLY]).json;
+      const scaled = loop("soft-32", soft(), ["--width", "32", ...SINGLE_PREVIEW]).json;
       expect(scaled.cell).toEqual({ width: 32, height: 32 });
 
       // The plate never reaches a transparent pixel, at any scale.
@@ -2481,11 +2490,12 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
     test("--formats writes only what was asked for", () => {
       const { dir, json } = loop("orbit-webp", orbit(), ["--formats", "lottie,webp"]);
-      expect(json.webp).toBe(join(dir, "loop.webp"));
+      expect(json.webp).toBe(HAS_LIBWEBP ? join(dir, "loop.webp") : undefined);
       expect(json.lottie).toBe(join(dir, "loop.json"));
       expect(json.apng).toBeUndefined();
       expect(json.webm).toBeUndefined();
-      expect(Object.keys(json.inspect.exports)).toEqual(["webp", "lottie"]);
+      expect(Object.keys(json.inspect.exports)).toEqual(HAS_LIBWEBP ? ["webp", "lottie"] : ["lottie"]);
+      expect(json.warnings).toEqual(DEFAULT_LOOP_WARNINGS);
       expect(existsSync(join(dir, "loop.apng"))).toBe(false);
       expect(existsSync(join(dir, "loop.webm"))).toBe(false);
     });
@@ -2511,7 +2521,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(human.out).toContain("24 frames of 48x48 at 24fps");
       expect(human.out).toContain("seam ");
       expect(human.out).toContain("dropped 0 leading / 0 trailing, seam-fill 0");
-      expect(human.out).toContain("webp ");
+      expect(human.out).toContain(HAS_LIBWEBP ? "webp " : DEFAULT_LOOP_WARNINGS[0]);
     });
 
     test("refuses by name what it cannot do", () => {
@@ -2557,7 +2567,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
 
       // An explicit width is obeyed, above or below the cap, and nothing is
       // claimed about a default that did not happen.
-      const asked = loop("wide-600", wide(), ["--crop", "none", "--width", "600", ...WEBP_ONLY]).json;
+      const asked = loop("wide-600", wide(), ["--crop", "none", "--width", "600", ...SINGLE_PREVIEW]).json;
       expect(asked.cell.width).toBe(600);
       expect("widthDefaulted" in asked).toBe(false);
       expect("widthDefaulted" in asked.inspect).toBe(false);
@@ -2565,7 +2575,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       // A frame already under the cap is left alone and says nothing: the
       // 48 px orbit is not scaled up to 512.
       const small = run("loop", orbit(), "--out", join(ws, "small"), "--name", "s",
-        ...WEBP_ONLY, "--json");
+        ...SINGLE_PREVIEW, "--json");
       expect(JSON.parse(small.out).cell.width).toBe(48);
       expect("widthDefaulted" in JSON.parse(small.out)).toBe(false);
       expect(small.err).not.toContain("--width");
@@ -2614,7 +2624,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const ws = fresh();
       const dir = join(ws, "clean");
       runJson("loop", orbit(), "--out", dir, "--name", "c", "--formats", "webp");
-      expect(readdirSync(dir).sort()).toEqual(["frames", "inspect.json", "loop.webp"]);
+      expect(readdirSync(dir).sort()).toEqual(HAS_LIBWEBP ? ["frames", "inspect.json", "loop.webp"] : ["frames", "inspect.json"]);
 
       // …and a refusal raised INSIDE the run — the alpha probe is the first
       // thing the working directory exists for — sweeps up on the way out.
@@ -3795,7 +3805,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(json.warnings).toEqual([]);
     }, EXPORT_TIMEOUT_MS);
 
-    test("--images webp embeds WebP, lossy, and says --images png is the lossless one", () => {
+    test.if(HAS_LIBWEBP_STILL)("--images webp embeds WebP, lossy, and says --images png is the lossless one", () => {
       const { json } = rived("webp", "--images", "webp");
       expect(json.images).toBe("webp");
       const riv = decodeRiv(readFileSync(json.out));
@@ -3979,8 +3989,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(pixel.resample).toMatchObject({ filter: "nearest", filterFrom: "style" });
       // The same reading of the style picks the encoding: pixel art goes in as
       // lossless WebP, so what nearest-neighbour kept is what the file holds.
-      expect(pixel.images).toBe("webp-lossless");
-      expect(pixel.notes.join(" ")).toMatch(/lossless WebP.*pixel art/);
+      expect(pixel.images).toBe(HAS_LIBWEBP_STILL ? "webp-lossless" : "png");
+      if (HAS_LIBWEBP_STILL) expect(pixel.notes.join(" ")).toMatch(/lossless WebP.*pixel art/);
+      else expect(pixel.warnings).toContain(RIVE_LOSSLESS_PNG_WARNING);
       // Nearest-neighbour only ever copies a pixel that was there.
       expect([...colours(firstFrame(pixel))].every((c) => sourceColours.has(c))).toBe(true);
       // …and every frame is the PNG export's frame, pixel for pixel.
@@ -3998,8 +4009,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       writeFileSync(path, JSON.stringify(doc));
       const declared = runJson("rive", dir, "--motions", "flame", "--max-size", "36");
       expect(declared.resample).toMatchObject({ filter: "nearest", filterFrom: "pixel" });
-      expect(declared.images).toBe("webp-lossless");
-      expect(declared.notes.join(" ")).toMatch(/default for pixel art \(character\.pixel\)/);
+      expect(declared.images).toBe(HAS_LIBWEBP_STILL ? "webp-lossless" : "png");
+      if (HAS_LIBWEBP_STILL) expect(declared.notes.join(" ")).toMatch(/default for pixel art \(character\.pixel\)/);
+      else expect(declared.warnings).toContain(RIVE_LOSSLESS_PNG_WARNING);
       expectSamePixels(asPng, declared);
     }, EXPORT_TIMEOUT_MS);
 
@@ -4052,11 +4064,11 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(heavy.estimatedDecodeBytes).toBe(160 * 1024 * 1024 * 4);
       expect(heavy.warnings.join(" ")).toMatch(/640 MB/);
 
-      // At the defaults: 24 fps and 320 px, about 63 MB and no warning.
+      // At the defaults: 24 fps and 320 px, about 63 MB and no memory warning.
       const light = runJson("rive", dir, "--motions", "huge");
       expect(light.motions[0]).toMatchObject({ frames: 160, width: 320, height: 320 });
       expect(light.estimatedDecodeBytes).toBe(160 * 320 * 320 * 4);
-      expect(light.warnings).toEqual([]);
+      expect(light.warnings).toEqual(DEFAULT_RIVE_WARNINGS);
 
       // The Export tab quotes the same plan from project.json alone, before
       // anyone asks for the file: same memory, same rate, same size.
@@ -4192,7 +4204,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         expect(stride.scale).toBe(1);
         expect(sway.scale).toBeCloseTo(0.75 / 1.8462, 4);
         expectOneCharacter(json);
-        expect(json.warnings).toEqual([]);
+        expect(json.warnings).toEqual(DEFAULT_RIVE_WARNINGS);
 
         // The Export tab quotes the same plan off project.json alone.
         const roster = loadRoster([{ path: "duo/project.json", content: readFileSync(join(dir, "project.json"), "utf-8") }])!;
@@ -4228,7 +4240,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         expect(Math.abs(stride.clip.origin.y - 64)).toBeLessThanOrEqual(1);
         expect([sway.anchor.from, stride.anchor.from]).toEqual(["clip", "clip"]);
         expectOneCharacter(json);
-        expect(json.warnings).toEqual([]);
+        expect(json.warnings).toEqual(DEFAULT_RIVE_WARNINGS);
       }, 60_000);
 
       test("after the first export the Export tab quotes what the script makes: one authority for old loops", () => {
@@ -4264,6 +4276,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         expect(stride.clip).toBeNull();
         expect(stride.anchor.from).toBe("feet");
         expect(json.warnings).toEqual([
+          ...DEFAULT_RIVE_WARNINGS,
           expect.stringMatching(/^stride: .*scale.*unknown.*motions\/stride\/video-veed-1\.mov.*not on disk.*as it was cut.*feet/),
         ]);
       }, 60_000);
@@ -4273,7 +4286,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
         rmSync(join(dir, "motions", "stride", "video-veed-1.mov"));
         const json = runJson("rive", dir, "--motions", "stride");
         expect(json.motions[0]).toMatchObject({ clip: null, anchor: { from: "feet" } });
-        expect(json.warnings).toEqual([]);
+        expect(json.warnings).toEqual(DEFAULT_RIVE_WARNINGS);
       }, 60_000);
     });
 
@@ -4336,7 +4349,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const json = mirror(dir);
       expect(json).toMatchObject({
         name: "walk-left", source: "mirror", mirrorOf: "walk-right", direction: "left",
-        fps: 8, loop: true, anchor: "bottom", scale: 1, warnings: [],
+        fps: 8, loop: true, anchor: "bottom", scale: 1,
+        warnings: HAS_LIBWEBP ? [] : ["libwebp_anim encoder is not available in this ffmpeg build — skipped the WebP preview"],
       });
       // Nothing was forced, and the summary does not claim it was.
       expect("force" in json).toBe(false);
@@ -4371,6 +4385,9 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(atlas.animations["walk-left"]).toEqual(["walk-left_00", "walk-left_01", "walk-left_02", "walk-left_03"]);
       expect(atlas.meta).toMatchObject({ fps: 8, loop: true, anchor: "bottom", scale: 1, size: atlasOf(dir, "walk-right").meta.size });
       expect(existsSync(json.gif)).toBe(true);
+      const webpPath = join(dir, "motions", "walk-left", "preview.webp");
+      expect(json.webp).toBe(HAS_LIBWEBP ? webpPath : undefined);
+      expect(existsSync(webpPath)).toBe(HAS_LIBWEBP);
       expect(existsSync(join(dir, "motions", "walk-left", "inspect.json"))).toBe(true);
     }, TIMEOUT_MS);
 
@@ -4567,7 +4584,8 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       const dir = useMirrorable();
       projectCmd(dir, "set-character", "--style", "Soft painted storybook look", "--pixel", "32");
       const json = runJson("rive", dir, "--max-size", "32");
-      expect(json.images).toBe("webp-lossless");
+      expect(json.images).toBe(HAS_LIBWEBP_STILL ? "webp-lossless" : "png");
+      if (!HAS_LIBWEBP_STILL) expect(json.warnings).toContain(RIVE_LOSSLESS_PNG_WARNING);
       expect(json.resample.filter).toBe("nearest");
     }, TIMEOUT_MS);
   });
