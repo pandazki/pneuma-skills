@@ -755,7 +755,9 @@ describe("cut", () => {
     // The take's own sound is there, the greybox stand-in is silent, and the
     // voice-over is audible where the edit list says it is.
     expect(volumeDb(file, 0.5, 0.25)).toBeGreaterThan(-35);
-    expect(volumeDb(file, 2.0, 0.25)).toBeLessThan(-35);
+    // AAC can retain one 1024-sample frame (21.3 ms at 48 kHz) at the cut.
+    // Measure the stand-in's interior, before the voice-over starts at 2.3 s.
+    expect(volumeDb(file, 2.05, 0.2)).toBeLessThan(-60);
     expect(volumeDb(file, 2.4, 0.25)).toBeGreaterThan(-35);
   });
 
@@ -917,7 +919,8 @@ function volumeDb(file: string, from?: number, seconds?: number): number {
   const window = from === undefined ? [] : ["-ss", String(from), ...(seconds === undefined ? [] : ["-t", String(seconds)])];
   const result = Bun.spawnSync(["ffmpeg", "-hide_banner", ...window, "-i", file, "-vn", "-af", "volumedetect", "-f", "null", "-"]);
   const match = /mean_volume:\s*(-?[\d.]+) dB/.exec(result.stderr.toString());
-  return match ? Number(match[1]) : -Infinity;
+  if (result.exitCode !== 0 || !match) throw new Error(`could not measure audio volume: ${result.stderr.toString()}`);
+  return Number(match[1]);
 }
 
 /**

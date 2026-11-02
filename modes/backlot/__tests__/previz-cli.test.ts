@@ -20,11 +20,11 @@
 
 import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { afterAll, describe, expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { pngSize } from "../skill/scripts/media.mjs";
+import { hasDrawtext, pngSize } from "../skill/scripts/media.mjs";
 
 const SCRIPT = join(import.meta.dir, "..", "skill", "scripts", "previz.mjs");
 const BACKLOT = join(import.meta.dir, "..", "skill", "scripts", "backlot.mjs");
@@ -2604,7 +2604,15 @@ describe("key frames and the lineup", () => {
     json(cwd, ["anchor", "film/shots/lab-walk"], env);
     json(cwd, ["anchor", "film/shots/lab-walk", "--id", "key", "--at", "0.5"], env);
 
-    const lined = json(cwd, ["lineup", "film/shots/lab-walk"]);
+    // The CLI supports ffmpeg builds without drawtext. Probe independently
+    // instead of assuming every installed ffmpeg can burn labels and a footer.
+    const ffmpeg = Bun.which("ffmpeg")!;
+    const filters = Bun.spawnSync([ffmpeg, "-v", "quiet", "-filters"]);
+    expect(filters.exitCode, filters.stderr.toString()).toBe(0);
+    const supportsLabels = hasDrawtext(filters.stdout.toString());
+    const result = run(cwd, ["lineup", "film/shots/lab-walk"], { FFMPEG_PATH: ffmpeg });
+    expect(result.code, result.err).toBe(0);
+    const lined = JSON.parse(result.out);
     // The pictures, then the blocking they were rendered from — one greybox
     // frame per key frame, at that key frame's own second.
     expect(lined.panels.map((panel: any) => panel.kind)).toEqual(["anchor", "anchor", "greybox", "greybox"]);
@@ -2615,10 +2623,44 @@ describe("key frames and the lineup", () => {
     expect(lined.file).toBe("lineup.png");
     const drawn = join(cwd, "film", "shots", "lab-walk", "lineup.png");
     const size = pngSize(readFileSync(drawn))!;
-    // Four panels, one height, plus the footer the beats are written in.
-    expect(size.height).toBe(lined.height + 44);
+    // Four panels, one height; capable builds also burn the 44 px beat footer.
+    expect(lined.labels).toBe(supportsLabels);
+    expect(size.height).toBe(lined.height + (supportsLabels ? 44 : 0));
+    if (!supportsLabels) {
+      expect(result.err).toContain("no drawtext filter");
+      expect(result.err).toContain("the lineup is unlabelled");
+    }
     expect(size.width).toBeGreaterThan(lined.height * 3);
     expect(lined.beats[0]).toMatchObject({ id: "establish", detail: "he stops in the doorway, rain still on his shoulders" });
+  });
+
+  test.skipIf(!HAS_FFMPEG || process.platform === "win32")("lineup reports its unlabelled fallback when drawtext is unavailable", () => {
+    const cwd = workspace();
+    ready(cwd, { video: mp4Fixture(cwd) });
+    // Exercise the unsupported-capability path even on full ffmpeg builds;
+    // actual frame extraction, composition and PNG encoding still run.
+    const wrapper = join(cwd, "ffmpeg-without-drawtext");
+    writeFileSync(wrapper, `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args.includes("-filters")) {
+  console.log(" ... null V->V Pass the source unchanged to the output.");
+} else {
+  const result = Bun.spawnSync([${JSON.stringify(Bun.which("ffmpeg"))}, ...args]);
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  process.exit(result.exitCode);
+}
+`);
+    chmodSync(wrapper, 0o755);
+    const result = run(cwd, ["lineup", "film/shots/lab-walk"], { FFMPEG_PATH: wrapper });
+    expect(result.code, result.err).toBe(0);
+    const lined = JSON.parse(result.out);
+    expect(lined.labels).toBe(false);
+    expect(lined.panels.map((panel: any) => panel.kind)).toEqual(["greybox"]);
+    expect(lined.beats).toHaveLength(BEATS.length);
+    expect(pngSize(readFileSync(join(cwd, "film", "shots", "lab-walk", lined.file)))!.height).toBe(lined.height);
+    expect(result.err).toContain("no drawtext filter");
+    expect(result.err).toContain("the lineup is unlabelled");
   });
 
   test.skipIf(!HAS_FFMPEG)("a shot with no board has no board column, and one with no key frame says so", () => {
