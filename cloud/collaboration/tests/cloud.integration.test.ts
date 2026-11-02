@@ -539,7 +539,9 @@ describe("cloud project collaboration with real workerd and R2", () => {
     await socket.wait("closed");
     for (const token of [first.token, second.token]) {
       expect((await request(token, "/api/state")).status).toBe(401);
-      expect((await request(token, `/api/rooms/${roomId}/chat`, "POST", { opId: crypto.randomUUID(), body: "After revoke" })).status).toBe(401);
+      // Revoked credentials are rejected before body consumption; do not reuse
+      // the closing workerd connection for the next redemption request.
+      expect((await request(token, `/api/rooms/${roomId}/chat`, "POST", { opId: crypto.randomUUID(), body: "After revoke" }, { Connection: "close" })).status).toBe(401);
     }
     expect((await request(null, "/api/invitations/redeem", "POST", { token: link.token, name: "Late visitor" })).ok).toBe(false);
     expect((await fetch(page)).ok).toBe(false);
