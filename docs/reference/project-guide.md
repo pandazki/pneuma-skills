@@ -371,11 +371,18 @@ create neither a splash nor a launcher window. Agent installation is checked
 through the launcher's backend capabilities rather than a Claude-only gate
 before the window opens.
 
+Protocol URLs received before service readiness are queued in arrival order and
+all dispatched after startup. Only a queue containing exclusively background
+handoffs suppresses the launcher; any foreground request retains its window.
+
 Desktop resolves the user's shell PATH once through a bounded asynchronous
 capture. Its child environment carries `PNEUMA_DESKTOP_PATH_READY=1` to mean
 that this attempt completed, including a logged fallback after capture failure.
 `server/path-resolver.ts` reuses the validated inherited PATH and appends its
-usual fallback directories. This internal marker does not assert that an agent
+usual fallback directories. After a binary lookup miss, it checks for newly
+created fallback directories without repeating shell capture, allowing standard
+agent installations to be discovered while the launcher remains open.
+This internal marker does not assert that an agent
 is installed or authenticated. Direct CLI launches without the marker retain
 their shell discovery behavior.
 
@@ -510,6 +517,8 @@ The launcher loads backend availability, registry buckets, sessions, running
 instances, and current/archived projects independently. A slow or failed request
 does not discard successful data or hide the whole page. Pending backend checks
 cannot be mistaken for an installed backend when starting a session.
+Returning to the launcher rechecks backend availability, and successful backend
+visibility changes in Settings refresh the launcher's options without reloading.
 
 `GET /api/registry` returns local builtins, the pinned release catalog, and
 installed/library modes without waiting for the community directory. The

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.60.2] - 2026-11-02
+
+### Improved
+- **Faster desktop startup** — The launcher prepares alongside its local service and reuses one asynchronous shell environment lookup. Opening the app no longer waits for a Claude-only version check.
+- **Local browsing stays responsive** — Modes, sessions, and projects load independently of backend checks and the community directory. Community loading and failures have visible status and retry controls, while the last successful results remain available.
+
+### Fixed
+- **Smoother launcher handover** — The splash stays visible until the launcher appears, and reopening a minimized launcher restores it correctly. Session creation still waits for an available backend.
+- **Startup handoffs stay queued** — Multiple handoff links received while the app starts are all processed; a later request no longer replaces earlier work.
+- **Agent setup recovers without a reload** — Returning to the launcher rechecks installed agents, and enabling or hiding a backend in Settings immediately updates session launch availability.
+
 ## [3.60.1] - 2026-11-02
 
 ### Added
