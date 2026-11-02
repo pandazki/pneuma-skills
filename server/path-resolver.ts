@@ -176,7 +176,8 @@ let _cachedPath: string | null = null;
 /**
  * Returns an enriched PATH that merges the user's shell PATH, the current
  * process PATH, and the probed fallback dirs. Deduplicates entries; result is
- * cached after the first call.
+ * cached after the first call. Missing binary lookups can append fallback
+ * directories created by a later installation without recapturing the shell.
  *
  * The fallback dirs are appended unconditionally (lowest precedence) rather
  * than only on capture failure. A GUI-launched app gets a minimal PATH from
@@ -224,15 +225,30 @@ export function resolveBinary(name: string): string | null {
 
   const enrichedPath = getEnrichedPath();
   const cmd = isWin ? "where" : "which";
-  try {
-    const resolved = execSync(`${cmd} ${name.replace(/[^a-zA-Z0-9._@/\\-]/g, "")}`, {
-      encoding: "utf-8",
-      timeout: 5_000,
-      env: { ...process.env, PATH: enrichedPath },
-    }).trim();
-    // `where` on Windows may return multiple lines; take the first
-    return (isWin ? resolved.split("\n")[0].trim() : resolved) || null;
-  } catch {
-    return null;
-  }
+  const findInPath = (searchPath: string): string | null => {
+    try {
+      const resolved = execSync(`${cmd} ${name.replace(/[^a-zA-Z0-9._@/\\-]/g, "")}`, {
+        encoding: "utf-8",
+        timeout: 5_000,
+        env: { ...process.env, PATH: searchPath },
+      }).trim();
+      // `where` on Windows may return multiple lines; take the first
+      return (isWin ? resolved.split("\n")[0].trim() : resolved) || null;
+    } catch {
+      return null;
+    }
+  };
+  const resolved = findInPath(enrichedPath);
+  if (resolved) return resolved;
+
+  // The launcher can remain open while an installer creates ~/.local/bin or
+  // another standard location. Refresh filesystem candidates only: the cached
+  // login-shell capture and its precedence remain intact.
+  const refreshedPath = [...new Set([
+    ...enrichedPath.split(delimiter),
+    ...buildFallbackPath().split(delimiter),
+  ].filter(Boolean))].join(delimiter);
+  if (refreshedPath === enrichedPath) return null;
+  _cachedPath = refreshedPath;
+  return findInPath(refreshedPath);
 }

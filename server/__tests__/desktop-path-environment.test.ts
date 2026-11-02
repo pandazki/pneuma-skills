@@ -41,4 +41,46 @@ describe.skipIf(process.platform === "win32")("desktop inherited PATH contract",
     expect((await probe("true")).captured).toBe("captured");
     expect((await probe("1", "not an absolute directory")).captured).toBe("captured");
   });
+
+  for (const marker of ["1", undefined]) {
+    test(`finds an agent installed after ${marker ? "desktop" : "CLI"} PATH initialization without recapturing the shell`, async () => {
+      const root = mkdtempSync(join(tmpdir(), "pneuma-path-install-"));
+      roots.push(root);
+      const shell = join(root, "shell");
+      const captures = join(root, "captures");
+      writeFileSync(shell, `#!/bin/sh\nprintf 'capture\\n' >> '${captures}'\nprintf '___PNEUMA_PATH_START___\\n/usr/bin:/bin\\n___PNEUMA_PATH_END___\\n'\n`);
+      chmodSync(shell, 0o755);
+      const script = `
+        import { mkdirSync, writeFileSync, chmodSync } from "node:fs";
+        import { join } from "node:path";
+        import { getEnrichedPath, resolveBinary } from ${JSON.stringify(join(import.meta.dir, "../path-resolver.ts"))};
+        const directory = join(process.env.HOME, ".local", "bin");
+        const name = "pneuma-fresh-agent-fixture";
+        const beforePath = getEnrichedPath();
+        const before = resolveBinary(name);
+        mkdirSync(directory, { recursive: true });
+        const binary = join(directory, name);
+        writeFileSync(binary, "#!/bin/sh\\nprintf 'fixture agent'\\n");
+        chmodSync(binary, 0o755);
+        const after = resolveBinary(name);
+        const afterPath = getEnrichedPath();
+        const launched = after ? Bun.spawnSync([name], { env: { ...process.env, PATH: afterPath } }) : null;
+        console.log(JSON.stringify({ directory, binary, beforePath, before, after, afterPath, output: launched?.stdout.toString() }));
+      `;
+      const child = Bun.spawn([process.execPath, "-e", script], {
+        env: { ...process.env, HOME: root, PATH: "/usr/bin:/bin", SHELL: shell, PNEUMA_DESKTOP_PATH_READY: marker },
+        stdout: "pipe", stderr: "pipe",
+      });
+      const output = await new Response(child.stdout).text();
+      const error = await new Response(child.stderr).text();
+      expect(await child.exited, error).toBe(0);
+      const result = JSON.parse(output);
+      expect(result.beforePath.split(":")).not.toContain(result.directory);
+      expect(result.before).toBeNull();
+      expect(result.after).toBe(result.binary);
+      expect(result.afterPath.split(":")).toContain(result.directory);
+      expect(result.output).toBe("fixture agent");
+      expect(existsSync(captures) ? readFileSync(captures, "utf8") : "").toBe(marker ? "" : "capture\n");
+    });
+  }
 });
