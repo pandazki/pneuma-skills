@@ -1856,9 +1856,32 @@ function ModeMakerHero({
 
 // ── ModeGallery (full-screen overlay) ────────────────────────────────────
 
+interface LauncherLoadState {
+  loaded: boolean;
+  error: string | null;
+  refresh: (query?: Record<string, string>) => Promise<void>;
+}
+
+function LauncherNotice({ resource, message, error, onRetry }: {
+  resource: string;
+  message: string;
+  error?: string | null;
+  onRetry?: () => void;
+}) {
+  const { t } = useTranslation("launcher");
+  return (
+    <div className="flex items-center gap-3 text-xs text-cc-muted" role="status" data-launcher-resource={resource}>
+      <span className={error ? "text-cc-error" : undefined}>{message}</span>
+      {error && onRetry && <button type="button" title={error} className="text-cc-primary hover:underline cursor-pointer" onClick={onRetry}>{t("startup.retry")}</button>}
+    </div>
+  );
+}
+
 function ModeGallery({
   modes,
   libraries,
+  registryStatus,
+  librariesStatus,
   onClose,
   onLaunch,
   onEdit,
@@ -1884,6 +1907,8 @@ function ModeGallery({
    * gallery is where they're organised + managed.
    */
   libraries: InstalledLibrary[];
+  registryStatus: LauncherLoadState & { publishedStatus?: PublishedRegistryStatus };
+  librariesStatus: LauncherLoadState;
   onClose: () => void;
   onLaunch: (mode: AnyMode) => void;
   onEdit?: (mode: AnyMode) => void;
@@ -1936,6 +1961,9 @@ function ModeGallery({
   const local = filtered.filter((m) => m.source === "local" && !m.librarySource);
   const libraryModes = filtered.filter((m) => m.source === "local" && m.librarySource);
   const published = filtered.filter((m) => m.source === "published");
+  const publishedStatus = registryStatus.publishedStatus;
+  const publishedPending = publishedStatus && publishedStatus.state !== "ready";
+  const registryIncomplete = !registryStatus.loaded || !!registryStatus.error;
 
   // Group library-sourced modes by library id. We keep the launcher-side
   // library list (with its source URL + last-sync ts) as the source of
@@ -1951,6 +1979,9 @@ function ModeGallery({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("gallery.title")}
       className={`fixed left-0 right-0 bottom-0 z-50 bg-cc-bg overflow-y-auto font-body ${className || ""}`}
       style={{
         top: headerHeight,
@@ -1989,6 +2020,13 @@ function ModeGallery({
 
       {/* Gallery content */}
       <div className="max-w-6xl mx-auto px-6 py-8" ref={ref}>
+        {registryIncomplete && (
+          <div className="mb-6">
+            <LauncherNotice resource="modes" error={registryStatus.error}
+              message={t(registryStatus.error ? "startup.failed" : "startup.loading", { section: t("startup.sections.modes") })}
+              onRetry={() => { void registryStatus.refresh(); }} />
+          </div>
+        )}
         {[
           { id: "builtin", label: t("gallery.group_builtin"), items: builtin, alwaysShow: false },
           // Local always renders its header when an install action exists, so users can
@@ -1997,7 +2035,7 @@ function ModeGallery({
           // state is not "nothing matched" — leaving it on looks like a stray local
           // item that matches every query.
           { id: "local", label: t("gallery.group_local"), items: local, alwaysShow: !!onAddFromUrl && !search },
-          { id: "published", label: t("gallery.group_published"), items: published, alwaysShow: false },
+          { id: "published", label: t("gallery.group_published"), items: published, alwaysShow: !!publishedPending },
         ]
           .filter((g) => g.items.length > 0 || g.alwaysShow)
           .map((group) => (
@@ -2015,7 +2053,15 @@ function ModeGallery({
                   </button>
                 )}
               </div>
-              {group.items.length === 0 && group.id === "local" ? (
+              {group.id === "published" && publishedPending && (
+                <div className="mb-6">
+                  <LauncherNotice resource="published"
+                    message={t(publishedStatus.state === "error" ? "startup.published_failed" : "startup.published_loading")}
+                    error={publishedStatus.state === "error" ? publishedStatus.error : null}
+                    onRetry={() => { void registryStatus.refresh({ refreshPublished: "1" }); }} />
+                </div>
+              )}
+              {group.items.length === 0 && group.id === "local" && !registryIncomplete ? (
                 <p className="text-[11px] text-cc-muted/50 italic" dangerouslySetInnerHTML={{ __html: t("gallery.no_local_modes_hint").replace("<code>", "<code class=\"text-cc-muted/70\">") }} />
               ) : null}
               <div className="space-y-6">
@@ -2096,7 +2142,14 @@ function ModeGallery({
                 </button>
               )}
             </div>
-            {libraries.length === 0 ? (
+            {(!librariesStatus.loaded || librariesStatus.error) && (
+              <div className="mb-6">
+                <LauncherNotice resource="libraries" error={librariesStatus.error}
+                  message={t(librariesStatus.error ? "startup.failed" : "startup.loading", { section: t("startup.sections.libraries") })}
+                  onRetry={() => { void librariesStatus.refresh(); }} />
+              </div>
+            )}
+            {libraries.length === 0 && librariesStatus.loaded && !librariesStatus.error ? (
               <p className="text-[11px] text-cc-muted/50 italic" dangerouslySetInnerHTML={{ __html: t("gallery.no_libraries_hint").replace("<code>", "<code class=\"text-cc-muted/70\">") }} />
             ) : (
               <div className="space-y-10">
@@ -2142,7 +2195,7 @@ function ModeGallery({
           </div>
         )}
 
-        {search && filtered.length === 0 && (
+        {search && filtered.length === 0 && !registryIncomplete && !publishedPending && librariesStatus.loaded && !librariesStatus.error && (
           <p className="text-center text-cc-muted/60 py-20">{t("gallery.no_modes_match")}</p>
         )}
       </div>
@@ -5607,19 +5660,16 @@ export default function Launcher() {
               ["projects", projectsResource], ["archived", archivedResource], ["libraries", librariesResource],
             ] as const).map(([key, item]) => {
               return item.error || !item.loaded ? (
-                <div key={key} className="flex items-center gap-3 text-xs text-cc-muted" data-launcher-resource={key}>
-                  <span className={item.error ? "text-cc-error" : undefined}>
-                    {t(item.error ? "startup.failed" : "startup.loading", { section: t(`startup.sections.${key}`) })}
-                  </span>
-                  {item.error && <button type="button" title={item.error} className="text-cc-primary hover:underline cursor-pointer" onClick={() => { void item.refresh(); }}>{t("startup.retry")}</button>}
-                </div>
+                <LauncherNotice key={key} resource={key} error={item.error}
+                  message={t(item.error ? "startup.failed" : "startup.loading", { section: t(`startup.sections.${key}`) })}
+                  onRetry={() => { void item.refresh(); }} />
               ) : null;
             })}
             {modesResource.data.publishedStatus && modesResource.data.publishedStatus.state !== "ready" && modesResource.loaded && (
-              <div className="flex items-center gap-3 text-xs text-cc-muted" data-launcher-resource="published">
-                <span>{t(modesResource.data.publishedStatus?.state === "error" ? "startup.published_failed" : "startup.published_loading")}</span>
-                {modesResource.data.publishedStatus?.state === "error" && <button type="button" title={modesResource.data.publishedStatus.error} className="text-cc-primary hover:underline cursor-pointer" onClick={() => { void refreshModes({ refreshPublished: "1" }); }}>{t("startup.retry")}</button>}
-              </div>
+              <LauncherNotice resource="published"
+                message={t(modesResource.data.publishedStatus.state === "error" ? "startup.published_failed" : "startup.published_loading")}
+                error={modesResource.data.publishedStatus.state === "error" ? modesResource.data.publishedStatus.error : null}
+                onRetry={() => { void refreshModes({ refreshPublished: "1" }); }} />
             )}
           </div>
           {/* Featured Mode */}
@@ -5981,6 +6031,8 @@ export default function Launcher() {
         <ModeGallery
           modes={allModesSortedByFavorites}
           libraries={libraries}
+          registryStatus={{ loaded: modesResource.loaded, error: modesResource.error, refresh: refreshModes, publishedStatus: modesResource.data.publishedStatus }}
+          librariesStatus={librariesResource}
           onClose={() => setShowGallery(false)}
           onLaunch={handleGalleryLaunch}
           onAddLibrary={() => setAddLibraryOpen(true)}

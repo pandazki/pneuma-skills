@@ -184,4 +184,39 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     expect(host.textContent).toContain("Agent availability could not be checked");
     expect(requests.filter((path) => path === "/api/launch")).toHaveLength(0);
   });
+
+  test("gallery keeps empty pending and failed buckets visible and retries without losing cards", async () => {
+    const initial = Promise.withResolvers<Response>();
+    routes.set("/api/registry", () => initial.promise);
+    await mount();
+    const allModes = [...host.querySelectorAll("button")].find((node) => node.textContent?.includes("All Modes"))!;
+    await click(allModes);
+    const gallery = host.querySelector('[role="dialog"][aria-label="Mode Gallery"]')!;
+    expect(gallery.textContent).toContain("Loading local modes");
+    expect(gallery.textContent).not.toContain("No local modes yet");
+    await act(async () => initial.resolve(new Response("offline", { status: 503 })));
+    expect(gallery.textContent).toContain("Could not load local modes");
+    expect(gallery.textContent).not.toContain("No local modes yet");
+
+    routes.set("/api/registry", () => Response.json(registry("Local Board", "loading")));
+    await click(gallery.querySelector('[data-launcher-resource="modes"] button')!);
+    expect(gallery.textContent).toContain("Local Board");
+    expect(gallery.textContent).toContain("Published");
+    expect(gallery.textContent).toContain("Checking community modes");
+
+    routes.set("/api/registry", () => Response.json({ ...registry(), publishedStatus: { state: "error", error: "Offline" } }));
+    await act(async () => { window.dispatchEvent(new Event("pneuma:libraries-updated")); });
+    expect(gallery.textContent).toContain("Community modes could not be refreshed");
+    const published = [{ name: "community", displayName: "Community Board", version: "1", publishedAt: "2026-11-02", archiveUrl: "https://example.com/community.tar.gz" }];
+    routes.set("/api/registry", () => Response.json({ ...registry(), published }));
+    await click(gallery.querySelector('[data-launcher-resource="published"] button')!);
+    expect(gallery.textContent).toContain("Community Board");
+    expect(gallery.querySelector('[data-launcher-resource="published"]')).toBeNull();
+
+    routes.set("/api/registry", () => Response.json({ ...registry(), published, publishedStatus: { state: "error", error: "Offline again" } }));
+    await act(async () => { window.dispatchEvent(new Event("pneuma:libraries-updated")); });
+    expect(gallery.textContent).toContain("Community Board");
+    expect(gallery.textContent).toContain("Community modes could not be refreshed");
+    expect(gallery.querySelector('[data-launcher-resource="published"] button')).not.toBeNull();
+  });
 }
