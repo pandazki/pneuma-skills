@@ -19,6 +19,10 @@ const mark = (stage, details = {}) => {
   events.push(event);
   appendFileSync(fixture.eventsFile, JSON.stringify(event) + "\n");
 };
+app.on("before-quit", () => mark("app-before-quit"));
+app.on("will-quit", () => mark("app-will-quit"));
+app.on("quit", (_event, exitCode) => mark("app-quit", { exitCode }));
+process.on("exit", (exitCode) => mark("main-process-exit", { exitCode }));
 app.setAsDefaultProtocolClient = () => {
   throw new Error("E2E refuses protocol registration: rebuild with PNEUMA_DESKTOP_PREVIEW=1");
 };
@@ -26,6 +30,7 @@ shell.openExternal = async (url) => { global.__pneumaE2E.externalUrls.push(url);
 app.on("browser-window-created", (_event, win) => {
   const id = win.id;
   mark("window-created", { id: win.id });
+  win.on("close", () => mark("window-close-requested", { id }));
   win.on("closed", () => mark("window-closed", { id }));
   win.on("ready-to-show", () => mark("window-ready-to-show", { id, url: win.webContents.getURL() }));
   win.on("show", () => mark("window-shown", { id: win.id, url: win.webContents.getURL() }));

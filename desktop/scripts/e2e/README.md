@@ -54,7 +54,10 @@ remote community index with an empty deterministic result and optionally delays
 or fails `/api/backends`. Local registry assembly and other APIs remain real.
 Every quit verifies the launcher child exited. Failed shutdowns still clean up
 the fixture-owned child with bounded SIGTERM/SIGKILL escalation and fail the run.
-Native window events are preserved when a launch fails. Temporary fixtures are removed;
+Every close preserves native window/quit events and a shutdown record with process
+exit/close timestamps and the five-second watchdog state. This distinguishes an
+Electron shutdown delay from automation cleanup; either timeout still fails.
+Native window events are also preserved when a launch fails. Temporary fixtures are removed;
 logs, results, and screenshots remain in `--out`.
 
 Run the candidate's interaction and fault checks separately from timed batches:

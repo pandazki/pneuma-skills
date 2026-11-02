@@ -248,7 +248,17 @@ async function close(run, sampleName) {
   let closeError;
   let survivors = [];
   let remaining = [];
-  const timeout = setTimeout(() => { closeTimedOut = true; run.app.process().kill("SIGKILL"); }, 5000);
+  const child = run.app.process();
+  const shutdown = { startedAt: Date.now(), pid: child.pid, processEvents: [] };
+  const recordExit = (exitCode, signal) => shutdown.processEvents.push({ stage: "exit", at: Date.now(), exitCode, signal });
+  const recordClose = (exitCode, signal) => shutdown.processEvents.push({ stage: "close", at: Date.now(), exitCode, signal });
+  child.once("exit", recordExit);
+  child.once("close", recordClose);
+  const timeout = setTimeout(() => {
+    closeTimedOut = true;
+    shutdown.deadline = { at: Date.now(), exitCode: child.exitCode, signalCode: child.signalCode };
+    shutdown.killSent = child.kill("SIGKILL");
+  }, 5000);
   const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
   const waitForExit = async (pids, attempts) => {
     for (let attempt = 0; attempt < attempts && pids.some(alive); attempt++) await new Promise((resolve) => setTimeout(resolve, 50));
@@ -257,6 +267,10 @@ async function close(run, sampleName) {
   catch (error) { closeError = error; }
   finally {
     clearTimeout(timeout);
+    shutdown.automationClosedAt = Date.now();
+    shutdown.error = closeError ? String(closeError) : undefined;
+    child.removeListener("exit", recordExit);
+    child.removeListener("close", recordClose);
     // Cleanup runs even if Electron close rejects. Only PIDs written by this
     // launch's bundled-Bun wrapper belong to this run; earlier warm launches
     // are excluded so a recycled PID can never target another process.
@@ -271,11 +285,13 @@ async function close(run, sampleName) {
     await waitForExit(survivors, 20);
     remaining = survivors.filter(alive);
     await writeFile(join(out, `${sampleName}.log`), run.logs.join(""));
+    if (existsSync(run.fixture.eventsFile)) await writeFile(join(out, `${sampleName}-native-events.jsonl`), await readFile(run.fixture.eventsFile));
+    await writeFile(join(out, `${sampleName}-shutdown.json`), JSON.stringify({ ...shutdown, closeTimedOut, survivors, remaining }, null, 2));
   }
   assert.deepEqual(remaining, [], "Fixture launcher survived bounded SIGTERM/SIGKILL cleanup");
   if (closeError) throw closeError;
   assert.deepEqual(survivors, [], "App quit left a launcher process alive; harness terminated it");
-  assert.equal(closeTimedOut, false, "Application quit exceeded five seconds");
+  assert.equal(closeTimedOut, false, "Electron automation close exceeded five seconds; inspect shutdown and native event logs");
   // Let Chromium helpers release the reusable profile before the next launch.
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
