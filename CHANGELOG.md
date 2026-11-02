@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.60.1] - 2026-11-02
+
+### Added
+- **Kami charts from data** — Bar, line, horizontal bar, donut, candlestick, and waterfall charts are generated from a JSON spec instead of drawn by hand, and a check fails any chart whose marks were edited afterwards. The generator follows tw93/kami V1.18.0 and draws the same marks as upstream for the same data.
+
+### Improved
+- **Kami follows tw93/kami V1.18.0** — Derived figures stay beside the numbers they come from, headings lose decorative labels, slides use a larger type scale, a resume without enough material for two pages reports the gap instead of padding, and visual repair stops after three rounds.
+- **Webcraft follows Impeccable.style skill v4.8.0** — Each visitor mode limits how far a design direction reaches: working screens keep standard controls, documentation keeps a calm reading column, and landing pages show their main action in working form. App screens and docs are built from code rather than an image mock, and the typography, hardening, and audit guidance follow the latest upstream text.
+- **Webcraft command bar starts collapsed** — The Impeccable command sidebar opens as a narrow icon rail, leaving more room for the preview; every command is still one click away and the toggle expands the labelled list.
+
 ## [3.60.0] - 2026-10-30
 
 ### Added
