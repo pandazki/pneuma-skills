@@ -197,6 +197,7 @@ publish anything automatically. Brand Studio is the first consumer.
 | **ModeDefinition** = `{ manifest, viewer }` | `core/types/mode-definition.ts` | Each mode's `modes/<name>/pneuma-mode.ts` default export — binds manifest + ViewerContract | Frontend `core/mode-loader.ts` dynamic-imports it; the React tree mounts `viewer.PreviewComponent`. Split from `manifest.ts` so the latter can be loaded by the Bun backend (which has no React). |
 | **ViewerContract** + `ViewerPreviewProps` | `core/types/viewer-contract.ts` | Each mode's `modes/<name>/viewer/<Name>Preview.tsx` (referenced from `pneuma-mode.ts`) | `core/mode-loader.ts` dynamic import → `src/App.tsx` mounts `PreviewComponent` with props injected from `src/store/`; viewers await `onExport` and report dispatch failures |
 | **ModeCatalog** + `ModeCatalogEntry` / `ModeArchiveRef` / `ModeInstallRecord` / `ModePackageStamp` / `ModeInstallState` | `core/types/mode-catalog.ts` | `scripts/publish-modes.ts` 每次 release 生成 `modes/catalog.json`(不手写、不入库):`modes/distribution.json` 没 bundle 的每个 mode 都经 `snapshot/mode-build.ts` 就地构建、打上 `pneuma-package.json` stamp、去掉 `__tests__/` `harness/` `showcase/` 打包、传到 `official/v<core>/<name>-<modeVersion>.tar.gz`,并用 size + SHA-256 钉死;`displayName` / `description` / `icon` 由 `core/utils/manifest-parser.ts::parseManifestTs` 从 manifest 抄出 | `core/mode-catalog.ts`(读 catalog、装/校验/记录,判断 `installed` / `stale` / `not-installed`)→ `core/mode-resolver.ts`(`catalog` 源)、`core/local-modes.ts`(`installed` 标记)、`server/catalog-routes.ts`(`/api/catalog*`)、launcher 卡片;`scripts/verify-mode-catalog.ts` 是 release job 建 tag 前的闸门(先拿这个 checkout 的 catalog mode 全集与 catalog 对账——缺、多、或条目版本与树里 manifest 不符都算失败——再 HEAD 每个钉住的 archive);`package.json` 的 `files` 与 `desktop/electron-builder.yml` 只装 bundled 集合加 catalog(同样从 `distribution.json` 派生,由 `scripts/__tests__/release-packaging.test.ts` 守住)。不变量钉在 `core/__tests__/mode-distribution.test.ts` |
+| **PublishedMode** + **PublishedRegistryStatus** | `core/types/mode-registry.ts` | `server/registry-cache.ts` maintains the community-published list independently of local registry buckets; `GET /api/registry` adds `publishedStatus` | Launcher shows local modes immediately, polls while the published list is loading, and offers `refreshPublished=1` after failure. Last successful published entries remain available during refresh or failure. |
 | **Mode viewer host ABI** — `HOST_ABI_VENDOR_URLS` / `HOST_ABI_EXTERNALS` / `HOST_ABI_VENDOR_SHIMS` + `hostAbiImportMap()` / `resolveHostAbiExternal()` | `snapshot/mode-build.ts` | 一张数据表:外部 mode viewer 唯一可以向宿主借的东西 —— React、ReactDOM、两个 JSX runtime、宿主 Zustand store、i18next 与 react-i18next。externals 由 URL 表派生,shim 源码与它同表,所以「标成 external 的」「importmap 里写的」「server 真 serve 的」三者不会漂。React / react-dom(含 react-dom/client)/ 两个 JSX runtime / react-i18next 的 shim 导出名**从宿主实际安装的包读出**,不手写;`hostAbiExportNames()` 给出每个 specifier 可 import 的名字,`findUnresolvedHostAbiImports()` 据此检查产物,`buildModeViewer` 遇到 shim 不提供的名字直接构建失败 | `snapshot/mode-build.ts::buildModeViewer` 是**唯一** builder(`server/mode-viewer-routes.ts` 在会话内构建/恢复外部 mode、`scripts/publish-modes.ts` 发布 catalog mode、`snapshot/mode-publish.ts` 与 `server/mode-maker-routes.ts` 的 publish 路径都调它);`server/index.ts` 用 `HOST_ABI_VENDOR_SHIMS` serve `/vendor/*`、用 `hostAbiImportMap()` 往 index.html 注入 importmap;`src/main.tsx` 在加载任何 mode bundle 之前挂好 `window.__PNEUMA_*`。Bun 1.4.0 的两个坑与不变量钉在 `snapshot/__tests__/mode-host-abi.test.ts` |
 | **ModeInfo** + **ModeViewerBuildState** + `modeViewerAssetUrl()` | `core/types/mode-viewer.ts` | `server/mode-viewer-routes.ts` owns each session's production viewer build (`building` / `failed` / `ready`); `snapshot/mode-build.ts` remains the sole builder | `GET /api/mode-info` reports state; `POST /api/mode-viewer/retry` starts or joins recovery for this session's mode. `src/utils/load-session-mode.ts` polls, loads CSS and uses fresh module URLs; `src/App.tsx` retries only viewer initialization, preserving the agent connection and chat draft. Missing/building/failed assets never fall through to HTML. |
 | **ModeShowcase** | `core/types/mode-manifest.ts` (declared); actual content in `modes/<name>/showcase/showcase.json` (sibling file, not inline in manifest) | Each mode's `showcase/showcase.json` + `hero.png` + `highlight-*` images or videos (`mediaType`) | `server/index.ts` serves via `GET /api/modes/:name/showcase/*`; launcher gallery cards consume |
@@ -361,6 +362,29 @@ Agent 维护的持久偏好。两个 scope 同一 schema:
 - **注入**:个人 critical → `<!-- pneuma:preferences:start/end -->`;项目 critical → `<!-- pneuma:project:start/end -->`
 - **Skill**:`pneuma-preferences`(所有 mode 全局);`pneuma-project`(额外用于项目 session);源在 `modes/_shared/skills/`
 
+### Desktop startup
+
+The desktop prepares a hidden launcher window while its Bun launcher service
+starts. It navigates only after the service reports its actual URL, and keeps
+the splash until the launcher can be shown. Background handoff cold starts
+create neither a splash nor a launcher window. Agent installation is checked
+through the launcher's backend capabilities rather than a Claude-only gate
+before the window opens.
+
+Desktop resolves the user's shell PATH once through a bounded asynchronous
+capture. Its child environment carries `PNEUMA_DESKTOP_PATH_READY=1` to mean
+that this attempt completed, including a logged fallback after capture failure.
+`server/path-resolver.ts` reuses the validated inherited PATH and appends its
+usual fallback directories. This internal marker does not assert that an agent
+is installed or authenticated. Direct CLI launches without the marker retain
+their shell discovery behavior.
+
+`PNEUMA_BOOT_PROFILE=1` enables structured `[boot-profile]` log lines for main
+process, shell discovery, service readiness, navigation, and window display.
+Times are milliseconds since the Electron process started. Window display and
+DOM/load events are separate from usable launcher content or agent readiness;
+do not report any one of them as the others.
+
 ### Desktop window navigation
 
 Ordinary `window.open(url)` and `target="_blank"` links in launcher, mode, detached-chat, and export windows open in the system browser. This includes loopback URLs from viewer iframes. The desktop never grants session ownership from a popup URL or referrer.
@@ -481,6 +505,20 @@ Do not infer automatic recovery from the existence of a durable result file.
 ## Launcher
 
 无 mode 参数时启动(`bun run dev` / `pneuma`)。Marketplace UI:Recent Sessions、Recent Projects、Built-in Modes、Local Modes、Published Modes、Backend Picker。入口在 `server/index.ts` launcher block 与 `src/components/Launcher.tsx`。
+
+The launcher loads backend availability, registry buckets, sessions, running
+instances, and current/archived projects independently. A slow or failed request
+does not discard successful data or hide the whole page. Pending backend checks
+cannot be mistaken for an installed backend when starting a session.
+
+`GET /api/registry` returns local builtins, the pinned release catalog, and
+installed/library modes without waiting for the community directory. The
+`publishedStatus` field distinguishes `loading`, `ready` (including an empty
+list), and `error` with a diagnostic. Consumers of `published` poll while loading;
+`refreshPublished=1` explicitly retries a terminal failure. Refreshes preserve
+the last successful list. Local snapshots retain per-locale stale-while-revalidate
+caching; mutations invalidate in-flight generations as well as cached values so
+an older read cannot restore stale installation or library state.
 
 ## Server Routes
 

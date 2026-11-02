@@ -36,7 +36,9 @@ The default six scenarios run five samples each:
 | `slow-backends` | Bun's `/api/backends` response waits four seconds |
 
 Each application process has a new in-memory server cache. The operating system
-disk cache is not flushed. The first timing is from the launch request to the
+disk cache is not flushed. The delayed backend response isolates the frontend
+request dependency; it does not simulate synchronous binary probes blocking the
+Bun event loop. The first timing is from the launch request to the
 native `show` event of the actual HTTP launcher window, excluding the splash.
 The second waits for the same DOM predicate on both revisions: Create New with a
 populated All Modes button, successful local sessions/projects responses, then

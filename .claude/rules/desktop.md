@@ -13,6 +13,16 @@ paths:
 
 ## Gotchas
 
+- **Startup readiness has separate stages.** Prepare the hidden launcher while
+  Bun starts, navigate only to its reported URL, and retire the splash when the
+  launcher is shown. Backend availability must not gate opening the launcher;
+  background handoff cold starts still open neither window. Shell PATH capture
+  is bounded and asynchronous, with its completed attempt passed to Bun through
+  `PNEUMA_DESKTOP_PATH_READY=1`; the server reuses that environment instead of
+  starting another login shell. Preserve fallback directories and observable
+  capture failures. `PNEUMA_BOOT_PROFILE=1` logs process-relative milestones;
+  window display is not proof of usable local content. See [startup contract](../../docs/reference/project-guide.md#desktop-startup).
+
 - **Viewer popups do not own sessions** (2026-10-27 Electron reproduction): a local content popup used to become a mode window, and closing it killed the original conversation by port. Keep ordinary popups in the system browser. App session/project and export controls use the explicit `AppWindowRequest` bridge; do not restore localhost-based popup routing. The shared handler covers launcher, mode, detached-chat, and export windows, including a launcher that navigates into a session.
 
 - **Release uploads must select `latest*.yml`, never every `*.yml`.** All platform builds emit `builder-debug.yml`. Concurrent `gh release upload --clobber` calls race on that shared name (delete/create is not atomic), returning HTTP 422 before the updater manifest is uploaded. This interrupted the v3.46.3 Windows x64 upload after its installer had already succeeded. Select installer files plus updater manifests explicitly; recover an interrupted upload by rerunning the failed job once the other uploads finish.

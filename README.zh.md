@@ -124,7 +124,7 @@ Viewer 中以新窗口打开的链接会交给系统浏览器，包括本地预�
 | Windows ARM64 | [`.exe`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 
-桌面应用自带 Bun，无需另装 runtime。装好 [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 即可使用。Launcher 里会列出可用后端，目前 Claude Code、Codex、Moonshot Kimi 三个后端都已实现。
+桌面应用自带 Bun，无需另装 runtime。尚未安装 agent CLI 也可以先打开 Launcher，开始会话时再选择可用后端；目前支持 Claude Code、Codex、Moonshot Kimi。本地项目和模式独立加载，不必等待后端检查或在线模式目录，尚未完成或失败的数据会显示加载和重试状态。
 
 ### 命令行
 
