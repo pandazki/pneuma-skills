@@ -29,7 +29,7 @@ const option = (name, fallback) => {
 const project = resolve(option("project", join(here, "../../..")));
 const out = resolve(option("out", join(tmpdir(), `pneuma-startup-${Date.now()}`)));
 const sampleCount = Number(option("samples", "5"));
-const scenarioNames = option("scenarios", "fresh,warm,slow-shell,slow-registry,slow-backends").split(",");
+const scenarioNames = option("scenarios", "fresh,warm,slow-shell,slow-cli-version,slow-registry,slow-backends").split(",");
 const runE2E = args.includes("--e2e");
 const label = option("label", "candidate");
 const bun = execFileSync("which", ["bun"], { encoding: "utf8" }).trim();
@@ -42,6 +42,7 @@ const scenarios = {
   fresh: {},
   warm: { warm: true },
   "slow-shell": { shellDelay: 2 },
+  "slow-cli-version": { cliDelay: 2 },
   "slow-registry": { registryDelay: 4000 },
   "failed-registry": { registryFailure: true },
   "slow-backends": { backendDelay: 4000 },
@@ -83,7 +84,7 @@ async function fixtureFor(name, config) {
   await writeFile(shell, `#!/bin/sh\n/bin/sleep ${config.shellDelay ?? 0}\nexport PATH=${quote(`${bin}:/usr/bin:/bin:/usr/sbin:/sbin`)}\nfor arg do script="$arg"; done\nexec /bin/sh -c "$script"\n`);
   await chmod(shell, 0o755);
   if (!config.noBackend) {
-    await writeFile(join(bin, "claude"), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.0.0 (Claude Code test fixture)"; exit 0; fi\necho "E2E refuses agent execution" >&2\nexit 70\n');
+    await writeFile(join(bin, "claude"), `#!/bin/sh\nif [ "$1" = "--version" ]; then /bin/sleep ${config.cliDelay ?? 0}; echo "2.0.0 (Claude Code test fixture)"; exit 0; fi\necho "E2E refuses agent execution" >&2\nexit 70\n`);
     await chmod(join(bin, "claude"), 0o755);
   }
   const preload = join(root, "registry-preload.ts");
@@ -192,7 +193,10 @@ async function launch(fixture, sampleName) {
       assert.equal(state.windows.length, 1, "Cold background handoff must not create a launcher or splash");
       assert.equal(state.windows[0].visible, false, "Background handoff window must remain hidden");
       assert(!state.events.some((event) => event.stage === "window-shown"), "Cold background handoff flashed a window");
-      const shown = app.evaluate(({ BrowserWindow }) => new Promise((resolve) => BrowserWindow.getAllWindows()[0].once("show", () => resolve(true))));
+      const shown = app.evaluate(({ BrowserWindow }) => new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Background completion did not reveal window")), 5000);
+        BrowserWindow.getAllWindows()[0].once("show", () => { clearTimeout(timeout); resolve(true); });
+      }));
       await page.evaluate(() => {
         window.pneumaDesktop.reportSessionStatus("running");
         window.pneumaDesktop.reportSessionStatus("idle");
@@ -255,7 +259,7 @@ async function smoke(run, scenario) {
   await page.getByRole("button", { name: /^All Modes \(/ }).click();
   await page.getByText("Mode Gallery", { exact: true }).waitFor({ timeout: 5000 });
   checks.push("All Modes opens gallery through trusted click");
-  await page.screenshot({ path: join(out, `${scenario}-gallery.png`), fullPage: true });
+  await page.screenshot({ path: join(out, `${scenario}-gallery.png`) });
   await page.keyboard.press("Escape");
   await page.getByText("Mode Gallery", { exact: true }).waitFor({ state: "hidden" });
   // Closing/reopening the launcher must preserve the Bun service and remain singleton.

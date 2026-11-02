@@ -4,7 +4,8 @@ This harness launches the real Electron main/preload, Bun launcher, and built
 React application. It selects the packaged runtime paths through a test-only
 bootstrap and stages resources with symlinks. It does not run Vite or modify
 production code. Measurements do not cover ASAR, signing, installation, or a
-machine's first launch after reboot.
+machine's first launch after reboot. The fixture scripts require macOS or Linux
+with a graphical session; Windows is not covered by this harness.
 
 Build the checkout being measured:
 
@@ -23,13 +24,14 @@ revision, runtime versions, machine, and build hashes. `samples.jsonl` retains
 every timing and observed API response; `summary.json` contains median, p90,
 minimum, and maximum. Do not run tests or builds concurrently with timed samples.
 
-The default five scenarios run five samples each:
+The default six scenarios run five samples each:
 
 | Scenario | Controlled condition |
 | --- | --- |
 | `fresh` | New HOME and Chromium application profile for every launch |
 | `warm` | One unmeasured launch primes a reused application profile |
 | `slow-shell` | The fixture login shell waits two seconds per invocation |
+| `slow-cli-version` | The fake Claude `--version` probe waits two seconds |
 | `slow-registry` | Bun's external community-index request waits four seconds |
 | `slow-backends` | Bun's `/api/backends` response waits four seconds |
 
