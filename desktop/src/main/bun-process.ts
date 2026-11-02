@@ -1,16 +1,20 @@
-import { spawn, execSync, type ChildProcess } from "node:child_process";
+import { spawn, execFile, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import net from "node:net";
 import path from "node:path";
 import { app } from "electron";
 import { existsSync } from "node:fs";
 import { logEntry, writeToTerminal } from "./logger.js";
+import { captureShellPath, launcherEnvironment, type ShellPathResult } from "./startup-environment.js";
+import { markBoot } from "./boot-profile.js";
+import { createLauncherReadyParser } from "./launcher-readiness.js";
 
 /** Dev desktop stays on the memorable 17996 so devtools/logs are predictable.
  *  Packaged builds ask the OS for a free ephemeral port instead — avoids
  *  collisions with a terminal `bun run dev` (17996 Vite + 17007 backend)
  *  and with any prior packaged instance that's still shutting down. */
 const DEV_BASE_PORT = 17996;
-const MAX_PORT_ATTEMPTS = 10;
+const execFileAsync = promisify(execFile);
 
 async function pickFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -34,6 +38,7 @@ async function pickFreePort(): Promise<number> {
 let launcherProcess: ChildProcess | null = null;
 let launcherUrl: string | null = null;
 let launcherPort: number | null = null;
+const startupAbort = new AbortController();
 
 /** Mode session child processes (tracked by PID) */
 const sessionProcesses = new Map<
@@ -43,14 +48,15 @@ const sessionProcesses = new Map<
 
 // ── Path resolution ──────────────────────────────────────────────────────────
 
-function getBunBinaryPath(): string {
+async function getBunBinaryPath(shellPath: string): Promise<string> {
   if (!app.isPackaged) {
     // Dev mode: use system Bun
     try {
-      const bunPath = execSync(
-        process.platform === "win32" ? "where bun" : "which bun",
-        { encoding: "utf-8" }
-      ).trim().split("\n")[0];
+      const { stdout } = await execFileAsync(process.platform === "win32" ? "where" : "which", ["bun"], {
+        encoding: "utf-8", timeout: 5000, killSignal: "SIGKILL", signal: startupAbort.signal,
+        env: { ...process.env, PATH: [shellPath, process.env.PATH].filter(Boolean).join(path.delimiter) },
+      });
+      const bunPath = stdout.trim().split("\n")[0];
       return bunPath;
     } catch {
       throw new Error("Bun not found in PATH. Install Bun: https://bun.sh");
@@ -78,74 +84,34 @@ function getPneumaEntryPoint(): string {
   return path.join(getPneumaProjectRoot(), "bin", "pneuma.ts");
 }
 
-const MARKER_START = "___PNEUMA_PATH_START___";
-const MARKER_END = "___PNEUMA_PATH_END___";
-
-/**
- * Read the user's PATH out of their login shell.
- *
- * Mirrors `server/path-resolver.ts::captureUserShellPath` — the desktop
- * tsconfig pins `rootDir: "src"`, so the logic is duplicated rather than
- * imported. Keep the two in sync.
- *
- * `echo $PATH` is wrong here: fish stores PATH as a list and joins it with
- * spaces, and `-i` runs interactive rc files, so greeters (fastfetch et al.)
- * write ANSI art to the same stdout. `printenv` plus own-line markers plus a
- * validation pass is what survives all three shells.
- */
-function captureShellPath(): string {
-  if (process.platform === "win32") return "";
-  try {
-    const script = `echo ${MARKER_START}; printenv PATH; echo ${MARKER_END}`;
-    const raw = execSync(
-      `${process.env.SHELL || "/bin/sh"} -ilc ${JSON.stringify(script)}`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
-    // eslint-disable-next-line no-control-regex
-    const text = raw.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
-    const start = text.indexOf(MARKER_START);
-    if (start === -1) return "";
-    const end = text.indexOf(MARKER_END, start + MARKER_START.length);
-    if (end === -1) return "";
-    const line = text
-      .slice(start + MARKER_START.length, end)
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .find((l) => l.length > 0);
-    if (!line) return "";
-    // Guard against capturing greeter output instead of a real PATH.
-    const entries = line.split(path.delimiter).filter(Boolean);
-    if (!entries.some((dir) => dir.startsWith("/") && existsSync(dir))) return "";
-    return line;
-  } catch {
-    return "";
+// One capture per desktop process, shared by every launcher attempt.
+let shellPathPromise: Promise<ShellPathResult> | undefined;
+function getShellPath(): Promise<ShellPathResult> {
+  if (!shellPathPromise) {
+    markBoot("shell-path-start");
+    shellPathPromise = captureShellPath(process.env, 5000, startupAbort.signal).then((result) => {
+      startupAbort.signal.throwIfAborted();
+      if (result.status === "fallback") {
+        console.warn(`[bun-process] ${result.reason}; using inherited PATH and server fallback directories`);
+      }
+      markBoot("shell-path-ready", { status: result.status });
+      return result;
+    });
   }
-}
-
-/** Build PATH with bundled Bun directory prepended */
-function buildEnv(): NodeJS.ProcessEnv {
-  const bunDir = path.dirname(getBunBinaryPath());
-  const currentPath = process.env.PATH || "";
-  const shellPath = captureShellPath();
-
-  const combinedPath = [bunDir, shellPath, currentPath]
-    .filter(Boolean)
-    .join(path.delimiter);
-
-  return {
-    ...process.env,
-    PATH: combinedPath,
-    // Must unset CLAUDECODE to avoid conflicts with Claude Code CLI
-    CLAUDECODE: undefined,
-  };
+  return shellPathPromise;
 }
 
 // ── Launcher process ─────────────────────────────────────────────────────────
 
 export async function spawnLauncherProcess(): Promise<void> {
-  const bunPath = getBunBinaryPath();
+  const [shellPath, port] = await Promise.all([
+    getShellPath(),
+    app.isPackaged ? pickFreePort() : Promise.resolve(DEV_BASE_PORT),
+  ]);
+  startupAbort.signal.throwIfAborted();
+  const bunPath = await getBunBinaryPath(shellPath.path);
+  startupAbort.signal.throwIfAborted();
   const entryPoint = getPneumaEntryPoint();
-  const port = app.isPackaged ? await pickFreePort() : DEV_BASE_PORT;
 
   console.log(`[bun-process] Starting launcher: ${bunPath} ${entryPoint}`);
   console.log(`[bun-process] Project root: ${getPneumaProjectRoot()}`);
@@ -157,77 +123,56 @@ export async function spawnLauncherProcess(): Promise<void> {
     args.push("--dev");
   }
 
-  launcherProcess = spawn(bunPath, args, {
+  markBoot("launcher-spawn");
+  const child = launcherProcess = spawn(bunPath, args, {
     cwd: getPneumaProjectRoot(),
-    env: buildEnv(),
+    env: launcherEnvironment(bunPath, shellPath, process.env),
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   launcherPort = port;
 
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Launcher process timed out waiting for ready signal"));
-    }, 30000);
-
+    let settled = false;
     let stderr = "";
-    let resolved = false;
+    const parseReady = createLauncherReadyParser();
+    const finish = (error?: Error, url?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      startupAbort.signal.removeEventListener("abort", onAbort);
+      if (error) {
+        reject(error);
+      } else {
+        launcherUrl = url!;
+        console.log(`[bun-process] Launcher ready at ${launcherUrl}`);
+        markBoot("launcher-service-ready");
+        resolve();
+      }
+    };
+    const onAbort = () => finish(new Error("Launcher startup cancelled"));
+    const timeout = setTimeout(() => {
+      finish(new Error("Launcher process timed out waiting for ready signal"));
+      child.kill("SIGTERM");
+    }, 30000);
+    startupAbort.signal.addEventListener("abort", onAbort, { once: true });
 
-    launcherProcess!.stdout?.on("data", (data: Buffer) => {
+    child.stdout?.on("data", (data: Buffer) => {
       const text = data.toString();
-      // Each chunk can span multiple lines — split so the viewer can filter
-      // and so individual session-child lines (already prefixed by the
-      // launcher as `[launcher] ...`) land as separate rows.
       for (const line of text.split(/\r?\n/)) {
         if (line.length === 0) continue;
         writeToTerminal("info", `[launcher:stdout] ${line}`);
         logEntry("info", "launcher:stdout", line);
       }
-
-      if (resolved) return;
-
-      // Wait for the final "Marketplace → <url>" signal which means
-      // both backend AND Vite dev server (if dev mode) are ready.
-      // This is the URL the user should actually see.
-      //
-      // The launcher emits BOTH a localized human line (e.g.
-      // `模式画廊 → http://...` for zh-CN) and a stable English marker line
-      // `Marketplace → http://...` (since pneuma-skills 3.9.1). The English
-      // marker is matched here so the wrapper survives any future i18n
-      // additions without coordinated changes.
-      //
-      // The localized-line fallback below covers the small 3.8.0–3.9.0
-      // window when the launcher emitted ONLY the localized form. Defense
-      // in depth — a packaged wrapper that hasn't been rebuilt for years
-      // should still survive an i18n drift in the launcher.
-      const marketplaceMatch =
-        text.match(/Marketplace\s+→\s+(https?:\/\/\S+)/) ||
-        // Localized variants from 3.8.0+ — any line ending in `→ <url>`
-        // counts. Launcher only emits `→ url` for the ready signal.
-        text.match(/→\s+(https?:\/\/\S+)/);
-      if (marketplaceMatch) {
-        resolved = true;
-        launcherUrl = marketplaceMatch[1].replace("0.0.0.0", "localhost");
-        console.log(`[bun-process] Launcher ready at ${launcherUrl}`);
-        clearTimeout(timeout);
-        resolve();
-        return;
-      }
-
-      // Fallback: also match "[pneuma] ready <url>" for non-launcher modes
-      const readyMatch = text.match(/\[pneuma\] ready\s+(https?:\/\/\S+)/);
-      if (readyMatch) {
-        resolved = true;
-        launcherUrl = readyMatch[1].replace("0.0.0.0", "localhost");
-        console.log(`[bun-process] Launcher ready at ${launcherUrl}`);
-        clearTimeout(timeout);
-        resolve();
+      if (!settled) {
+        const url = parseReady(data);
+        if (url) finish(undefined, url);
       }
     });
 
-    launcherProcess!.stderr?.on("data", (data: Buffer) => {
+    child.stderr?.on("data", (data: Buffer) => {
       const text = data.toString();
-      stderr += text;
+      stderr = (stderr + text).slice(-65536);
       for (const line of text.split(/\r?\n/)) {
         if (line.length === 0) continue;
         writeToTerminal("error", `[launcher:stderr] ${line}`);
@@ -235,22 +180,13 @@ export async function spawnLauncherProcess(): Promise<void> {
       }
     });
 
-    launcherProcess!.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(new Error(`Failed to spawn launcher: ${err.message}`));
-    });
-
-    launcherProcess!.on("exit", (code) => {
-      clearTimeout(timeout);
-      if (!launcherUrl) {
-        reject(
-          new Error(
-            `Launcher exited with code ${code} before ready.\nstderr: ${stderr}`
-          )
-        );
+    child.on("error", (err) => finish(new Error(`Failed to spawn launcher: ${err.message}`)));
+    child.on("exit", (code) => {
+      finish(new Error(`Launcher exited with code ${code} before ready.\nstderr: ${stderr}`));
+      if (launcherProcess === child) {
+        launcherProcess = null;
+        launcherUrl = null;
       }
-      launcherProcess = null;
-      launcherUrl = null;
     });
   });
 }
@@ -291,6 +227,9 @@ export function getRunningSessionsForTray(): Array<{
 // ── Cleanup ──────────────────────────────────────────────────────────────────
 
 export function killAllProcesses() {
+  startupAbort.abort();
+  launcherUrl = null;
+  launcherPort = null;
   if (launcherProcess && !launcherProcess.killed) {
     console.log("[bun-process] Killing launcher process");
     launcherProcess.kill("SIGTERM");

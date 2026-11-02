@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, Menu, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, Menu } from "electron";
 import { net } from "electron";
 import path from "node:path";
 import { createTray } from "./tray.js";
 import {
   createLauncherWindow,
+  prepareLauncherWindow,
   createModeWindow,
   getLauncherWindow,
   getAllModeWindows,
@@ -13,13 +14,13 @@ import {
   killAllProcesses,
   getLauncherUrl,
 } from "./bun-process.js";
-import { detectClaude, getClaudeInstallInstructions } from "./claude-detector.js";
 import { registerIpcHandlers } from "./ipc-handlers.js";
 import { initLogger } from "./logger.js";
 import { showLogWindow, revealLogFile } from "./log-window.js";
 import { initBackgroundSessions, startBackgroundSession, revealBackgroundSession } from "./background-sessions.js";
 import { initAutoUpdater, checkForUpdatesManual, restartToInstall } from "./updater.js";
 import { desktopBuildPolicy } from "./build-policy.js";
+import { markBoot } from "./boot-profile.js";
 
 // ── App name (fixes "Electron" in macOS menu bar) ────────────────────────────
 app.setName(desktopBuildPolicy.appName);
@@ -33,6 +34,7 @@ if (desktopBuildPolicy.isolatedUserDataName) {
 // `<userData>/logs/pneuma-<date>.log` and in the in-memory ring for the
 // Show Logs window. The original console output is preserved.
 initLogger();
+markBoot("main-loaded");
 
 // Single instance lock
 const gotLock = app.requestSingleInstanceLock();
@@ -49,14 +51,15 @@ if (desktopBuildPolicy.registerProtocol && process.defaultApp) {
   app.setAsDefaultProtocolClient('pneuma');
 }
 
-// Keep reference to prevent GC
-let setupWindow: BrowserWindow | null = null;
+let startupComplete = false;
+let isQuitting = false;
 
 app.on("second-instance", (_event, argv) => {
   // Check for pneuma:// URL in args (Windows/Linux deep link)
   const url = argv.find(arg => arg.startsWith('pneuma://'));
   if (url) {
-    handlePneumaUrl(url);
+    if (startupComplete) handlePneumaUrl(url);
+    else pendingPneumaUrl = url;
     return;
   }
 
@@ -73,9 +76,10 @@ app.on("second-instance", (_event, argv) => {
 // macOS: dock icon is shown by default, hidden when all windows close
 
 // ── URL scheme handler ────────────────────────────────────────────────────────
-let pendingPneumaUrl: string | null = null;
+let pendingPneumaUrl: string | null = process.argv.find((arg) => arg.startsWith("pneuma://")) ?? null;
 
 function handlePneumaUrl(url: string) {
+  if (isQuitting) return;
   try {
     const parsed = new URL(url);
     switch (parsed.hostname) {
@@ -230,6 +234,7 @@ async function handleHandoffUrl(body: Record<string, unknown>, opts?: { backgrou
       });
       return;
     }
+    if (isQuitting) return;
     if (background) {
       // Background mode: run the session in a hidden window. The user sees
       // nothing until it finishes — then a notification invites them to open it.
@@ -240,7 +245,7 @@ async function handleHandoffUrl(body: Record<string, unknown>, opts?: { backgrou
       });
     } else {
       if (process.platform === "darwin") await app.dock?.show();
-      createModeWindow(result.url);
+      if (!isQuitting) createModeWindow(result.url);
     }
   } catch (err) {
     await dialog.showMessageBox({
@@ -261,6 +266,7 @@ async function showLauncherWithInstallMode(modeUrl: string) {
 }
 
 async function showLauncherWithQuery(paramName: string, value: string) {
+  if (isQuitting) return;
   const launcherUrl = getLauncherUrl();
   if (!launcherUrl) {
     console.error("Launcher process not ready");
@@ -271,30 +277,28 @@ async function showLauncherWithQuery(paramName: string, value: string) {
     await app.dock?.show();
   }
 
+  if (isQuitting) return;
   const urlWithQuery = `${launcherUrl}?${paramName}=${encodeURIComponent(value)}`;
-  const existing = getLauncherWindow();
-
-  if (existing) {
-    // Launcher already open — navigate to the target URL instead of just focusing
-    existing.loadURL(urlWithQuery);
-    if (existing.isMinimized()) existing.restore();
-    existing.focus();
-  } else {
-    createLauncherWindow(urlWithQuery);
-  }
+  createLauncherWindow(urlWithQuery, { navigate: true });
 }
 
 // macOS: open-url fires before app.whenReady() on cold launch
 app.on('open-url', (event, url) => {
   event.preventDefault();
-  if (app.isReady()) {
+  if (startupComplete) {
     handlePneumaUrl(url);
   } else {
     pendingPneumaUrl = url;
   }
 });
 
+function launcherNavigationRequestedBy(url: string): boolean {
+  try { return ["open", "import", "mode"].includes(new URL(url).hostname); }
+  catch { return false; }
+}
+
 async function showLauncher() {
+  if (isQuitting) return;
   if (process.platform === "darwin") {
     await app.dock?.show();
   }
@@ -305,37 +309,12 @@ async function showLauncher() {
     return;
   }
 
-  createLauncherWindow(launcherUrl);
-}
-
-function showSetupWizard() {
-  if (process.platform === "darwin") {
-    app.dock?.show();
-  }
-
-  setupWindow = new BrowserWindow({
-    width: 720,
-    height: 600,
-    resizable: false,
-    maximizable: false,
-    backgroundColor: "#09090b",
-    webPreferences: {
-      preload: path.join(__dirname, "..", "preload", "index.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-
-  const instructions = getClaudeInstallInstructions();
-  const setupHtml = generateSetupHtml(instructions);
-  setupWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(setupHtml)}`);
-
-  setupWindow.on("closed", () => {
-    setupWindow = null;
-  });
+  if (!isQuitting) createLauncherWindow(launcherUrl);
 }
 
 app.whenReady().then(async () => {
+  markBoot("electron-ready");
+  if (!gotLock || isQuitting) return;
   // A pending background-handoff cold start must stay invisible: no splash,
   // no launcher window, no dock icon — only the hidden background session.
   const bgColdStart = pendingPneumaUrl ? isBackgroundHandoffUrl(pendingPneumaUrl) : false;
@@ -440,21 +419,26 @@ app.whenReady().then(async () => {
     }
   }
 
+  if (isQuitting) return;
   // Show splash screen while loading (skipped for a background cold start)
   const splash = bgColdStart ? null : createSplashWindow();
+  const preparedLauncher = bgColdStart ? null : prepareLauncherWindow();
+  const closeSplash = () => { if (splash && !splash.isDestroyed()) splash.destroy(); };
+  // Preserve visible feedback until Chromium actually reveals the launcher.
+  preparedLauncher?.once("show", closeSplash);
+  preparedLauncher?.once("closed", closeSplash);
 
-  // Start the launcher Bun process first
+  // Start Bun while the hidden launcher window prepares its renderer.
   try {
     await spawnLauncherProcess();
   } catch (err) {
     console.error("Failed to start launcher process:", err);
-    splash?.destroy();
-    app.quit();
+    closeSplash();
+    if (preparedLauncher && !preparedLauncher.isDestroyed()) preparedLauncher.destroy();
+    if (!isQuitting) app.quit();
     return;
   }
-
-  // Detect Claude CLI
-  const claude = await detectClaude();
+  if (isQuitting) return;
 
   // Create tray
   createTray({
@@ -498,22 +482,25 @@ app.whenReady().then(async () => {
     onQuit: () => app.quit(),
   });
 
-  // Show the real window BEFORE destroying splash to avoid
-  // window-all-closed → dock.hide() race condition. A background cold start
-  // opens no launcher window — the session runs hidden until it completes.
-  if (!claude.found) {
-    showSetupWizard();
-  } else if (!bgColdStart) {
-    showLauncher();
+  // Backend availability belongs to the launcher API. A missing Claude CLI
+  // must not prevent a user from opening local work or choosing another backend.
+  startupComplete = true;
+  const pendingUrl = pendingPneumaUrl;
+  pendingPneumaUrl = null;
+  const pendingBackgroundHandoff = pendingUrl ? isBackgroundHandoffUrl(pendingUrl) : bgColdStart;
+  if (pendingBackgroundHandoff) {
+    // Also cover a cold-launch URL delivered while the asynchronous shell runs.
+    if (preparedLauncher && !preparedLauncher.isDestroyed()) preparedLauncher.destroy();
+    closeSplash();
+    if (process.platform === "darwin") app.dock?.hide();
   }
-
-  // Destroy splash after the new window exists (no-op when suppressed)
-  splash?.destroy();
-
-  // Process any URL that arrived before app was ready (macOS cold launch)
-  if (pendingPneumaUrl) {
-    handlePneumaUrl(pendingPneumaUrl);
-    pendingPneumaUrl = null;
+  if (pendingUrl) {
+    handlePneumaUrl(pendingUrl);
+    // Foreground handoffs open a session, while the normal launcher remains
+    // available just as it does for an already-running desktop.
+    if (!pendingBackgroundHandoff && !launcherNavigationRequestedBy(pendingUrl)) void showLauncher();
+  } else if (!bgColdStart) {
+    void showLauncher();
   }
 
   // Auto-update: silent periodic checks + silent download. The user only
@@ -534,17 +521,16 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
   killAllProcesses();
+  const launcher = getLauncherWindow();
+  if (launcher && !launcher.isVisible()) launcher.destroy();
 });
 
-// IPC: re-check Claude CLI from setup wizard
+// Retain the existing explicit diagnostic IPC; startup availability is backend-neutral.
 ipcMain.handle("pneuma:recheck-claude", async () => {
-  const result = await detectClaude();
-  if (result.found && setupWindow) {
-    setupWindow.close();
-    showLauncher();
-  }
-  return result;
+  const { detectClaude } = await import("./claude-detector.js");
+  return detectClaude();
 });
 
 // ── Splash screen ───────────────────────────────────────────────────────────
@@ -617,235 +603,4 @@ function getSplashLogoBase64(): string {
   } catch {
     return ""; // Fallback: empty image
   }
-}
-
-// ── Setup wizard HTML ──────────────────────────────────────────────────────
-
-function generateSetupHtml(instructions: {
-  title: string;
-  steps: string[];
-  links: { label: string; url: string }[];
-}): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pneuma Skills — Setup</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  :root {
-    --bg: #09090b;
-    --surface: #18181b;
-    --fg: #fafafa;
-    --muted: #a1a1aa;
-    --primary: #f97316;
-    --primary-hover: #fdba74;
-    --border: rgba(255, 255, 255, 0.08);
-    --glow: rgba(249, 115, 22, 0.15);
-  }
-
-  body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    background: var(--bg);
-    color: var(--fg);
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 48px 40px;
-    user-select: none;
-    overflow: hidden;
-  }
-
-  .logo {
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, var(--primary), #ea580c);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 28px;
-    margin-bottom: 24px;
-    box-shadow: 0 0 32px var(--glow), 0 8px 32px rgba(0,0,0,0.4);
-    animation: breathe 4s ease-in-out infinite;
-  }
-
-  @keyframes breathe {
-    0%, 100% { box-shadow: 0 0 32px var(--glow), 0 8px 32px rgba(0,0,0,0.4); }
-    50% { box-shadow: 0 0 48px rgba(249,115,22,0.25), 0 8px 32px rgba(0,0,0,0.4); }
-  }
-
-  h1 {
-    font-size: 20px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    letter-spacing: -0.02em;
-  }
-
-  .subtitle {
-    color: var(--muted);
-    font-size: 13px;
-    margin-bottom: 32px;
-    line-height: 1.5;
-    text-align: center;
-  }
-
-  .steps {
-    width: 100%;
-    max-width: 400px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 32px;
-  }
-
-  .step {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-    padding: 12px 16px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-
-  .step-num {
-    flex-shrink: 0;
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    background: rgba(249, 115, 22, 0.12);
-    color: var(--primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .step code {
-    background: rgba(0,0,0,0.4);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-    font-size: 12px;
-    color: var(--primary-hover);
-    user-select: text;
-  }
-
-  .links {
-    display: flex;
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-
-  .links a {
-    color: var(--muted);
-    font-size: 12px;
-    text-decoration: none;
-    transition: color 0.15s;
-    cursor: pointer;
-  }
-
-  .links a:hover { color: var(--primary); }
-
-  .check-btn {
-    padding: 10px 28px;
-    border: none;
-    border-radius: 8px;
-    background: var(--primary);
-    color: #fff;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.25, 1, 0.5, 1);
-    letter-spacing: -0.01em;
-  }
-
-  .check-btn:hover {
-    background: #ea580c;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px var(--glow);
-  }
-
-  .check-btn:active {
-    transform: translateY(0);
-  }
-
-  .check-btn.checking {
-    opacity: 0.7;
-    pointer-events: none;
-  }
-
-  .status {
-    margin-top: 12px;
-    font-size: 12px;
-    color: var(--muted);
-    min-height: 18px;
-  }
-
-  .status.error { color: #f87171; }
-  .status.success { color: #4ade80; }
-</style>
-</head>
-<body>
-  <div class="logo">⚡</div>
-  <h1>${instructions.title}</h1>
-  <p class="subtitle">Pneuma Skills requires the Claude Code CLI to connect with your AI agent.</p>
-
-  <div class="steps">
-    ${instructions.steps.map((step, i) => `
-      <div class="step">
-        <span class="step-num">${i + 1}</span>
-        <span>${step}</span>
-      </div>
-    `).join("")}
-  </div>
-
-  <div class="links">
-    ${instructions.links.map((l) => `<a onclick="window.pneumaDesktop?.openExternal('${l.url}')">${l.label}</a>`).join("")}
-  </div>
-
-  <button class="check-btn" onclick="recheckClaude()">Check Installation</button>
-  <div class="status" id="status"></div>
-
-  <script>
-    async function recheckClaude() {
-      const btn = document.querySelector('.check-btn');
-      const status = document.getElementById('status');
-      btn.classList.add('checking');
-      btn.textContent = 'Checking…';
-      status.textContent = '';
-      status.className = 'status';
-
-      try {
-        const result = await window.pneumaDesktop.recheckClaude();
-        if (result.found) {
-          status.textContent = 'Claude CLI found! Starting Pneuma…';
-          status.className = 'status success';
-        } else {
-          status.textContent = 'Claude CLI not found. Please install and try again.';
-          status.className = 'status error';
-          btn.classList.remove('checking');
-          btn.textContent = 'Check Installation';
-        }
-      } catch {
-        status.textContent = 'Check failed. Please try again.';
-        status.className = 'status error';
-        btn.classList.remove('checking');
-        btn.textContent = 'Check Installation';
-      }
-    }
-  </script>
-</body>
-</html>`;
 }

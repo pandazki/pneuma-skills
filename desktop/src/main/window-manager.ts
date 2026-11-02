@@ -3,6 +3,7 @@ import path from "node:path";
 import { parseExternalPopupUrl } from "./window-policy.js";
 import { logEntry } from "./logger.js";
 import { getLauncherUrl } from "./bun-process.js";
+import { markBoot } from "./boot-profile.js";
 
 let launcherWindow: BrowserWindow | null = null;
 const modeWindows: Set<BrowserWindow> = new Set();
@@ -31,20 +32,17 @@ async function openPopupInBrowser(url: string): Promise<void> {
 
 // ── Launcher Window ──────────────────────────────────────────────────────────
 
-export function createLauncherWindow(url: string): BrowserWindow {
-  // Singleton: if already exists, focus it
-  if (launcherWindow && !launcherWindow.isDestroyed()) {
-    if (launcherWindow.isMinimized()) launcherWindow.restore();
-    launcherWindow.focus();
-    return launcherWindow;
-  }
+let launcherNavigationStarted = false;
+let launcherNavigationSequence = 0;
 
-  // Use 80% of screen size for a generous default
+/** Allocate Chromium while Bun starts; no page, focus, or reveal is requested yet. */
+export function prepareLauncherWindow(): BrowserWindow {
+  if (launcherWindow && !launcherWindow.isDestroyed()) return launcherWindow;
+
   const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
   const width = Math.min(Math.round(screenW * 0.8), 1600);
   const height = Math.min(Math.round(screenH * 0.8), 1000);
-
-  launcherWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width,
     height,
     minWidth: 800,
@@ -60,28 +58,69 @@ export function createLauncherWindow(url: string): BrowserWindow {
       spellcheck: false,
     },
   });
+  launcherWindow = win;
+  launcherNavigationStarted = false;
+  markBoot("launcher-window-created");
 
-  // Smooth show after content loads
-  launcherWindow.once("ready-to-show", () => {
-    launcherWindow?.show();
-  });
+  const reveal = () => {
+    // A prepared about:blank window is not the launcher's first paint.
+    if (win.isDestroyed() || !launcherNavigationStarted || !/^https?:/.test(win.webContents.getURL())) return;
+    win.removeListener("ready-to-show", reveal);
+    markBoot("launcher-ready-to-show");
+    win.show();
+  };
+  win.on("ready-to-show", reveal);
+  win.once("show", () => markBoot("launcher-window-shown"));
+  const markDocumentReady = () => {
+    if (!launcherNavigationStarted || !/^https?:/.test(win.webContents.getURL())) return;
+    win.webContents.removeListener("dom-ready", markDocumentReady);
+    markBoot("launcher-dom-ready");
+  };
+  const markLoadComplete = () => {
+    if (!launcherNavigationStarted || !/^https?:/.test(win.webContents.getURL())) return;
+    win.webContents.removeListener("did-finish-load", markLoadComplete);
+    markBoot("launcher-load-complete");
+  };
+  win.webContents.on("dom-ready", markDocumentReady);
+  win.webContents.on("did-finish-load", markLoadComplete);
+  installPopupHandler(win);
 
-  installPopupHandler(launcherWindow);
-  launcherWindow.loadURL(url);
-
-  // External links → system browser
-  launcherWindow.webContents.on("will-navigate", (event, navUrl) => {
-    if (navUrl !== url && !navUrl.startsWith("http://localhost:") && !navUrl.startsWith("http://127.0.0.1:")) {
+  win.webContents.on("will-navigate", (event, navUrl) => {
+    if (!navUrl.startsWith("http://localhost:") && !navUrl.startsWith("http://127.0.0.1:")) {
       event.preventDefault();
       shell.openExternal(navUrl);
     }
   });
-
-  launcherWindow.on("closed", () => {
-    launcherWindow = null;
+  win.on("closed", () => {
+    if (launcherWindow === win) {
+      launcherWindow = null;
+      launcherNavigationStarted = false;
+    }
   });
+  return win;
+}
 
-  return launcherWindow;
+/** Reuse the prepared singleton, navigating it once the service URL is known. */
+export function createLauncherWindow(url: string, options: { navigate?: boolean } = {}): BrowserWindow {
+  const win = prepareLauncherWindow();
+  if (!launcherNavigationStarted || options.navigate) {
+    launcherNavigationStarted = true;
+    const sequence = ++launcherNavigationSequence;
+    markBoot("launcher-navigation-start");
+    void win.loadURL(url).catch((error: Error & { code?: string }) => {
+      // A deep link can replace the initial navigation before its load finishes.
+      if (win.isDestroyed() || sequence !== launcherNavigationSequence || error.code === "ERR_ABORTED") return;
+      logEntry("error", "window-manager", `Launcher navigation failed: ${error.message}`);
+      markBoot("launcher-navigation-failed");
+      dialog.showErrorBox("Unable to open Pneuma", error.message);
+      win.destroy();
+    });
+  }
+  if (win.isVisible()) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+  return win;
 }
 
 export function getLauncherWindow(): BrowserWindow | null {

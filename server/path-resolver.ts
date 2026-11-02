@@ -7,7 +7,7 @@
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, delimiter } from "node:path";
+import { join, delimiter, isAbsolute } from "node:path";
 
 const isWin = process.platform === "win32";
 
@@ -187,7 +187,12 @@ export function getEnrichedPath(): string {
   if (_cachedPath) return _cachedPath;
 
   const currentPath = process.env.PATH || "";
-  const userPath = captureUserShellPath();
+  // Desktop already completed a bounded async shell attempt before spawning
+  // this process. READY includes its observable fallback path; do not repeat a
+  // failed login shell synchronously here. Direct CLI launches remain unchanged.
+  const inheritedDesktopPath = process.env.PNEUMA_DESKTOP_PATH_READY === "1"
+    && currentPath.split(delimiter).some((dir) => isAbsolute(dir) && existsSync(dir));
+  const userPath = inheritedDesktopPath ? currentPath : captureUserShellPath();
 
   const allDirs = [
     ...userPath.split(delimiter),
