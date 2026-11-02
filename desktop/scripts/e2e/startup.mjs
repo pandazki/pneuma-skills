@@ -92,7 +92,10 @@ async function fixtureFor(name, config) {
 globalThis.fetch = async function(input, init) {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (url === "https://pneuma-storage.vibecoding.icu/registry/index.json") {
+    ${config.trackRegistry ? `const startedAt = Date.now();
+    await Bun.write(${JSON.stringify(join(root, "registry-request.json"))}, JSON.stringify({ startedAt }));` : ""}
     await new Promise(r => setTimeout(r, ${config.registryDelay ?? 0}));
+    ${config.trackRegistry ? `await Bun.write(${JSON.stringify(join(root, "registry-request.json"))}, JSON.stringify({ startedAt, completedAt: Date.now() }));` : ""}
     return ${config.registryFailure ? 'new Response("Registry fixture unavailable", {status:503})' : 'Response.json({ modes: [] })'};
   }
   return originalFetch(input, init);
@@ -143,6 +146,7 @@ async function launch(fixture, sampleName) {
   const logs = [];
   const errors = [];
   const responseEvents = [];
+  const previousPids = existsSync(fixture.pidsFile) ? (await readFile(fixture.pidsFile, "utf8")).trim().split("\n").filter(Boolean).length : 0;
   const start = Date.now();
   const app = await electron.launch({
     args: [join(here, "production-bootstrap.cjs")], timeout: 30_000,
@@ -203,7 +207,7 @@ async function launch(fixture, sampleName) {
       });
       assert.equal(await shown, true);
       await page.screenshot({ path: join(out, "background-handoff-complete.png") });
-      return { app, page, logs, errors, fixture, result: { checks: ["cold handoff created only one hidden session window", "running to idle IPC revealed the finished session"], events: state.events } };
+      return { app, page, logs, errors, fixture, previousPids, result: { checks: ["cold handoff created only one hidden session window", "running to idle IPC revealed the finished session"], events: state.events } };
     }
     // Cross-version predicate: the candidate-only data attribute is deliberately not used.
     await page.waitForFunction(() => {
@@ -227,27 +231,50 @@ async function launch(fixture, sampleName) {
     assert(shown, "Real HTTP launcher window was never shown");
     const result = { sample: sampleName, shownMs: shown.at - start, localReadyMs: localReadyAt - start, start,
       localReadyAt, events: mainState.events, responseEvents, errors };
-    return { app, page, result, logs, errors, fixture };
+    return { app, page, result, logs, errors, fixture, previousPids };
   } catch (error) {
     await writeFile(join(out, `${sampleName}-failure.log`), logs.join(""));
     await writeFile(join(out, `${sampleName}-failure.json`), JSON.stringify({ error: String(error), responseEvents, errors }, null, 2));
+    if (existsSync(fixture.eventsFile)) await writeFile(join(out, `${sampleName}-native-events.jsonl`), await readFile(fixture.eventsFile));
     for (const [index, win] of app.windows().entries()) await win.screenshot({ path: join(out, `${sampleName}-failure-${index}.png`), timeout: 5000 }).catch(() => {});
-    await close({ app, logs, fixture }, sampleName);
+    try { await close({ app, logs, fixture, previousPids }, sampleName); }
+    catch (cleanupError) { throw new AggregateError([error, cleanupError], "Launch failed and cleanup required intervention"); }
     throw error;
   }
 }
 
 async function close(run, sampleName) {
   let closeTimedOut = false;
+  let closeError;
+  let survivors = [];
+  let remaining = [];
   const timeout = setTimeout(() => { closeTimedOut = true; run.app.process().kill("SIGKILL"); }, 5000);
-  try { await run.app.close(); } finally { clearTimeout(timeout); }
-  await writeFile(join(out, `${sampleName}.log`), run.logs.join(""));
-  const pids = existsSync(run.fixture.pidsFile) ? (await readFile(run.fixture.pidsFile, "utf8")).trim().split("\n").map(Number) : [];
   const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-  for (let attempt = 0; attempt < 40 && pids.some(alive); attempt++) await new Promise((r) => setTimeout(r, 50));
-  const survivors = pids.filter(alive);
-  for (const pid of survivors) { try { process.kill(pid, "SIGTERM"); } catch {} }
-  assert.deepEqual(survivors, [], "App quit left a launcher process alive");
+  const waitForExit = async (pids, attempts) => {
+    for (let attempt = 0; attempt < attempts && pids.some(alive); attempt++) await new Promise((resolve) => setTimeout(resolve, 50));
+  };
+  try { await run.app.close(); }
+  catch (error) { closeError = error; }
+  finally {
+    clearTimeout(timeout);
+    // Cleanup runs even if Electron close rejects. Only PIDs written by this
+    // launch's bundled-Bun wrapper belong to this run; earlier warm launches
+    // are excluded so a recycled PID can never target another process.
+    const pids = existsSync(run.fixture.pidsFile)
+      ? (await readFile(run.fixture.pidsFile, "utf8")).trim().split("\n").filter(Boolean).slice(run.previousPids).map(Number).filter((pid) => Number.isInteger(pid) && pid > 1)
+      : [];
+    await waitForExit(pids, 40);
+    survivors = pids.filter(alive);
+    for (const pid of survivors) { try { process.kill(pid, "SIGTERM"); } catch {} }
+    await waitForExit(survivors, 20);
+    for (const pid of survivors.filter(alive)) { try { process.kill(pid, "SIGKILL"); } catch {} }
+    await waitForExit(survivors, 20);
+    remaining = survivors.filter(alive);
+    await writeFile(join(out, `${sampleName}.log`), run.logs.join(""));
+  }
+  assert.deepEqual(remaining, [], "Fixture launcher survived bounded SIGTERM/SIGKILL cleanup");
+  if (closeError) throw closeError;
+  assert.deepEqual(survivors, [], "App quit left a launcher process alive; harness terminated it");
   assert.equal(closeTimedOut, false, "Application quit exceeded five seconds");
   // Let Chromium helpers release the reusable profile before the next launch.
   await new Promise((resolve) => setTimeout(resolve, 250));
@@ -259,7 +286,13 @@ async function smoke(run, scenario) {
   await page.getByRole("button", { name: /^All Modes \(/ }).click();
   await page.getByText("Mode Gallery", { exact: true }).waitFor({ timeout: 5000 });
   checks.push("All Modes opens gallery through trusted click");
-  await page.screenshot({ path: join(out, `${scenario}-gallery.png`) });
+  if (scenario === "failed-registry") {
+    const notice = page.getByRole("dialog", { name: "Mode Gallery" }).locator('[data-launcher-resource="published"]');
+    await notice.getByRole("button", { name: "Retry" }).waitFor();
+    await notice.scrollIntoViewIfNeeded();
+    checks.push("community registry error and Retry remain visible inside gallery");
+  }
+  await page.screenshot({ path: join(out, `${scenario}-gallery.png`), animations: "disabled" });
   await page.keyboard.press("Escape");
   await page.getByText("Mode Gallery", { exact: true }).waitFor({ state: "hidden" });
   // Closing/reopening the launcher must preserve the Bun service and remain singleton.
@@ -270,7 +303,7 @@ async function smoke(run, scenario) {
   checks.push("pneuma://open reuses one launcher window");
   assert.equal((await page.request.get(`${new URL(url).origin}/api/running`)).status(), 200);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: join(out, `${scenario}-launcher.png`) });
+  await page.screenshot({ path: join(out, `${scenario}-launcher.png`), animations: "disabled" });
   if (scenario === "no-backend") {
     const backends = await (await page.request.get(`${new URL(url).origin}/api/backends`)).json();
     assert(backends.backends.every((backend) => !backend.available), "No-backend response fixture was not applied");
@@ -283,6 +316,18 @@ async function smoke(run, scenario) {
   if (scenario === "slow-backends") {
     assert(!run.result.responseEvents.some((event) => event.path === "/api/backends" && event.at <= run.result.localReadyAt), "Local content waited for delayed backend response");
     checks.push("local content and gallery usable before the delayed backend response");
+  }
+  if (scenario === "slow-registry") {
+    let request;
+    const deadline = Date.now() + 6000;
+    while (Date.now() < deadline) {
+      if (existsSync(join(fixture.root, "registry-request.json"))) request = JSON.parse(await readFile(join(fixture.root, "registry-request.json"), "utf8"));
+      if (request?.completedAt) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert(request?.completedAt, "Remote registry fixture never completed");
+    assert(run.result.localReadyAt < request.completedAt, "Local content waited for the delayed remote registry");
+    checks.push("local content became usable before the recorded remote registry completion");
   }
   if (scenario === "failed-backends") {
     await page.locator('[data-launcher-resource="backends"]').getByRole("button", { name: "Retry" }).waitFor();
@@ -343,7 +388,7 @@ async function smoke(run, scenario) {
 const samples = [];
 const e2e = [];
 for (const name of scenarioNames) {
-  const config = { ...scenarios[name], blockImport: runE2E };
+  const config = { ...scenarios[name], blockImport: runE2E, trackRegistry: runE2E && name === "slow-registry" };
   const warmFixture = config.warm ? await fixtureFor(name, config) : null;
   try {
     if (warmFixture) {

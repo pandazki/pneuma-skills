@@ -52,7 +52,9 @@ bootstrap rejects accidental registration. A fake Claude executable answers
 only `--version` and refuses agent execution. A Bun preload replaces only the
 remote community index with an empty deterministic result and optionally delays
 or fails `/api/backends`. Local registry assembly and other APIs remain real.
-Every quit verifies the launcher child exited. Temporary fixtures are removed;
+Every quit verifies the launcher child exited. Failed shutdowns still clean up
+the fixture-owned child with bounded SIGTERM/SIGKILL escalation and fail the run.
+Native window events are preserved when a launch fails. Temporary fixtures are removed;
 logs, results, and screenshots remain in `--out`.
 
 Run the candidate's interaction and fault checks separately from timed batches:
@@ -64,7 +66,7 @@ npm run test:startup -- --project /absolute/candidate --samples 1 --e2e \
 ```
 
 These checks open the gallery and Settings with trusted clicks, check splash
-handover, singleton/deep-link behavior, and close/reopen the launcher without
+handover, native minimize/restore and singleton/deep-link behavior, and close/reopen the launcher without
 spawning another service. The import POST is intercepted before it can import
 files. The no-backend case removes the fake executable and overrides the backend
 API availability fields to false, so globally installed host binaries cannot
@@ -72,6 +74,9 @@ invalidate the fixture. A cold background-handoff case substitutes a local inert
 page for agent creation, verifies no splash/launcher appears, and sends real
 preload status IPC to reveal the completed session. Notifications and external
 browser launches are recorded instead of sent to the operating system.
+The delayed-registry check records the fixture's actual completion timestamp
+and asserts local content was ready earlier; the delayed-backend check similarly
+compares readiness against the observed HTTP response.
 
 The E2E checks target the improved behavior; running them against an older
 revision is expected to fail where that revision still blocks local content or
