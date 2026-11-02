@@ -84,6 +84,8 @@ paths:
 
 ## Gotchas
 
+- **Cloud integration clients and Bun 1.4.0 transport defects**: the browser fixture loads the pinned npm `ws` entry explicitly because Bun replaces bare `ws` imports and its native client can corrupt workerd's valid context-compressed frames. Keep the production publisher on its real Bun transport. Body-bearing fixture HTTP requests use `Connection: close`: workerd closes requests rejected before body consumption, and Bun can race that close when reusing the connection even after draining the response. Do not replace these boundaries with retries or relaxed assertions. WebSocket writes followed by HTTP assertions need a same-socket acknowledgement first.
+
 - **happy-dom 20.11.1 MutationObserver notifications can disappear after GC** (2026-10-12). Its internal report callback is held only through a `WeakRef`; a timer boundary plus `Bun.gc(true)` reproduces the lost notification. For the iframe readiness test, subscribe to the real observer and release `aria-busy` in the same job, retaining the waiting and post-mutation assertions. Do not lengthen the timeout or change browser capture behavior to compensate for this test-environment defect.
 
 - **Release timeout parity** (3.56.0 validation, 2026-10-08): `test:release` uses a 60-second per-test deadline locally and in CI; explicit full/media runs pass `--timeout 60000`. Sprite's frame-width registration test completed all 12 assertions in 5.3 seconds locally, exceeding Bun's default five-second deadline. Preserve its assertions and the release deadline; do not treat that default timeout as evidence of a product failure.

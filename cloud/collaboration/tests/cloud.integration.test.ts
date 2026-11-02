@@ -2,7 +2,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import type { WebSocket as NodeWebSocket } from "ws";
 import type { CollaborationReference, CollaborationResolvedReference } from "../../../core/types/collaboration-reference.js";
 import { canonical } from "../../../core/collaboration/authority-domain.js";
 import { startCollaborationPublisher } from "../../../server/collaboration/publisher.js";
@@ -15,6 +17,12 @@ import type {
   CollaborationRoomState,
   CollaborationServerMessage,
 } from "../../../core/types/collaboration.js";
+
+const require = createRequire(import.meta.url);
+// These clients model browsers. Bun 1.4.0 can corrupt workerd's valid compressed
+// frames; load npm ws explicitly because Bun substitutes its native client for
+// bare "ws" imports. The production publisher still uses Bun's real WebSocket.
+const FixtureWebSocket: typeof NodeWebSocket = require(join(dirname(require.resolve("ws/package.json")), "index.js"));
 
 const projectId = "cloud-integration-project";
 const workerName = "cloud-integration-worker";
@@ -75,7 +83,9 @@ async function request(token: string | null, path: string, method = "GET", body?
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      // Many negative cases reject before reading the request body. Workerd
+      // closes that connection; keep Bun from pooling it for the next request.
+      ...(body === undefined ? {} : { "Content-Type": "application/json", Connection: "close" }),
       ...extra,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -137,7 +147,7 @@ function commit(candidate: Publication, baseRevision: number, opId = crypto.rand
 }
 
 class Connection {
-  readonly socket: WebSocket;
+  readonly socket: NodeWebSocket;
   readonly messages: Message[] = [];
   private readonly changed = new Set<() => void>();
   private heartbeat: ReturnType<typeof setInterval> | undefined;
@@ -146,7 +156,7 @@ class Connection {
     const url = new URL(path, origin);
     url.protocol = "ws:";
     url.searchParams.set("token", token);
-    this.socket = new WebSocket(url);
+    this.socket = new FixtureWebSocket(url);
     this.socket.addEventListener("message", (event) => {
       this.messages.push(JSON.parse(String(event.data)) as Message);
       for (const callback of this.changed) callback();
@@ -830,7 +840,8 @@ describe("cloud project collaboration with real workerd and R2", () => {
     const candidate = publication("<!doctype html><h1>Second owner</h1>");
     const projection: CollaborationPublicationProjection = { schema: "webcraft-public-v1", sources: { files: [{ path: "index.html", content: "Second owner" }] }, entryAddress: { file: "index.html" } };
     let snapshot = { ...candidate, blobs: candidate.bytes, projection, fingerprint: digest(canonical({ files: candidate.files, projection })) };
-    const secondPublisher = await startCollaborationPublisher({ authorityBaseUrl: `${origin}${base}`, roomId: secondId, publisherToken: second.publisherToken, getSnapshot: () => snapshot });
+    const publisherStatuses: string[] = [];
+    const secondPublisher = await startCollaborationPublisher({ authorityBaseUrl: `${origin}${base}`, roomId: secondId, publisherToken: second.publisherToken, getSnapshot: () => snapshot, onStatus: (status) => publisherStatuses.push(status) });
     normalPublishers.push(secondPublisher);
     const secondHost = new Connection(writer.token, `${base}/ws`);
     await secondHost.wait("welcome"); secondHost.send({ type: "join", roomId: secondId }); await secondHost.wait("room"); secondHost.startHeartbeat(5000);
@@ -869,6 +880,7 @@ describe("cloud project collaboration with real workerd and R2", () => {
     expect((await fetch(secondPage)).ok).toBe(false);
     const manual = new Connection(reader.token, `${base}/ws`); await manual.wait("welcome"); manual.send({ type: "join", roomId: secondId }); await manual.wait("room");
     await secondPublisher.stop(); await expectHostOffline(manual);
+    expect(publisherStatuses).not.toContain("Invalid publisher response");
     expect((await fetch(firstPage)).status).toBe(200);
     secondHost.send({ type: "leave" });
     expect((await request(reader.token, `${base}/api/rooms/${secondId}`, "PATCH", { enabled: false })).status).toBe(403);
@@ -961,6 +973,11 @@ describe("cloud project collaboration with real workerd and R2", () => {
     expect((await request(guest.token, `${base}/api/references`)).status).toBe(403);
     expect((await request(guest.token, `${base}/api/references`, "POST", { ...body, opId: crypto.randomUUID(), source: source(13) })).status).toBe(403);
     sourceHost.send({ type: "leave" });
+    // HTTP uses another connection; acknowledge leave on this socket before
+    // checking the resulting access revocation through HTTP.
+    const leftAt = Date.now() + 0.5; // Automatic heartbeat timestamps are integers.
+    sourceHost.send({ type: "ping", sentAt: leftAt });
+    await sourceHost.wait("pong", (message) => message.sentAt === leftAt);
     expect((await request(reader.token, `${base}/api/references/${pin.id}/resolve`)).status).toBe(423);
     expect((await fetch(new URL(pinned.pageUrl, origin), { headers: { "X-Pneuma-Publication-Bytes": "1" } })).ok).toBe(false);
     await sourcePublisher.stop(); await sourceHost.close(); await host!.close(); host = null; await publisher.close(); await runtime.dispose(); await startRuntime();
@@ -1083,7 +1100,7 @@ describe("cloud project collaboration with real workerd and R2", () => {
     const guest = new Connection(peerReader.token, `${base}/ws`); await guest.wait("welcome"); guest.send({ type: "join", roomId: registrations[0]!.room.id }); await guest.wait("room");
     const body = { opId: crypto.randomUUID() };
     for (const credential of [peerWriter.token, peerReader.token]) expect((await request(credential, `${base}/api/project`, "DELETE", body)).status).toBe(403);
-    const closes = publishers.map((connection) => new Promise<CloseEvent>((resolve) => connection.socket.addEventListener("close", resolve, { once: true })));
+    const closes = publishers.map((connection) => new Promise<NodeWebSocket.CloseEvent>((resolve) => connection.socket.addEventListener("close", resolve, { once: true })));
     const removed = await json<{ ok: true; removed: true; projectId: string; removedAt: number }>(token, `${base}/api/project`, "DELETE", body);
     expect(removed).toMatchObject({ ok: true, removed: true, projectId: removedId });
     for (const connection of [...hosts, guest]) expect((await connection.wait("closed")).reason).toBe("Project removed");
