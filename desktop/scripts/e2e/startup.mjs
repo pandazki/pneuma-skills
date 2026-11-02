@@ -303,7 +303,7 @@ async function smoke(run, scenario) {
   checks.push("pneuma://open reuses one launcher window");
   assert.equal((await page.request.get(`${new URL(url).origin}/api/running`)).status(), 200);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: join(out, `${scenario}-launcher.png`), animations: "disabled" });
+  await page.screenshot({ path: join(out, `${scenario}-launcher.png`) });
   if (scenario === "no-backend") {
     const backends = await (await page.request.get(`${new URL(url).origin}/api/backends`)).json();
     assert(backends.backends.every((backend) => !backend.available), "No-backend response fixture was not applied");
