@@ -1,4 +1,22 @@
 {
+  "startup": {
+    "loading": "Cargando {{section}}…",
+    "failed": "No se pudieron cargar {{section}}.",
+    "retry": "Reintentar",
+    "backends_loading": "Comprobando agentes disponibles…",
+    "backends_failed": "No se pudo comprobar la disponibilidad de los agentes. Reintenta antes de iniciar.",
+    "published_loading": "Comprobando modos de la comunidad… Ya puedes explorar los modos locales.",
+    "published_failed": "No se pudieron actualizar los modos de la comunidad. Los modos locales siguen disponibles.",
+    "sections": {
+      "backends": "agentes",
+      "modes": "modos locales",
+      "sessions": "sesiones recientes",
+      "running": "sesiones en ejecución",
+      "projects": "proyectos",
+      "archived": "proyectos archivados",
+      "libraries": "bibliotecas de modos"
+    }
+  },
   "backends": {
     "claude_code": {
       "label": "Claude Code",

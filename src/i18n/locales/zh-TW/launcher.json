@@ -1,4 +1,22 @@
 {
+  "startup": {
+    "loading": "正在載入{{section}}…",
+    "failed": "無法載入{{section}}。",
+    "retry": "重試",
+    "backends_loading": "正在檢查可用代理…",
+    "backends_failed": "無法確認代理是否可用，請重試後啟動。",
+    "published_loading": "正在檢查社群模式… 本機模式已可瀏覽。",
+    "published_failed": "暫時無法重新整理社群模式，本機模式仍可使用。",
+    "sections": {
+      "backends": "代理",
+      "modes": "本機模式",
+      "sessions": "最近工作階段",
+      "running": "執行中的工作階段",
+      "projects": "專案",
+      "archived": "已封存專案",
+      "libraries": "模式庫"
+    }
+  },
   "backends": {
     "claude_code": {
       "label": "Claude Code",

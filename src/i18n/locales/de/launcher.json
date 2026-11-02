@@ -1,4 +1,22 @@
 {
+  "startup": {
+    "loading": "{{section}} werden geladen…",
+    "failed": "{{section}} konnten nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "backends_loading": "Verfügbare Agenten werden geprüft…",
+    "backends_failed": "Die Verfügbarkeit der Agenten konnte nicht geprüft werden. Vor dem Start erneut versuchen.",
+    "published_loading": "Community-Modi werden geprüft… Lokale Modi können bereits durchsucht werden.",
+    "published_failed": "Community-Modi konnten nicht aktualisiert werden. Lokale Modi bleiben verfügbar.",
+    "sections": {
+      "backends": "Agenten",
+      "modes": "lokale Modi",
+      "sessions": "letzte Sitzungen",
+      "running": "laufende Sitzungen",
+      "projects": "Projekte",
+      "archived": "archivierte Projekte",
+      "libraries": "Modusbibliotheken"
+    }
+  },
   "backends": {
     "claude_code": {
       "label": "Claude Code",

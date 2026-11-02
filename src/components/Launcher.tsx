@@ -19,6 +19,8 @@ import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
 import { AgentCommandBanner, AgentCommandHooks } from "./AgentCommandPanel.js";
 import { ModeIcon } from "./ModeIcon.js";
+import { useLauncherResource } from "../hooks/useLauncherResource.js";
+import type { PublishedMode, PublishedRegistryStatus } from "../../core/types/mode-registry.js";
 import { useFavorites, sortFavoritesFirst, favoriteKey } from "../hooks/useFavorites.js";
 import { useAppTheme, type ThemePreference as Theme } from "../hooks/useAppTheme.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
@@ -126,16 +128,6 @@ interface CatalogMode {
    */
   installPath?: string;
   showcase?: BuiltinMode["showcase"];
-}
-
-interface PublishedMode {
-  name: string;
-  displayName: string;
-  description?: string;
-  version: string;
-  publishedAt: string;
-  archiveUrl: string;
-  icon?: string;
 }
 
 /**
@@ -2791,6 +2783,7 @@ export function LaunchDialog({
   defaultInitParams,
   forkSource,
   backendOptions,
+  backendReadinessError,
   defaultBackendType,
   homeDir,
   onClose,
@@ -2810,6 +2803,7 @@ export function LaunchDialog({
    *  package seeded from an existing mode". */
   forkSource?: { sourceMode?: string; sourcePath?: string };
   backendOptions: BackendOption[];
+  backendReadinessError?: string;
   defaultBackendType: BackendType;
   homeDir: string;
   onClose: () => void;
@@ -2854,8 +2848,18 @@ export function LaunchDialog({
   const checkingWorkspace = currentWorkspaceCheck === null;
   const effectiveParamValues = existingSession && Object.keys(existingSession.config).length > 0
     ? existingSession.config : paramValues;
-  const launchError = error || currentWorkspaceCheck?.error;
-  const canLaunch = !loading && !preparing && !checkingWorkspace && !currentWorkspaceCheck?.error && !!workspace.trim();
+  const selectedBackend = backendOptions.find((backend) => backend.type === (existingSession?.backendType ?? selectedBackendType));
+  const backendError = backendReadinessError || (!selectedBackend?.implemented || selectedBackend.available !== true || (selectedBackend.disabled && !existingSession)
+    ? selectedBackend?.reason || t("launch_dialog.agent_unavailable") : undefined);
+  const launchError = error || currentWorkspaceCheck?.error || backendError;
+  const canLaunch = !backendError && !loading && !preparing && !checkingWorkspace && !currentWorkspaceCheck?.error && !!workspace.trim();
+  useEffect(() => {
+    if (backendReadinessError || existingSession) return;
+    if (backendOptions.some((backend) => backend.type === selectedBackendType && backend.available && backend.implemented && !backend.disabled)) return;
+    const available = backendOptions.filter((backend) => backend.available && backend.implemented && !backend.disabled);
+    const next = available.find((backend) => backend.type === defaultBackendType) ?? available[0];
+    if (next) setSelectedBackendType(next.type);
+  }, [backendOptions, backendReadinessError, defaultBackendType, existingSession, selectedBackendType]);
   const { resolved: dialogTheme } = useAppTheme();
   const isLight = dialogTheme === "light";
 
@@ -3071,7 +3075,7 @@ export function LaunchDialog({
           <div className="flex gap-2">
             {visibleBackends.map((backend) => {
               const active = (existingSession?.backendType || selectedBackendType) === backend.type;
-              const unavailable = !backend.implemented || backend.available === false;
+              const unavailable = !!backendReadinessError || !backend.implemented || backend.available !== true;
               const disabled = !!existingSession || unavailable;
               return (
                 <button
@@ -3130,7 +3134,7 @@ export function LaunchDialog({
       )}
 
       {launchError && (
-        <p className="text-sm text-cc-error mb-4">{launchError}</p>
+        <p className={`text-sm mb-4 ${backendReadinessError && !backendOptions.length ? "text-cc-muted" : "text-cc-error"}`} role="status">{launchError}</p>
       )}
     </>
   );
@@ -3151,6 +3155,9 @@ export function LaunchDialog({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={displayName}
       // `py-12` reserves 48px at top + bottom so the centered dialog never
       // slides under the Electron traffic-light buttons (drawn over the
       // content area by `titleBarStyle: "hiddenInset"`). Harmless extra
@@ -4973,12 +4980,34 @@ export default function Launcher() {
   const { t } = useTranslation("launcher");
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useAppTheme();
   const isLight = theme === "light";
-  const [backendOptions, setBackendOptions] = useState<BackendOption[]>(FALLBACK_BACKENDS);
-  const [defaultBackendType, setDefaultBackendType] = useState<BackendType>("codex");
-  const [builtins, setBuiltins] = useState<BuiltinMode[]>([]);
-  const [catalog, setCatalog] = useState<CatalogMode[]>([]);
-  const [published, setPublished] = useState<PublishedMode[]>([]);
-  const [local, setLocal] = useState<LocalMode[]>([]);
+  const [locale, setLocale] = useState(currentLocale);
+  const backendResource = useLauncherResource<{ backends: BackendOption[]; defaultBackendType?: BackendType }>("/api/backends", { backends: [] });
+  const modesResource = useLauncherResource<{
+    builtins: BuiltinMode[]; catalog: CatalogMode[]; published: PublishedMode[]; local: LocalMode[];
+    publishedStatus?: PublishedRegistryStatus;
+  }>(`/api/registry?locale=${encodeURIComponent(locale)}`, { builtins: [], catalog: [], published: [], local: [] });
+  const sessionsResource = useLauncherResource<{ sessions: RecentSession[]; homeDir?: string }>("/api/sessions", { sessions: [] });
+  const runningResource = useLauncherResource<{ processes: ChildProcess[] }>("/api/running", { processes: [] });
+  const projectsResource = useLauncherResource<{ projects: ProjectListEntry[] }>("/api/projects", { projects: [] });
+  const archivedResource = useLauncherResource<{ projects: ProjectListEntry[] }>("/api/projects?archived=true", { projects: [] });
+  const librariesResource = useLauncherResource<{ libraries: InstalledLibrary[] }>("/api/libraries", { libraries: [] });
+  const backendOptions = backendResource.data.backends;
+  const defaultBackendType = backendResource.data.defaultBackendType ?? "codex";
+  const { builtins, catalog, published, local } = modesResource.data;
+  const sessions = sessionsResource.data.sessions;
+  const homeDir = sessionsResource.data.homeDir ?? "";
+  const running = runningResource.data.processes;
+  const projects = projectsResource.data.projects;
+  const archivedProjects = archivedResource.data.projects;
+  const libraries = librariesResource.data.libraries;
+  const { refresh: refreshModes } = modesResource;
+  const { refresh: refreshSessions } = sessionsResource;
+  const { refresh: refreshRunning } = runningResource;
+  const { refresh: reloadProjects } = projectsResource;
+  const { refresh: reloadArchivedProjects } = archivedResource;
+  const { refresh: refreshLibraries } = librariesResource;
+  const backendReadinessError = backendResource.error
+    ? t("startup.backends_failed") : !backendResource.loaded ? t("startup.backends_loading") : undefined;
   /**
    * Modes this tab just finished installing. `/api/registry` is cached
    * server-side for a minute (SWR), so a refetch right after a download can
@@ -4987,20 +5016,13 @@ export default function Launcher() {
    * the cache turns over; it only ever moves a mode forward to `installed`.
    */
   const [installedNow, setInstalledNow] = useState<Set<string>>(() => new Set());
-  const [sessions, setSessions] = useState<RecentSession[]>([]);
-  const [running, setRunning] = useState<ChildProcess[]>([]);
-  const [projects, setProjects] = useState<ProjectListEntry[]>([]);
-  const [libraries, setLibraries] = useState<InstalledLibrary[]>([]);
   const [addLibraryOpen, setAddLibraryOpen] = useState(false);
   const [publishTarget, setPublishTarget] = useState<InstalledLibrary | null>(null);
   // Phase 4 — archived bucket. Fetched once on mount and after a restore;
   // NOT refetched on every render. Toggled open by the inline "Archived"
   // header link, which only appears when `archivedProjects.length > 0`.
-  const [archivedProjects, setArchivedProjects] = useState<ProjectListEntry[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [homeDir, setHomeDir] = useState("");
-  const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
   const [showAllSessions, setShowAllSessions] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
@@ -5082,43 +5104,21 @@ export default function Launcher() {
     return () => window.removeEventListener("keydown", handler);
   }, [hasOverlay, launchTarget, showGallery, showAllSessions, showAllProjects]);
 
-  const refreshModes = useCallback(() => {
-    const locale = currentLocale();
-    fetch(`${getApiBase()}/api/registry?locale=${encodeURIComponent(locale)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setBuiltins(data.builtins || []);
-        setCatalog(data.catalog || []);
-        setPublished(data.published || []);
-        setLocal(data.local || []);
-      })
-      .catch(() => { });
-  }, []);
-
-  // Re-fetch registry whenever the user switches UI locale so the
-  // server-localised displayName/showcase strings refresh on the same tick.
+  // A locale change supersedes the previous request; late translations cannot
+  // overwrite the current language. Other launcher resources remain usable.
   useEffect(() => {
-    const onLocaleChange = () => refreshModes();
+    const onLocaleChange = () => setLocale(currentLocale());
     window.addEventListener("pneuma:locale-changed", onLocaleChange);
     return () => window.removeEventListener("pneuma:locale-changed", onLocaleChange);
-  }, [refreshModes]);
-
-  const refreshSessions = useCallback(() => {
-    fetch(`${getApiBase()}/api/sessions`)
-      .then((r) => r.json())
-      .then((data) => {
-        setSessions(data.sessions || []);
-        if (data.homeDir) setHomeDir(data.homeDir);
-      })
-      .catch(() => { });
   }, []);
 
-  const refreshLibraries = useCallback(() => {
-    fetch(`${getApiBase()}/api/libraries`)
-      .then((r) => r.json())
-      .then((data) => setLibraries(data.libraries || []))
-      .catch(() => { });
-  }, []);
+  // Only the published bucket is pending after the local registry arrives.
+  // Stop polling on success or error; an explicit retry starts a new attempt.
+  useEffect(() => {
+    if (modesResource.error || modesResource.data.publishedStatus?.state !== "loading") return;
+    const timer = setTimeout(() => { void refreshModes(); }, 500);
+    return () => clearTimeout(timer);
+  }, [modesResource.data.publishedStatus, modesResource.error, refreshModes]);
 
   // Refresh libraries on mount + whenever the server broadcasts a
   // `libraries_updated` event (dispatched as a window event by ws.ts,
@@ -5128,7 +5128,6 @@ export default function Launcher() {
   // activated library modes surface in `/api/registry` `local[]` —
   // toggle one off and the Quick Start tile has to disappear.
   useEffect(() => {
-    refreshLibraries();
     const handler = () => {
       refreshLibraries();
       refreshModes();
@@ -5137,40 +5136,9 @@ export default function Launcher() {
     return () => window.removeEventListener("pneuma:libraries-updated", handler);
   }, [refreshLibraries, refreshModes]);
 
-  const refreshRunning = useCallback(() => {
-    // `/api/running` = all running `pneuma <mode>` sessions system-wide (read
-    // from the shared registry), not just children this launcher spawned — so
-    // a project that switched modes internally shows its current mode.
-    fetch(`${getApiBase()}/api/running`)
-      .then((r) => r.json())
-      .then((data) => setRunning(data.processes || []))
-      .catch(() => { });
-  }, []);
-
-  const reloadProjects = useCallback(async () => {
-    try {
-      const res = await fetch(`${getApiBase()}/api/projects`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setProjects(data.projects ?? []);
-    } catch {
-      // tolerate offline / no-server scenarios
-    }
-  }, []);
-
-  const reloadArchivedProjects = useCallback(async () => {
-    try {
-      const res = await fetch(`${getApiBase()}/api/projects?archived=true`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setArchivedProjects(data.projects ?? []);
-    } catch {
-      // tolerate offline / no-server scenarios
-    }
-  }, []);
-
   const quickResumeProject = useCallback(
     async (project: ProjectCardEntry) => {
+      if (backendReadinessError) { setWindowError(backendReadinessError); return; }
       setWindowError("");
       try {
         const res = await fetch(
@@ -5194,6 +5162,11 @@ export default function Launcher() {
         const latest = [...resumable].sort(
           (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0),
         )[0];
+        const selectedBackend = backendOptions.find((backend) => backend.type === (latest.backendType ?? defaultBackendType));
+        if (!selectedBackend?.implemented || selectedBackend.available !== true) {
+          setWindowError(selectedBackend?.reason || t("launch_dialog.agent_unavailable"));
+          return;
+        }
         const launchRes = await fetch(`${getApiBase()}/api/launch`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -5213,7 +5186,7 @@ export default function Launcher() {
         setWindowError(error instanceof Error ? error.message : String(error));
       }
     },
-    [],
+    [backendOptions, backendReadinessError, defaultBackendType, t],
   );
 
   const restoreProject = useCallback(
@@ -5236,42 +5209,12 @@ export default function Launcher() {
   );
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${getApiBase()}/api/backends`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/registry?locale=${encodeURIComponent(currentLocale())}`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/sessions`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/running`).then((r) => r.json()),
-      fetch(`${getApiBase()}/api/projects`).then((r) => r.json()).catch(() => ({ projects: [] })),
-      fetch(`${getApiBase()}/api/projects?archived=true`)
-        .then((r) => r.json())
-        .catch(() => ({ projects: [] })),
-    ])
-      .then(([backendData, registryData, sessionsData, runningData, projectsData, archivedData]) => {
-        setBackendOptions(backendData.backends || []);
-        if (backendData.defaultBackendType) {
-          setDefaultBackendType(backendData.defaultBackendType);
-        }
-        setBuiltins(registryData.builtins || []);
-        setCatalog(registryData.catalog || []);
-        setPublished(registryData.published || []);
-        setLocal(registryData.local || []);
-        setSessions(sessionsData.sessions || []);
-        if (sessionsData.homeDir) setHomeDir(sessionsData.homeDir);
-        setRunning(runningData.processes || []);
-        setProjects(projectsData.projects || []);
-        setArchivedProjects(archivedData.projects || []);
-      })
-      .catch(() => { })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
     const interval = setInterval(() => {
-      refreshRunning();
-      refreshSessions();
+      if (!runningResource.pending) void refreshRunning();
+      if (!sessionsResource.pending) void refreshSessions();
     }, 3000);
     return () => clearInterval(interval);
-  }, [refreshRunning, refreshSessions]);
+  }, [refreshRunning, refreshSessions, runningResource.pending, sessionsResource.pending]);
 
   // Refresh sessions + running when tab regains focus (picks up new thumbnails)
   useEffect(() => {
@@ -5350,13 +5293,14 @@ export default function Launcher() {
   // Backend availability lookup for session cards
   const getBackendUnavailableReason = useCallback(
     (type: BackendType) => {
+      if (backendReadinessError) return backendReadinessError;
       const b = backendOptions.find((o) => o.type === type);
       if (!b) return t("backend_unavailable.unknown", { type });
       if (!b.implemented) return t("backend_unavailable.coming_soon");
       if (b.available === false) return b.reason || t("backend_unavailable.not_available");
       return undefined;
     },
-    [backendOptions, t],
+    [backendOptions, backendReadinessError, t],
   );
 
   // Direct launch for session resume — no dialog, just go
@@ -5367,6 +5311,8 @@ export default function Launcher() {
     skipSkill?: boolean,
     viewing?: boolean,
   ) => {
+    const unavailable = !viewing && getBackendUnavailableReason(backendType);
+    if (unavailable) { setWindowError(unavailable); return; }
     setWindowError("");
     try {
       const res = await fetch(`${getApiBase()}/api/launch`, {
@@ -5389,7 +5335,7 @@ export default function Launcher() {
     } catch (error) {
       setWindowError(error instanceof Error ? error.message : String(error));
     }
-  }, [refreshSessions, refreshRunning]);
+  }, [refreshSessions, refreshRunning, getBackendUnavailableReason]);
 
   // Build icon lookup
   const iconMap = React.useMemo(() => {
@@ -5649,12 +5595,33 @@ export default function Launcher() {
       </header>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center py-32">
-          <div className="w-6 h-6 rounded-full border-2 border-cc-primary/40 border-t-cc-primary animate-spin" />
-        </div>
-      ) : (
-        <main className="relative z-10 max-w-6xl mx-auto px-6 pb-16">
+      <main
+        className="relative z-10 max-w-6xl mx-auto px-6 pb-16"
+        data-launcher-local-ready={modesResource.loaded && !modesResource.error && sessionsResource.loaded && !sessionsResource.error && projectsResource.loaded && !projectsResource.error}
+        data-launcher-backends-ready={backendResource.loaded && !backendResource.error}
+      >
+          <div className="pt-5 space-y-2" aria-live="polite">
+            {([
+              ["backends", backendResource], ["modes", modesResource],
+              ["sessions", sessionsResource], ["running", runningResource],
+              ["projects", projectsResource], ["archived", archivedResource], ["libraries", librariesResource],
+            ] as const).map(([key, item]) => {
+              return item.error || !item.loaded ? (
+                <div key={key} className="flex items-center gap-3 text-xs text-cc-muted" data-launcher-resource={key}>
+                  <span className={item.error ? "text-cc-error" : undefined}>
+                    {t(item.error ? "startup.failed" : "startup.loading", { section: t(`startup.sections.${key}`) })}
+                  </span>
+                  {item.error && <button type="button" title={item.error} className="text-cc-primary hover:underline cursor-pointer" onClick={() => { void item.refresh(); }}>{t("startup.retry")}</button>}
+                </div>
+              ) : null;
+            })}
+            {modesResource.data.publishedStatus && modesResource.data.publishedStatus.state !== "ready" && modesResource.loaded && (
+              <div className="flex items-center gap-3 text-xs text-cc-muted" data-launcher-resource="published">
+                <span>{t(modesResource.data.publishedStatus?.state === "error" ? "startup.published_failed" : "startup.published_loading")}</span>
+                {modesResource.data.publishedStatus?.state === "error" && <button type="button" title={modesResource.data.publishedStatus.error} className="text-cc-primary hover:underline cursor-pointer" onClick={() => { void refreshModes({ refreshPublished: "1" }); }}>{t("startup.retry")}</button>}
+              </div>
+            )}
+          </div>
           {/* Featured Mode */}
           {featuredMode && (
             <FeaturedMode
@@ -5777,7 +5744,7 @@ export default function Launcher() {
                     </button>
                   </div>
                 </div>
-                {projects.length === 0 ? (
+                {projects.length === 0 && projectsResource.loaded && !projectsResource.error ? (
                   <div className="text-cc-muted/60 text-sm">{t("main.no_projects")}</div>
                 ) : (
                   <>
@@ -6007,8 +5974,7 @@ export default function Launcher() {
               management live one click away under "All Modes". */}
 
           {/* (Import & R2 moved to SettingsPanel + ImportDialog) */}
-        </main>
-      )}
+      </main>
 
       {/* Gallery overlay */}
       {galleryAnim.mounted && (
@@ -6120,6 +6086,7 @@ export default function Launcher() {
           defaultInitParams={lastLaunchTarget.current.defaultInitParams}
           forkSource={lastLaunchTarget.current.forkSource}
           backendOptions={backendOptions}
+          backendReadinessError={backendReadinessError}
           defaultBackendType={defaultBackendType}
           homeDir={homeDir}
           onClose={() => setLaunchTarget(null)}

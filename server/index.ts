@@ -1,3 +1,4 @@
+import { createRegistryCache } from "./registry-cache.js";
 import { isSessionStatePath } from "../core/session-state.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -748,15 +749,9 @@ export async function startServer(options: ServerOptions) {
   }
 
   // ── Shared route mounters ────────────────────────────────────────────
-  // `/api/registry` is needed by BOTH the launcher's marketplace UI and the
-  // ProjectPanel's mode-tile grid (the panel calls it on every open). The
-  // route's R2 fetch dominated panel render time (~450ms cold), so the
-  // response is cached at the server module — first call primes, subsequent
-  // calls hit the cache instantly. A 1-minute TTL means a fresh `published`
-  // list is never more than a minute behind R2; builtins/local are
-  // filesystem-cheap but re-cached together for simplicity.
-  const REGISTRY_URL = "https://pneuma-storage.vibecoding.icu";
-  const REGISTRY_TTL_MS = 60_000;
+  // Local registry snapshots retain the existing locale-scoped SWR policy.
+  // The remote published list refreshes independently, so a cold CDN cannot
+  // delay local modes or the release's pinned catalog.
 
   /**
    * Compat status for a mode entry — surfaced to the launcher so the UI
@@ -832,7 +827,6 @@ export async function startServer(options: ServerOptions) {
       showcase?: { tagline?: string; hero?: string; highlights?: Array<{ title: string; description: string; media: string; mediaType?: string }> };
       inspiredBy?: { name: string; url: string };
     }>;
-    published: Array<{ name: string; displayName: string; description?: string; version: string; publishedAt: string; archiveUrl: string; icon?: string }>;
     /**
      * Locally installed modes. Covers two sources:
      * - `~/.pneuma/modes/<id>/` — single-mode external installs (legacy).
@@ -876,9 +870,6 @@ export async function startServer(options: ServerOptions) {
      */
     catalog: RegistryCatalogEntry[];
   }
-
-  const registryCache: Map<string, { value: RegistryResponse; fetchedAt: number }> = new Map();
-  const registryInflight: Map<string, Promise<RegistryResponse>> = new Map();
 
   // Pick a locale from a value in a localized-string-or-plain JSON field.
   const pickLocalized = (value: unknown, locale: string): string | undefined => {
@@ -1054,15 +1045,6 @@ export async function startServer(options: ServerOptions) {
         };
       });
 
-    let published: RegistryResponse["published"] = [];
-    try {
-      const res = await fetch(`${REGISTRY_URL}/registry/index.json`, { signal: AbortSignal.timeout(5000) });
-      if (res.ok) {
-        const data = await res.json() as { modes?: typeof published };
-        published = data.modes || [];
-      }
-    } catch { }
-
     const modesDir = join(homedir(), ".pneuma", "modes");
     const local: RegistryResponse["local"] = [];
     try {
@@ -1145,57 +1127,10 @@ export async function startServer(options: ServerOptions) {
       }
     } catch { /* library subsystem failure should not break the registry */ }
 
-    return { runtimeVersion, builtins, catalog, published, local };
+    return { runtimeVersion, builtins, catalog, local };
   };
 
-  /**
-   * SWR registry getter, scoped per locale. If cache fresh (< TTL) → return
-   * immediately. If stale → return stale + revalidate in background. If
-   * empty → block until first fetch (one-time cost). Concurrent callers
-   * for the same locale dedupe via the in-flight Promise map.
-   */
-  const getRegistry = async (locale: string): Promise<RegistryResponse> => {
-    const now = Date.now();
-    const cached = registryCache.get(locale);
-    if (cached && now - cached.fetchedAt < REGISTRY_TTL_MS) {
-      return cached.value;
-    }
-    if (cached) {
-      if (!registryInflight.has(locale)) {
-        registryInflight.set(
-          locale,
-          buildRegistry(locale)
-            .then((value) => {
-              registryCache.set(locale, { value, fetchedAt: Date.now() });
-              registryInflight.delete(locale);
-              return value;
-            })
-            .catch((err) => {
-              console.warn(`[registry-cache] revalidate failed (${locale}): ${err}`);
-              registryInflight.delete(locale);
-              return cached.value;
-            }),
-        );
-      }
-      return cached.value;
-    }
-    if (!registryInflight.has(locale)) {
-      registryInflight.set(
-        locale,
-        buildRegistry(locale)
-          .then((value) => {
-            registryCache.set(locale, { value, fetchedAt: Date.now() });
-            registryInflight.delete(locale);
-            return value;
-          })
-          .catch((err) => {
-            registryInflight.delete(locale);
-            throw err;
-          }),
-      );
-    }
-    return registryInflight.get(locale)!;
-  };
+  const registryCache = createRegistryCache(buildRegistry);
 
   // Resolver: pick the request's locale from query string or fall back to user setting.
   const resolveRequestLocale = async (queryLocale: string | undefined): Promise<string> => {
@@ -1203,13 +1138,13 @@ export async function startServer(options: ServerOptions) {
     return normalizeLocale(queryLocale) || getUserLocale() || detectSystemLocale();
   };
 
-  // Prime English in the background so the first /api/registry call is instant.
-  void getRegistry("en").catch(() => { /* already logged */ });
+  // Prime local English data and start the independent published refresh.
+  void registryCache.get("en").catch((error) => console.warn("[registry-cache] prime failed:", error));
 
   const mountRegistryRoute = (target: Hono) => {
     target.get("/api/registry", async (c) => {
       const locale = await resolveRequestLocale(c.req.query("locale"));
-      const data = await getRegistry(locale);
+      const data = await registryCache.get(locale, c.req.query("refreshPublished") === "1");
       return c.json(data);
     });
   };
@@ -1230,7 +1165,7 @@ export async function startServer(options: ServerOptions) {
       projectRoot: options.projectRoot || resolve(dirname(import.meta.path), ".."),
       // A finished install changes what the registry can launch, so drop the
       // SWR cache on the same tick instead of waiting out its TTL.
-      onInstalled: () => registryCache.clear(),
+      onInstalled: () => registryCache.invalidate(),
     });
   };
 
@@ -1254,7 +1189,7 @@ export async function startServer(options: ServerOptions) {
       setUserLocale(normalized);
       // Invalidate registry cache so the next /api/registry call rebuilds
       // localized strings for the new locale instead of serving stale data.
-      registryCache.clear();
+      registryCache.invalidate();
       return c.json({ ok: true, locale: normalized });
     });
 
@@ -1385,6 +1320,7 @@ export async function startServer(options: ServerOptions) {
           }
         } catch { /* manifest parse optional */ }
 
+        registryCache.invalidate();
         return c.json({
           ok: true,
           name: resolved.name,
@@ -1418,6 +1354,7 @@ export async function startServer(options: ServerOptions) {
       }
       const { rmSync } = await import("node:fs");
       rmSync(targetDir, { recursive: true, force: true });
+      registryCache.invalidate();
       return c.json({ ok: true });
     });
 
@@ -2256,7 +2193,7 @@ export async function startServer(options: ServerOptions) {
       // modes on the same tick as the WS `libraries_updated` broadcast,
       // instead of waiting for the 60s TTL to elapse.
       invalidateRegistry: () => {
-        registryCache.clear();
+        registryCache.invalidate();
       },
     });
 

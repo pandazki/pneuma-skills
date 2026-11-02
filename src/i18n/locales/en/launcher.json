@@ -1,4 +1,22 @@
 {
+  "startup": {
+    "loading": "Loading {{section}}…",
+    "failed": "Could not load {{section}}.",
+    "retry": "Retry",
+    "backends_loading": "Checking available agents…",
+    "backends_failed": "Agent availability could not be checked. Retry before launching.",
+    "published_loading": "Checking community modes… Local modes are ready to browse.",
+    "published_failed": "Community modes could not be refreshed. Local modes remain available.",
+    "sections": {
+      "backends": "agents",
+      "modes": "local modes",
+      "sessions": "recent sessions",
+      "running": "running sessions",
+      "projects": "projects",
+      "archived": "archived projects",
+      "libraries": "mode libraries"
+    }
+  },
   "backends": {
     "claude_code": {
       "label": "Claude Code",

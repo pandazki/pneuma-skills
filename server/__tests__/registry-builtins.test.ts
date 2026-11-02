@@ -57,11 +57,7 @@ const entry = (name: string): BuiltinEntry => {
   return found;
 };
 
-// 30s, not Bun's default 5s: the route awaits a live fetch of the published
-// mode registry that is itself allowed 5s before it aborts, so on a slow DNS
-// the hook budget is the first thing to blow — a failure about nothing this
-// test is asserting. The assertions moved out of the hook for the same reason:
-// a hook that throws reports as a hook error, not as the failing case.
+// Local registry assembly does not wait for the independent published refresh.
 beforeAll(async () => {
   originalHome = process.env.HOME;
   tmpHome = mkdtempSync(join(tmpdir(), "pneuma-registry-home-"));

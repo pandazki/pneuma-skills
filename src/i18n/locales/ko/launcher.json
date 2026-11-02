@@ -1,4 +1,22 @@
 {
+  "startup": {
+    "loading": "{{section}} 불러오는 중…",
+    "failed": "{{section}}을(를) 불러오지 못했습니다.",
+    "retry": "다시 시도",
+    "backends_loading": "사용 가능한 에이전트 확인 중…",
+    "backends_failed": "에이전트 사용 가능 여부를 확인하지 못했습니다. 실행 전에 다시 시도하세요.",
+    "published_loading": "커뮤니티 모드 확인 중… 로컬 모드는 탐색할 수 있습니다.",
+    "published_failed": "커뮤니티 모드를 새로 고치지 못했습니다. 로컬 모드는 계속 사용할 수 있습니다.",
+    "sections": {
+      "backends": "에이전트",
+      "modes": "로컬 모드",
+      "sessions": "최근 세션",
+      "running": "실행 중인 세션",
+      "projects": "프로젝트",
+      "archived": "보관된 프로젝트",
+      "libraries": "모드 라이브러리"
+    }
+  },
   "backends": {
     "claude_code": {
       "label": "Claude Code",
