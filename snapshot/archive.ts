@@ -130,12 +130,20 @@ const MODE_EXCLUDES = [
 /**
  * Create a tar.gz archive of a mode package directory.
  * Excludes runtime/workspace artifacts — only ships mode source files.
+ *
+ * `keepNodeModules` is for a directory whose `node_modules` was generated on
+ * purpose: `scripts/publish-modes.ts` stages a catalog mode without the
+ * developer's install and then vendors the packages its manifest imports
+ * (`vendorServerDependencies`). tar's `--exclude` matches at every depth, so
+ * leaving the default on would drop that vendored tree, nested copies included.
  */
 export async function createModeArchive(
   modeDir: string,
   outputPath: string,
+  options: { keepNodeModules?: boolean } = {},
 ): Promise<string> {
-  const excludeArgs = MODE_EXCLUDES.flatMap((p) => ["--exclude", p]);
+  const excludes = options.keepNodeModules ? MODE_EXCLUDES.filter((p) => p !== "node_modules") : MODE_EXCLUDES;
+  const excludeArgs = excludes.flatMap((p) => ["--exclude", p]);
 
   const proc = Bun.spawn(["tar", "czf", outputPath, ...excludeArgs, "."], {
     cwd: modeDir,

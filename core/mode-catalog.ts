@@ -27,6 +27,7 @@
  *     ~/.pneuma/catalog/<name>/
  *       .pneuma-install.json        ← ModeInstallRecord, written LAST
  *       modes/<name>/               ← the mode directory (manifest, skill, seed, .build)
+ *       modes/_shared/              ← copy of this package's modes/_shared
  *
  * The `modes/<name>/` nesting is not decoration: first-party manifests
  * address their seeds package-relative (`"modes/sprite/seed/lumi/"`), so the
@@ -34,6 +35,13 @@
  * breaks. `resolveCatalogMode()` returns both paths (`modeDir`, `seedBase`)
  * so callers never have to know the rule. An archive that unpacks flat is
  * reshaped into that layout at install time.
+ *
+ * The same stand-in rule covers `modes/_shared/`. Mode source the server
+ * imports raw (manifest.ts and whatever it imports, such as a domain.ts)
+ * may import `../_shared/scripts/…` by relative path, exactly as it does in
+ * the package. The archive carries only the mode directory, so the installer
+ * copies the running package's `_shared` beside it — see
+ * {@link mirrorSharedAssets}.
  *
  * An archive is untrusted input, including one served from our own CDN: the
  * SHA-256 pin proves the bytes are the ones the catalog names, not that a
@@ -46,6 +54,7 @@
  */
 
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -57,7 +66,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import {
   MODE_CATALOG_FILE,
@@ -417,7 +426,7 @@ export async function ensureCatalogMode(
 
 /**
  * Download → verify size and SHA-256 → screen the archive → extract →
- * screen the tree → atomic rename → record.
+ * screen the tree → mirror `_shared` → atomic rename → record.
  *
  * Nothing partial survives a failure: the temp archive and the staging
  * directory are removed in every exit path, and the install record — the
@@ -468,6 +477,10 @@ export async function installCatalogMode(
 
     const modeDir = normalizeInstallLayout(name, staging);
     verifyStamp(name, entry, catalog, modeDir, staging);
+    // After the screen on purpose: the mirror is this package's own files,
+    // not archive content, so it is neither screened nor allowed to be
+    // shadowed by an archive that brought its own `modes/_shared`.
+    mirrorSharedAssets(staging, opts);
 
     const finalRoot = catalogInstallRoot(name, opts);
     rmSync(finalRoot, { recursive: true, force: true });
@@ -829,6 +842,40 @@ function normalizeInstallLayout(name: string, staging: string): string {
     name,
     `The "${name}" archive contains no manifest.ts — expected either modes/${name}/manifest.ts or manifest.ts at its root.`,
   );
+}
+
+/** The package's shared asset directory; bundled by `distribution.json`. */
+const SHARED_ASSETS_DIR = "_shared";
+/** Never part of the mirror: test suites and dev leftovers are not runtime. */
+const SHARED_MIRROR_EXCLUDES = new Set(["__tests__", "node_modules", ".DS_Store"]);
+
+/**
+ * Copy this package's `modes/_shared/` to `<installRoot>/modes/_shared/`,
+ * replacing whatever was there, so a mode's relative `../_shared/…` import
+ * resolves in the install root the way it does in the package.
+ *
+ * A copy rather than a link: the archive screen refuses links for good
+ * reasons, a reinstall removes the install root recursively, and Windows
+ * links need privileges. It cannot go stale, because every core release
+ * rebuilds every archive — a new core sees a different SHA-256 and reinstalls,
+ * which copies its own `_shared` again.
+ *
+ * A package without `modes/_shared/` mirrors nothing: the directory is
+ * bundled in every release (pinned by `core/__tests__/mode-distribution.test.ts`),
+ * and a mode that needs it then fails at import naming the missing module.
+ *
+ * Exported so release tests can build the installed layout of every catalog
+ * mode with the installer's own rule.
+ */
+export function mirrorSharedAssets(installRoot: string, env?: CatalogEnv): void {
+  const source = join(projectRootOf(env), "modes", SHARED_ASSETS_DIR);
+  const target = join(installRoot, "modes", SHARED_ASSETS_DIR);
+  rmSync(target, { recursive: true, force: true });
+  if (!existsSync(source)) return;
+  cpSync(source, target, {
+    recursive: true,
+    filter: (path) => !SHARED_MIRROR_EXCLUDES.has(basename(path)),
+  });
 }
 
 /**

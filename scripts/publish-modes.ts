@@ -28,8 +28,9 @@
  * hand-edited and never committed.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, copyFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync, copyFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createModeArchive } from "../snapshot/archive.js";
@@ -67,8 +68,9 @@ export const NPM_PACKAGE = "pneuma-skills";
  * dropped at any depth — the latter because a dev `bun install` inside a mode
  * leaves one behind and it would double the archive.
  */
-const TOP_LEVEL_EXCLUDES = new Set(["showcase", "harness"]);
+const TOP_LEVEL_EXCLUDES: ReadonlySet<string> = new Set(["showcase", "harness"]);
 const ANY_DEPTH_EXCLUDES = new Set(["__tests__", "node_modules", ".git", ".pneuma", ".claude", ".DS_Store"]);
+const NO_EXCLUDES: ReadonlySet<string> = new Set();
 
 /**
  * Fixed mtime for every staged file, so an archive's bytes depend on the
@@ -273,17 +275,21 @@ export function readModeMetadata(modeDir: string, name: string): ModeMetadata {
  * the stamp and the `.build/` bundle sit beside the source without touching
  * the repository, and it is where `unpackedSize` is measured.
  */
-function stageTree(src: string, dst: string, depth = 0): number {
+function stageTree(
+  src: string,
+  dst: string,
+  topLevelExcludes: ReadonlySet<string> = TOP_LEVEL_EXCLUDES,
+): number {
   mkdirSync(dst, { recursive: true });
   let bytes = 0;
   const entries = readdirSync(src, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1));
   for (const entry of entries) {
     if (ANY_DEPTH_EXCLUDES.has(entry.name)) continue;
-    if (depth === 0 && TOP_LEVEL_EXCLUDES.has(entry.name)) continue;
+    if (topLevelExcludes.has(entry.name)) continue;
     const from = join(src, entry.name);
     const to = join(dst, entry.name);
     if (entry.isDirectory()) {
-      bytes += stageTree(from, to, depth + 1);
+      bytes += stageTree(from, to, NO_EXCLUDES);
     } else if (entry.isFile()) {
       copyFileSync(from, to);
       bytes += statSync(to).size;
@@ -324,6 +330,156 @@ async function sha256OfFile(path: string): Promise<string> {
   return hasher.digest("hex");
 }
 
+// ── Server-side dependencies ─────────────────────────────────────────────────
+
+export interface VendoredDependencies {
+  /** Bare packages the mode's own source imports, sorted. */
+  direct: string[];
+  /** Every package copied — `direct` plus their dependency closure — sorted. */
+  packages: string[];
+  /** Bytes written under `<stage>/node_modules/`. */
+  bytes: number;
+}
+
+function isInside(path: string, dir: string): boolean {
+  const rel = relative(dir, path);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/** `@scope/name/sub` → `@scope/name`; `name/sub` → `name`. */
+function packageNameOf(specifier: string): string {
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
+}
+
+/** Node's lookup: `<dir>/node_modules/<name>`, then each parent's. */
+function findPackageDir(name: string, fromDir: string): string | null {
+  for (let dir = fromDir; ; dir = dirname(dir)) {
+    const candidate = join(dir, "node_modules", name);
+    if (existsSync(join(candidate, "package.json"))) return candidate;
+    if (dirname(dir) === dir) return null;
+  }
+}
+
+/**
+ * Make the source the server imports from an installed catalog mode resolve
+ * there, or refuse to publish it.
+ *
+ * A released core imports `manifest.ts` raw, from
+ * `~/.pneuma/catalog/<name>/modes/<name>/`. Beside it are only the archive
+ * (this mode directory) and the installer's copy of `modes/_shared/`
+ * (`core/mode-catalog.ts::mirrorSharedAssets`); no node_modules is above it.
+ * So, for every module the manifest's import graph reaches:
+ *
+ * - a relative import has to land in the mode directory or in
+ *   `modes/_shared/`. Anything else — a value import from `../../core/`,
+ *   another mode's file — only works in a checkout, so the release refuses it.
+ * - a bare package is copied, with its dependency closure, from the
+ *   repository's node_modules into `<stage>/node_modules/`, keeping the
+ *   repository's relative layout so Node resolution picks the same copies.
+ *   Without that, the import resolves only through Bun's runtime
+ *   auto-install: a network fetch at launch, of whatever version is newest,
+ *   and none at all when a node_modules sits above the process cwd. 3.60.3's
+ *   wordtaste (`mdast-util-from-markdown`) shipped like that.
+ * - a `_shared` file importing a bare package is refused: its mirror has no
+ *   node_modules to vendor into.
+ *
+ * The graph comes from Bun's resolver — a discarded `packages: "external"`
+ * build with a metafile — so type-only imports are already erased. Packages
+ * are copied rather than bundled because Bun 1.4.0 bundles an entry that only
+ * re-exports (`export { fromMarkdown } from "./lib/index.js"`) to an export
+ * of an undefined binding.
+ */
+export async function vendorServerDependencies(modeDir: string, stage: string): Promise<VendoredDependencies> {
+  // Real paths: the metafile reports them, and a checkout or temp directory
+  // reached through a symlink (macOS `/var` → `/private/var`) would otherwise
+  // look like it is outside itself.
+  const mode = realpathSync(modeDir);
+  const shared = join(mode, "..", "_shared");
+  const name = basename(mode);
+
+  const traced = await Bun.build({
+    entrypoints: [join(mode, "manifest.ts")],
+    target: "bun",
+    packages: "external",
+    metafile: true,
+    write: false,
+  });
+  if (!traced.success || !traced.metafile) {
+    throw new Error(`${name}: could not trace manifest.ts imports\n  ${traced.logs.map(String).join("\n  ")}`);
+  }
+
+  // Bare package → the directory its first importer lives in.
+  const direct = new Map<string, string>();
+  for (const [key, input] of Object.entries(traced.metafile.inputs)) {
+    // Metafile paths are relative to the process cwd.
+    const file = resolve(key);
+    const inMode = isInside(file, mode);
+    if (!inMode && !isInside(file, shared)) {
+      throw new Error(
+        `${name}: manifest.ts imports ${file}, which an installed catalog mode cannot reach — ` +
+          `only modes/${name}/ and modes/_shared/ are beside it. Move the code into the mode or into modes/_shared/.`,
+      );
+    }
+    for (const imported of input.imports) {
+      if (!imported.external) continue;
+      const specifier = imported.path;
+      if (isBuiltin(specifier) || specifier === "bun" || specifier.startsWith("bun:")) continue;
+      if (!inMode) {
+        throw new Error(
+          `${name}: modes/_shared/${relative(shared, file)} imports "${specifier}", which an installed ` +
+            `catalog mode cannot resolve — the _shared mirror has no node_modules.`,
+        );
+      }
+      const pkg = packageNameOf(specifier);
+      if (!direct.has(pkg)) direct.set(pkg, dirname(file));
+    }
+  }
+
+  // Real package directory → where its copy goes in the stage.
+  const placed = new Map<string, string>();
+  let bytes = 0;
+  const place = (pkg: string, fromDir: string, optional: boolean): void => {
+    const found = findPackageDir(pkg, fromDir);
+    if (!found) {
+      if (optional) return;
+      throw new Error(`${name}: cannot find package "${pkg}" from ${fromDir} — run bun install before publishing`);
+    }
+    if (placed.has(found)) return;
+    // `found` is `<owner>/node_modules/<pkg>`. An owner at or above the mode
+    // directory is the top of the tree; any other owner is a package placed
+    // earlier, whose own node_modules holds a version that differs from the
+    // hoisted one.
+    const owner = dirname(pkg.startsWith("@") ? dirname(dirname(found)) : dirname(found));
+    const base = isInside(mode, owner) ? stage : placed.get(owner);
+    if (!base) {
+      throw new Error(`${name}: "${pkg}" resolves to ${found}, outside any package being vendored`);
+    }
+    const dest = join(base, "node_modules", pkg);
+    placed.set(found, dest);
+    bytes += stageTree(found, dest, NO_EXCLUDES);
+    const manifest = JSON.parse(readFileSync(join(found, "package.json"), "utf-8")) as {
+      dependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
+    };
+    for (const dep of Object.keys(manifest.dependencies ?? {}).sort()) place(dep, found, false);
+    for (const dep of Object.keys(manifest.optionalDependencies ?? {}).sort()) place(dep, found, true);
+  };
+  for (const pkg of [...direct.keys()].sort()) place(pkg, direct.get(pkg)!, false);
+
+  return {
+    direct: [...direct.keys()].sort(),
+    packages: [...new Set([...placed.keys()].map(packageDirName))].sort(),
+    bytes,
+  };
+}
+
+/** The package name a `…/node_modules/<name>` directory holds. */
+function packageDirName(dir: string): string {
+  const parent = basename(dirname(dir));
+  return parent.startsWith("@") ? `${parent}/${basename(dir)}` : basename(dir);
+}
+
 // ── Build + pack one mode ────────────────────────────────────────────────────
 
 interface PackedMode {
@@ -332,6 +488,7 @@ interface PackedMode {
   size: number;
   sha256: string;
   unpackedSize: number;
+  vendored: VendoredDependencies;
 }
 
 async function packMode(
@@ -358,6 +515,10 @@ async function packMode(
   rmSync(stage, { recursive: true, force: true });
   try {
     let unpackedSize = stageTree(modeDir, stage);
+    // After the copy: `stageTree` drops a dev `node_modules`, and this one is
+    // generated from the manifest's import graph, not taken from the mode.
+    const vendored = await vendorServerDependencies(modeDir, stage);
+    unpackedSize += vendored.bytes;
 
     const stamp: ModePackageStamp = {
       formatVersion: MODE_CATALOG_FORMAT,
@@ -374,7 +535,8 @@ async function packMode(
     normalizeDirTimes(stage);
 
     const archivePath = join(outDir, `${name}-${meta.version}.tar.gz`);
-    await createModeArchive(stage, archivePath);
+    // The stage is already curated; its only node_modules is the vendored one.
+    await createModeArchive(stage, archivePath, { keepNodeModules: true });
     clearGzipTimestamp(archivePath);
 
     return {
@@ -383,6 +545,7 @@ async function packMode(
       size: statSync(archivePath).size,
       sha256: await sha256OfFile(archivePath),
       unpackedSize,
+      vendored,
     };
   } finally {
     rmSync(stage, { recursive: true, force: true });
@@ -450,6 +613,12 @@ export async function publishModes(options: PublishModesOptions): Promise<Publis
   for (const name of names) {
     log(`[publish-modes] ${name}: building`);
     const result = await packMode(join(modesDir, name), name, options.outDir, stageRoot, version, builtAt);
+    if (result.vendored.direct.length > 0) {
+      log(
+        `[publish-modes] ${name}: vendored ${result.vendored.direct.join(", ")} for manifest.ts ` +
+          `(${result.vendored.packages.length} packages, ${formatBytes(result.vendored.bytes)})`,
+      );
+    }
     const key = archiveKey(version, name, result.meta.version);
     const entry: ModeCatalogEntry = {
       name: result.meta.name,

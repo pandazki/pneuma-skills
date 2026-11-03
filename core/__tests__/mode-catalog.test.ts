@@ -78,6 +78,12 @@ let archiveFlat: Uint8Array<ArrayBuffer>;
 let archiveUnstamped: Uint8Array<ArrayBuffer>;
 /** Same mode and version, stamped by a core release this one is not. */
 let archiveForeignCore: Uint8Array<ArrayBuffer>;
+/**
+ * A manifest that imports `../_shared/scripts/rule.mjs` — the shape of a mode
+ * whose domain uses a shared script. The archive also brings its own
+ * `modes/_shared/`, which the package's copy has to replace.
+ */
+let archiveSharedImport: Uint8Array<ArrayBuffer>;
 /** Set per test by the hostile-archive cases, which each need other bytes. */
 let archiveHostile: Uint8Array<ArrayBuffer> | null;
 let server: ReturnType<typeof Bun.serve>;
@@ -119,6 +125,15 @@ beforeAll(() => {
     coreVersion: "0.0.1",
     marker: "foreign",
   });
+  archiveSharedImport = buildModeArchive({
+    name: MODE_NAME,
+    version: MODE_VERSION,
+    coreVersion: CORE_VERSION,
+    manifestSource:
+      `import { answer } from "../_shared/scripts/rule.mjs";\n` +
+      `export default { name: "${MODE_NAME}", version: "${MODE_VERSION}", answer };\n`,
+    extraFiles: { "modes/_shared/scripts/rule.mjs": `export const answer = "archive";\n` },
+  });
   archiveHostile = null;
   hits = {};
 
@@ -148,6 +163,10 @@ beforeAll(() => {
       // A well-formed archive stamped by a different core release.
       if (url.pathname === "/foreign-core.tar.gz") {
         return serveBytes(archiveForeignCore);
+      }
+      // A manifest that imports a shared script by relative path.
+      if (url.pathname === "/shared-import.tar.gz") {
+        return serveBytes(archiveSharedImport);
       }
       // Whatever the running hostile-archive test built.
       if (url.pathname === "/hostile.tar.gz" && archiveHostile) {
@@ -369,6 +388,59 @@ describe("install", () => {
     expect(resolved.modeDir).toBe(join(catalogInstallRoot(MODE_NAME, env), "modes", MODE_NAME));
     expect(readFileSync(join(resolved.modeDir, "marker.txt"), "utf-8")).toBe("flat");
     expect(resolved.seedBase).toBe(catalogInstallRoot(MODE_NAME, env));
+  });
+});
+
+// ── Shared assets ────────────────────────────────────────────────────────────
+
+describe("shared assets", () => {
+  /** A package `modes/_shared/` with a runtime script and a test suite. */
+  function writePackageShared(answer: string): void {
+    const scripts = join(projectRoot, "modes", "_shared", "scripts");
+    mkdirSync(join(scripts, "__tests__"), { recursive: true });
+    writeFileSync(join(scripts, "rule.mjs"), `export const answer = ${JSON.stringify(answer)};\n`);
+    writeFileSync(join(scripts, "__tests__", "rule.test.ts"), "// not runtime\n");
+  }
+
+  test("a manifest importing ../_shared resolves against the package's copy", async () => {
+    // The 3.60.3 failure: anime-series' domain.ts imports
+    // `../_shared/scripts/craft-project.mjs`, the archive carries only the
+    // mode directory, and the server's import of manifest.ts threw
+    // "Cannot find module" before the session could start.
+    writePackageShared("package");
+    writeCatalog({ path: "/shared-import.tar.gz", bytes: archiveSharedImport });
+
+    const resolved = await ensureCatalogMode(MODE_NAME, env);
+    const manifest = (await import(join(resolved.modeDir, "manifest.ts"))).default as { answer: string };
+
+    // The package's file, not the one the archive brought along.
+    expect(manifest.answer).toBe("package");
+    const mirrored = join(catalogInstallRoot(MODE_NAME, env), "modes", "_shared", "scripts");
+    expect(existsSync(join(mirrored, "rule.mjs"))).toBe(true);
+    expect(existsSync(join(mirrored, "__tests__"))).toBe(false);
+    expect(installState(MODE_NAME, env)).toBe("installed");
+  });
+
+  test("a reinstall copies the new package's _shared", async () => {
+    // A core upgrade changes every archive's SHA-256, so the mode is
+    // reinstalled — and the mirror has to follow the new package.
+    writePackageShared("old core");
+    writeCatalog({ path: "/shared-import.tar.gz", bytes: archiveSharedImport });
+    const first = await ensureCatalogMode(MODE_NAME, env);
+    const mirroredRule = join(catalogInstallRoot(MODE_NAME, env), "modes", "_shared", "scripts", "rule.mjs");
+    expect(readFileSync(mirroredRule, "utf-8")).toContain("old core");
+
+    writePackageShared("new core");
+    await installCatalogMode(MODE_NAME, env);
+    expect(readFileSync(mirroredRule, "utf-8")).toContain("new core");
+    expect(first.modeDir).toBe(join(catalogInstallRoot(MODE_NAME, env), "modes", MODE_NAME));
+  });
+
+  test("a package without _shared installs the mode alone", async () => {
+    writeCatalog();
+    await ensureCatalogMode(MODE_NAME, env);
+    expect(existsSync(join(catalogInstallRoot(MODE_NAME, env), "modes", "_shared"))).toBe(false);
+    expect(installState(MODE_NAME, env)).toBe("installed");
   });
 });
 

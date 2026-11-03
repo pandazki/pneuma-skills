@@ -26,6 +26,7 @@ import {
   readCoreVersion,
   readDistribution,
   type ArchiveStore,
+  vendorServerDependencies,
 } from "../publish-modes.js";
 
 const BUILT_AT = "2026-09-23T00:00:00.000Z";
@@ -221,6 +222,48 @@ describe("publishModes --dry-run", () => {
     }
     // The viewer source next to the dropped nested __tests__ still travels.
     expect(existsSync(join(unpacked, "viewer", "Preview.ts"))).toBe(true);
+  });
+
+  it("ships the packages manifest.ts imports, nested copies included", async () => {
+    // A unit test of the vendoring step alone once passed while tar's
+    // `--exclude node_modules` dropped the whole vendored tree from the
+    // archive — so this goes through the real pipeline and reads the bytes.
+    const modesDir = writeFixture();
+    const mode = join(modesDir, "fixture");
+    writeFileSync(join(mode, "domain.ts"), 'export { dep } from "fixture-dep";\n');
+    writeFileSync(
+      join(mode, "manifest.ts"),
+      manifestSource("fixture", "1.2.3").replace("export const manifest = {", 'import { dep } from "./domain.js";\nexport const manifest = {\n  dep,'),
+    );
+    const nm = join(root, "node_modules");
+    mkdirSync(join(nm, "fixture-dep", "node_modules", "fixture-sub"), { recursive: true });
+    writeFileSync(
+      join(nm, "fixture-dep", "package.json"),
+      JSON.stringify({ name: "fixture-dep", version: "1.0.0", type: "module", main: "index.js", dependencies: { "fixture-sub": "^2" } }),
+    );
+    writeFileSync(join(nm, "fixture-dep", "index.js"), 'import { sub } from "fixture-sub";\nexport const dep = `dep+${sub}`;\n');
+    writeFileSync(
+      join(nm, "fixture-dep", "node_modules", "fixture-sub", "package.json"),
+      JSON.stringify({ name: "fixture-sub", version: "2.0.0", type: "module", main: "index.js" }),
+    );
+    writeFileSync(join(nm, "fixture-dep", "node_modules", "fixture-sub", "index.js"), 'export const sub = "sub2";\n');
+
+    const result = await dryRun(modesDir, join(root, "out"));
+    const fixture = result.modes.find((m) => m.entry.name === "fixture")!;
+    // Unpack outside the fixture checkout, so its node_modules cannot answer.
+    const unpacked = mkdtempSync(join(tmpdir(), "publish-vendored-"));
+    try {
+      await extractArchive(fixture.archivePath, unpacked);
+      expect(existsSync(join(unpacked, "node_modules", "fixture-dep", "index.js"))).toBe(true);
+      expect(existsSync(join(unpacked, "node_modules", "fixture-dep", "node_modules", "fixture-sub", "index.js"))).toBe(true);
+      // The developer's own install inside the mode still stays behind.
+      expect(existsSync(join(unpacked, "node_modules", "stale"))).toBe(false);
+      expect(fixture.entry.unpackedSize).toBe(treeSize(unpacked));
+      const manifest = (await import(join(unpacked, "manifest.ts"))).default as { dep: string };
+      expect(manifest.dep).toBe("dep+sub2");
+    } finally {
+      rmSync(unpacked, { recursive: true, force: true });
+    }
   });
 
   it("pins each archive by its own bytes", async () => {
@@ -600,6 +643,128 @@ describe("store reads are three-valued", () => {
     ).rejects.toThrow(/cdn read failed/);
     expect(puts).toEqual([]);
     expect(jsonPuts).toEqual([]);
+  });
+});
+
+describe("vendorServerDependencies", () => {
+  /** Write `files` (path → content) under `dir`. */
+  function writeTree(dir: string, files: Record<string, string>): void {
+    for (const [rel, content] of Object.entries(files)) {
+      mkdirSync(join(dir, rel, ".."), { recursive: true });
+      writeFileSync(join(dir, rel), content);
+    }
+  }
+
+  function pkg(name: string, version: string, extra: Record<string, unknown> = {}): string {
+    return JSON.stringify({ name, version, type: "module", main: "index.js", ...extra });
+  }
+
+  /**
+   * A checkout whose node_modules has a hoisted package with a dependency, a
+   * nested copy of a version that differs from the hoisted one, a scoped
+   * package imported by subpath, and an optional dependency nobody installed.
+   */
+  function writeCheckout(domain: string): string {
+    writeTree(root, {
+      "node_modules/dep-a/package.json": pkg("dep-a", "1.0.0", {
+        dependencies: { "dep-b": "^1", "dep-c": "^2" },
+        optionalDependencies: { "dep-absent": "^1" },
+      }),
+      "node_modules/dep-a/index.js":
+        'import { b } from "dep-b";\nimport { c } from "dep-c";\nexport const a = `a+${b}+${c}`;\n',
+      "node_modules/dep-a/node_modules/dep-c/package.json": pkg("dep-c", "2.0.0"),
+      "node_modules/dep-a/node_modules/dep-c/index.js": 'export const c = "c2";\n',
+      "node_modules/dep-b/package.json": pkg("dep-b", "1.0.0"),
+      "node_modules/dep-b/index.js": 'export const b = "b";\n',
+      "node_modules/dep-c/package.json": pkg("dep-c", "1.0.0"),
+      "node_modules/dep-c/index.js": 'export const c = "c1";\n',
+      "node_modules/@scope/dep-s/package.json": pkg("@scope/dep-s", "1.0.0"),
+      "node_modules/@scope/dep-s/sub.js": 'export const s = "s";\n',
+      "node_modules/types-only/package.json": pkg("types-only", "1.0.0"),
+      "modes/_shared/scripts/rule.mjs": 'export const rule = "shared";\n',
+      "modes/fixture/manifest.ts":
+        'import { value } from "./domain.js";\nexport default { name: "fixture", version: "1.0.0", value };\n',
+      "modes/fixture/domain.ts": domain,
+    });
+    return join(root, "modes", "fixture");
+  }
+
+  /** A stage outside the checkout, so nothing resolves through its node_modules. */
+  function isolatedStage(): string {
+    const dir = mkdtempSync(join(tmpdir(), "vendor-stage-"));
+    stages.push(dir);
+    return join(dir, "modes", "fixture");
+  }
+  const stages: string[] = [];
+  afterEach(() => {
+    for (const dir of stages.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("copies what manifest.ts imports, with its closure, at the checkout's layout", async () => {
+    const modeDir = writeCheckout(
+      [
+        'import { a } from "dep-a";',
+        'import { s } from "@scope/dep-s/sub.js";',
+        'import type { Nothing } from "types-only";',
+        'import { join } from "node:path";',
+        'import { rule } from "../_shared/scripts/rule.mjs";',
+        "export type Unused = Nothing;",
+        'export const value = [a, s, rule, join("x", "y")].join(" ");',
+        "",
+      ].join("\n"),
+    );
+    const stage = isolatedStage();
+    writeTree(stage, {
+      "manifest.ts": readFileSync(join(modeDir, "manifest.ts"), "utf-8"),
+      "domain.ts": readFileSync(join(modeDir, "domain.ts"), "utf-8"),
+    });
+    writeTree(join(stage, "..", "_shared"), { "scripts/rule.mjs": 'export const rule = "shared";\n' });
+
+    const result = await vendorServerDependencies(modeDir, stage);
+
+    // Type-only imports and builtins are not packages to ship.
+    expect(result.direct).toEqual(["@scope/dep-s", "dep-a"]);
+    expect(result.packages).toEqual(["@scope/dep-s", "dep-a", "dep-b", "dep-c"]);
+    expect(result.bytes).toBe(treeSize(join(stage, "node_modules")));
+    // The nested version stays nested; the hoisted one nobody needs stays home.
+    expect(existsSync(join(stage, "node_modules", "dep-a", "node_modules", "dep-c", "index.js"))).toBe(true);
+    expect(existsSync(join(stage, "node_modules", "dep-c"))).toBe(false);
+    expect(existsSync(join(stage, "node_modules", "types-only"))).toBe(false);
+    expect(existsSync(join(stage, "node_modules", "dep-absent"))).toBe(false);
+
+    const manifest = (await import(join(stage, "manifest.ts"))).default as { value: string };
+    expect(manifest.value).toBe("a+b+c2 s shared x/y");
+  });
+
+  it("vendors nothing for a manifest with no package imports", async () => {
+    const modeDir = writeCheckout('export const value = "plain";\n');
+    const stage = isolatedStage();
+    const result = await vendorServerDependencies(modeDir, stage);
+    expect(result).toEqual({ direct: [], packages: [], bytes: 0 });
+    expect(existsSync(join(stage, "node_modules"))).toBe(false);
+  });
+
+  it("refuses a relative import that leaves the mode and modes/_shared", async () => {
+    const modeDir = writeCheckout('export { value } from "../../core/value.ts";\n');
+    writeTree(root, { "core/value.ts": 'export const value = "core";\n' });
+    await expect(vendorServerDependencies(modeDir, isolatedStage())).rejects.toThrow(
+      /core\/value\.ts, which an installed catalog mode cannot reach/,
+    );
+  });
+
+  it("refuses a package imported from modes/_shared, whose mirror has no node_modules", async () => {
+    const modeDir = writeCheckout('export { value } from "../_shared/scripts/uses-dep.mjs";\n');
+    writeTree(root, { "modes/_shared/scripts/uses-dep.mjs": 'export { b as value } from "dep-b";\n' });
+    await expect(vendorServerDependencies(modeDir, isolatedStage())).rejects.toThrow(
+      /modes\/_shared\/scripts\/uses-dep\.mjs imports "dep-b"/,
+    );
+  });
+
+  it("names a package the checkout has not installed", async () => {
+    const modeDir = writeCheckout('export { value } from "never-installed";\n');
+    await expect(vendorServerDependencies(modeDir, isolatedStage())).rejects.toThrow(
+      /cannot find package "never-installed"/,
+    );
   });
 });
 

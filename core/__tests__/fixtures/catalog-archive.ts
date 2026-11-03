@@ -22,7 +22,7 @@
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   MODE_CATALOG_FORMAT,
@@ -47,6 +47,13 @@ export interface BuildArchiveOptions {
   marker?: string;
   /** `null` builds an archive with no package stamp. */
   stamp?: Record<string, unknown> | null;
+  /** Replaces the default `manifest.ts` body. */
+  manifestSource?: string;
+  /**
+   * Extra files, keyed by path relative to the archive root (`modes/…` for
+   * a nested archive). Lets a test ship more than the mode directory.
+   */
+  extraFiles?: Record<string, string>;
 }
 
 export function sha256Hex(bytes: Uint8Array<ArrayBuffer>): string {
@@ -63,10 +70,16 @@ export function buildModeArchive(opts: BuildArchiveOptions): Uint8Array<ArrayBuf
   mkdirSync(join(modeDir, "seed"), { recursive: true });
   writeFileSync(
     join(modeDir, "manifest.ts"),
-    `const manifest = { name: "${name}", version: "${version}" };\nexport default manifest;\n`,
+    opts.manifestSource ??
+      `const manifest = { name: "${name}", version: "${version}" };\nexport default manifest;\n`,
   );
   writeFileSync(join(modeDir, "seed", "README.md"), `# ${marker}\n`);
   writeFileSync(join(modeDir, "marker.txt"), marker);
+  const archiveRoot = layout === "nested" ? work : modeDir;
+  for (const [rel, content] of Object.entries(opts.extraFiles ?? {})) {
+    mkdirSync(dirname(join(archiveRoot, rel)), { recursive: true });
+    writeFileSync(join(archiveRoot, rel), content);
+  }
 
   const stamp =
     opts.stamp === null
