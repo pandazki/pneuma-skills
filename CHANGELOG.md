@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.60.4] - 2026-11-03
+
+### Fixed
+- **Toon Series launches after download** — Starting a downloaded Toon Series session no longer fails with "Cannot find module '../_shared/scripts/craft-project.mjs'". Installed catalog modes now get the package's shared scripts beside them, as they have in a source checkout.
+- **WordTaste no longer downloads a parser at launch** — The Markdown parser that WordTaste's draft view needs now ships inside its download. Launching works offline and always uses the tested version; before, Bun fetched whatever version was newest from npm when the mode loaded, and the mode could not start without it.
+- **Catalog releases check what an installed mode can load** — Publishing refuses a catalog mode whose manifest needs code an installed copy cannot reach, and the test suite loads every catalog mode from its installed layout.
+
 ## [3.60.3] - 2026-11-03
 
 ### Fixed
