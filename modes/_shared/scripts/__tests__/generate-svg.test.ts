@@ -25,7 +25,7 @@ import {
 const workspace = mkdtempSync(join(tmpdir(), "pneuma-svg-test-"));
 afterAll(() => rmSync(workspace, { recursive: true, force: true }));
 
-const FLARE_QUEUE = "https://queue.fal.run/openai/gpt-image-2.6/flare/text-to-image";
+const SUNBURST_QUEUE = "https://queue.fal.run/openai/gpt-image-2.6/sunburst/text-to-image";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=", "base64");
 
 /** The shape fal returned for a six-icon line set (2026-11-05), trimmed to two icons. */
@@ -66,28 +66,29 @@ let dirs = 0;
 const freshDir = () => join(workspace, `out-${++dirs}`);
 
 describe("the request fal is sent", () => {
-  test("the default is one Flare SVG authored by gpt-5.4, carrying the provider option fal requires", () => {
+  test("the default is the configuration measured clean: one Sunburst / medium SVG authored by gpt-6.1-terra", () => {
+    // 2026-11-05 A/B: 5 of 5 clean sets; Flare / low / gpt-5.4 broke 4 of 6.
     expect(buildSvgRequest({ prompt: "Six line icons" })).toEqual({
-      url: "https://fal.run/openai/gpt-image-2.6/flare/text-to-image",
-      model: "openai/gpt-image-2.6-flare",
-      author: "gpt-5.4",
+      url: "https://fal.run/openai/gpt-image-2.6/sunburst/text-to-image",
+      model: "openai/gpt-image-2.6-sunburst",
+      author: "gpt-6.1-terra",
       body: {
         prompt: "Six line icons",
         output_format: "svg",
         num_images: 1,
         image_size: { width: 1024, height: 1024 },
-        quality: "low",
-        provider_options: { svg: { model: "gpt-5.4" } },
+        quality: "medium",
+        provider_options: { svg: { model: "gpt-6.1-terra" } },
       },
     });
   });
 
-  test("the Sunburst upgrade, another author, a size and a background are sent as asked", () => {
-    for (const model of ["sunburst", "gpt-image-2.6-sunburst", "openai/gpt-image-2.6-sunburst"]) {
-      const request = buildSvgRequest({ prompt: "A mark", model, author: "gpt-6.1-terra", quality: "medium", imageSize: "1536x1024", background: "transparent" });
-      expect(request.url).toBe("https://fal.run/openai/gpt-image-2.6/sunburst/text-to-image");
-      expect(request.model).toBe("openai/gpt-image-2.6-sunburst");
-      expect(request.body).toMatchObject({ quality: "medium", image_size: { width: 1536, height: 1024 }, background: "transparent", provider_options: { svg: { model: "gpt-6.1-terra" } } });
+  test("the fast settings, another author, a size and a background are sent as asked", () => {
+    for (const model of ["flare", "gpt-image-2.6-flare", "openai/gpt-image-2.6-flare"]) {
+      const request = buildSvgRequest({ prompt: "A mark", model, author: "gpt-5.4", quality: "low", imageSize: "1536x1024", background: "transparent" });
+      expect(request.url).toBe("https://fal.run/openai/gpt-image-2.6/flare/text-to-image");
+      expect(request.model).toBe("openai/gpt-image-2.6-flare");
+      expect(request.body).toMatchObject({ quality: "low", image_size: { width: 1536, height: 1024 }, background: "transparent", provider_options: { svg: { model: "gpt-5.4" } } });
     }
     expect(buildSvgRequest({ prompt: "x" })).not.toHaveProperty("body.background");
   });
@@ -183,19 +184,29 @@ describe("one paid run", () => {
       { fetchImpl: fal.fetchImpl },
     );
     expect(fal.posts()).toHaveLength(1);
-    expect(fal.posts()[0]).toMatchObject({ url: FLARE_QUEUE, auth: "Key fixture-key", body: buildSvgRequest({ prompt: "Two line icons in forest green" }).body });
+    expect(fal.posts()[0]).toMatchObject({ url: SUNBURST_QUEUE, auth: "Key fixture-key", body: buildSvgRequest({ prompt: "Two line icons in forest green" }).body });
     const path = join(outputDir, "icons.svg");
     expect(readFileSync(path, "utf8")).toBe(ICONS);
     expect(readdirSync(outputDir)).toEqual(["icons.svg"]);
     expect(result).toMatchObject({
-      backend: "fal", model: "openai/gpt-image-2.6-flare", author: "gpt-5.4",
-      endpoint: "https://fal.run/openai/gpt-image-2.6/flare/text-to-image",
-      requestId: "req-svg-1", quality: "low", imageSize: "1024x1024",
+      backend: "fal", model: "openai/gpt-image-2.6-sunburst", author: "gpt-6.1-terra",
+      endpoint: "https://fal.run/openai/gpt-image-2.6/sunburst/text-to-image",
+      requestId: "req-svg-1", quality: "medium", imageSize: "1024x1024",
       files: [path], urls: ["https://cdn.test/a.svg"],
       report: { vector: { pure: true }, colors: ["#254f42"], offPalette: [], warnings: [] },
       cost: { usd: null, basis: "unknown" },
     });
-    expect(notes.join("\n")).toContain("typically ~20 s");
+    expect(notes.join("\n")).toContain("typically ≈50–80 s");
+    expect(notes.join("\n")).not.toContain("NOTE:");
+  });
+
+  test("an author measured unreliable is still sent, after a caution", async () => {
+    const fal = fakeFal();
+    const notes: string[] = [];
+    await generateSvg({ prompt: "x", author: "gpt-5.4", apiKey: "k", outputDir: freshDir(), onNote: (m) => notes.push(m) }, { fetchImpl: fal.fetchImpl });
+    expect(fal.posts()[0].body?.provider_options).toEqual({ svg: { model: "gpt-5.4" } });
+    expect(notes.join("\n")).toContain("NOTE: gpt-5.4 is fast but measured unreliable");
+    expect(notes.join("\n")).toContain("typically ≈20 s");
   });
 
   test("an unmeasured author is sent as given, with a note", async () => {
@@ -281,15 +292,16 @@ globalThis.fetch = async (input, init = {}) => {
 
   test("a run prints one JSON object on stdout and the cost line on stderr", () => {
     const outputDir = join(workspace, "cli-out");
-    const result = cli(["Two line icons", "--output-dir", outputDir, "--filename-prefix", "icons", "--palette", "#254F42", "--model", "sunburst", "--quality", "medium"]);
+    const result = cli(["Two line icons", "--output-dir", outputDir, "--filename-prefix", "icons", "--palette", "#254F42", "--model", "flare", "--quality", "low", "--author", "gpt-5.4"]);
     expect(result.code).toBe(0);
     const json = JSON.parse(result.out);
-    expect(json).toMatchObject({ backend: "fal", model: "openai/gpt-image-2.6-sunburst", requestId: "req-cli", files: [join(outputDir, "icons.svg")], report: { offPalette: [] } });
+    expect(json).toMatchObject({ backend: "fal", model: "openai/gpt-image-2.6-flare", author: "gpt-5.4", quality: "low", requestId: "req-cli", files: [join(outputDir, "icons.svg")], report: { offPalette: [] } });
     expect(result.err).toContain("cost: unknown (");
     const posts = result.requests.filter((r) => r.method === "POST");
     expect(posts).toHaveLength(1);
-    expect(posts[0].url).toBe("https://queue.fal.run/openai/gpt-image-2.6/sunburst/text-to-image");
-    expect(JSON.parse(posts[0].body)).toMatchObject({ output_format: "svg", quality: "medium", provider_options: { svg: { model: "gpt-5.4" } } });
+    expect(posts[0].url).toBe("https://queue.fal.run/openai/gpt-image-2.6/flare/text-to-image");
+    expect(JSON.parse(posts[0].body)).toMatchObject({ output_format: "svg", quality: "low", provider_options: { svg: { model: "gpt-5.4" } } });
+    expect(result.err).toContain("measured unreliable");
     expect(readFileSync(join(outputDir, "icons.svg"), "utf8")).toBe(ICONS);
   });
 

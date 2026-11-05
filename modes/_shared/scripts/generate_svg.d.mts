@@ -4,10 +4,13 @@
 
 /** Image model → fal's synchronous text-to-image endpoint. */
 export const SVG_ENDPOINTS: Readonly<{ flare: string; sunburst: string }>;
-export const DEFAULT_SVG_MODEL: "flare";
+export const DEFAULT_SVG_MODEL: "sunburst";
 export const DEFAULT_SVG_AUTHOR: string;
-/** Author models measured working on 2026-11-05, with their typical wall time. */
-export const MEASURED_SVG_AUTHORS: Readonly<Record<string, string>>;
+/**
+ * Author models measured on 2026-11-05: typical wall time, and the caution
+ * printed before a paid run when their measured results were unreliable.
+ */
+export const MEASURED_SVG_AUTHORS: Readonly<Record<string, Readonly<{ time: string; caution: string | null }>>>;
 export const SVG_QUALITIES: string[];
 export const DEFAULT_SVG_QUALITY: string;
 export const SVG_BACKGROUNDS: string[];
@@ -27,11 +30,11 @@ export const SVG_LIST_PRICE: Readonly<{
 
 export interface SvgOptions {
   prompt: string;
-  /** flare (default) or sunburst; `gpt-image-2.6-` and `openai/` prefixes are accepted. */
+  /** sunburst (default) or flare; `gpt-image-2.6-` and `openai/` prefixes are accepted. */
   model?: string;
-  /** SVG author model sent as `provider_options.svg.model`. Default gpt-5.4. */
+  /** SVG author model sent as `provider_options.svg.model`. Default gpt-6.1-terra. */
   author?: string;
-  /** auto | low | medium | high — the reference picture's quality. Default low. */
+  /** auto | low | medium | high — the reference picture's quality. Default medium. */
   quality?: string;
   /** `WxH`, checked against fal's published limits. Default 1024x1024. */
   imageSize?: string;

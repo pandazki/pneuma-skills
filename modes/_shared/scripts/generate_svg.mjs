@@ -4,14 +4,14 @@
  * Vector (SVG) generation — GPT Image 2.6 on fal.ai.
  *
  * One prompt in, one hand-authored SVG document out. fal runs two passes:
- * the image model (Flare, or Sunburst as an upgrade) first renders a
+ * the image model (Sunburst by default, Flare on request) first renders a
  * reference picture — `--quality` applies to that picture — and an author
  * model then writes the SVG from it (real `<path>`/`<circle>`/`<g>` markup
  * with a title and description, not a traced bitmap).
  *
  * Usage:
- *   node generate_svg.mjs "<prompt>" [--model flare|sunburst] [--author gpt-5.4]
- *     [--quality low|medium|high|auto] [--image-size 1024x1024]
+ *   node generate_svg.mjs "<prompt>" [--model sunburst|flare] [--author gpt-6.1-terra]
+ *     [--quality medium|low|high|auto] [--image-size 1024x1024]
  *     [--background auto|transparent|opaque] [--palette "#RRGGBB,#RRGGBB"]
  *     [--output-dir .] [--filename-prefix vector]
  *
@@ -21,13 +21,18 @@
  *     reference image cannot be vectorised — every SVG is a new drawing;
  *   - one image per request (`num_images` must be 1);
  *   - the body MUST carry `provider_options: { svg: { model: <author> } }`;
- *     without it fal answers 422 "Invalid request". Authors that worked:
- *     gpt-5.4 (~20 s), gpt-6.1-terra (~30 s), gpt-5.5 (~60 s);
- *     gpt-5.5-mini was rejected. fal's docs do not list the allowed set,
- *     so another id is sent as given, with a note.
- *   - Line icon sets came out excellent and a geometric mark acceptable;
- *     lettering did not ("KETTLE & PINE" came back as "IKFTTLARINF" drawn
- *     as paths). Set wordmarks in real type instead.
+ *     without it fal answers 422 "Invalid request". fal's docs do not
+ *     list the allowed authors, so an unmeasured id is sent with a note;
+ *     gpt-5.5-mini was rejected.
+ *   - Quality depends on the settings far more than one sample suggests.
+ *     An A/B on two six-icon briefs (line and filled): Sunburst / medium /
+ *     gpt-6.1-terra was clean in 5 of 5 runs (47–49 s line, ~80 s filled),
+ *     so it is the default. The fast Flare / low / gpt-5.4 (18–24 s line)
+ *     broke 2 of 4 line sets (overlapping icons, doubled strokes) and
+ *     collapsed 2 of 2 filled sets into blobs; gpt-5.4 at Sunburst / medium
+ *     was uneven too. Even the default places accents imperfectly at times.
+ *   - Lettering does not work ("KETTLE & PINE" came back as "IKFTTLARINF"
+ *     drawn as paths). Set wordmarks in real type instead.
  *
  * After the download the file is verified to be an SVG document (root
  * element `<svg>`, closed) and inspected: element counts, embedded raster
@@ -64,14 +69,21 @@ export const SVG_ENDPOINTS = Object.freeze({
   flare: "https://fal.run/openai/gpt-image-2.6/flare/text-to-image",
   sunburst: "https://fal.run/openai/gpt-image-2.6/sunburst/text-to-image",
 });
-export const DEFAULT_SVG_MODEL = "flare";
-export const DEFAULT_SVG_AUTHOR = "gpt-5.4";
-/** Authors measured working on 2026-11-05, with their typical wall time. */
-export const MEASURED_SVG_AUTHORS = Object.freeze({ "gpt-5.4": "~20 s", "gpt-6.1-terra": "~30 s", "gpt-5.5": "~60 s" });
+/** Sunburst / medium / gpt-6.1-terra: clean in 5 of 5 measured sets (see the header). */
+export const DEFAULT_SVG_MODEL = "sunburst";
+export const DEFAULT_SVG_AUTHOR = "gpt-6.1-terra";
+/**
+ * Authors measured on 2026-11-05: typical wall time, and a caution printed
+ * before a paid run when the measured results were unreliable.
+ */
+export const MEASURED_SVG_AUTHORS = Object.freeze({
+  "gpt-6.1-terra": Object.freeze({ time: "≈50–80 s", caution: null }),
+  "gpt-5.5": Object.freeze({ time: "≈60 s", caution: "gpt-5.5 was uneven at Flare / low and decent only at Sunburst / high in measured runs" }),
+  "gpt-5.4": Object.freeze({ time: "≈20 s", caution: "gpt-5.4 is fast but measured unreliable: broken or overlapping line icons, filled sets collapsed into blobs" }),
+});
 /** fal's quality enum; for SVG it sets the reference picture the author draws from. */
 export const SVG_QUALITIES = ["auto", "low", "medium", "high"];
-/** Low measured excellent for a six-icon line set (2026-11-05) and is the cheapest reference. */
-export const DEFAULT_SVG_QUALITY = "low";
+export const DEFAULT_SVG_QUALITY = "medium";
 export const SVG_BACKGROUNDS = ["auto", "transparent", "opaque"];
 export const DEFAULT_SVG_SIZE = "1024x1024";
 export const DEFAULT_SVG_PREFIX = "vector";
@@ -388,11 +400,13 @@ export async function generateSvg(options, { fetchImpl = fetch, sleep } = {}) {
   if (existsSync(path)) throw new Error(`${path} already exists — choose another --filename-prefix; a paid result never overwrites a file`);
   if (!apiKey) throw new Error("FAL_KEY not found. SVG generation runs on fal.ai: set FAL_KEY in the environment or the skill .env.");
 
-  if (!Object.hasOwn(MEASURED_SVG_AUTHORS, request.author)) {
+  const measured = Object.hasOwn(MEASURED_SVG_AUTHORS, request.author) ? MEASURED_SVG_AUTHORS[request.author] : null;
+  if (!measured) {
     onNote(`NOTE: author ${request.author} is not one of the measured ones (${Object.keys(MEASURED_SVG_AUTHORS).join(", ")}); fal may reject it (gpt-5.5-mini was rejected 2026-11-05).`);
+  } else if (measured.caution) {
+    onNote(`NOTE: ${measured.caution}. The default ${DEFAULT_SVG_AUTHOR} was clean in every measured run.`);
   }
-  const typical = MEASURED_SVG_AUTHORS[request.author] ?? "20–60 s";
-  onNote(`[fal:${request.model} → svg by ${request.author}] one request, typically ${typical}...`);
+  onNote(`[fal:${request.model} → svg by ${request.author}] one request, typically ${measured?.time ?? "about a minute"}...`);
 
   const job = await runFalJob({
     url: request.url,
@@ -462,12 +476,14 @@ const HELP = `Usage: generate_svg.mjs <prompt> [options]
 One vector (SVG) asset through GPT Image 2.6 on fal.ai. The image model
 renders a reference picture, then an author model writes the SVG markup.
 
-  --model <name>           flare (default) or sunburst (upgrade; slower)
+  --model <name>           sunburst (default) or flare
   --author <id>            SVG author model (default: ${DEFAULT_SVG_AUTHOR})
-                           Measured 2026-11-05: ${Object.entries(MEASURED_SVG_AUTHORS).map(([id, t]) => `${id} ${t}`).join(", ")};
-                           gpt-5.5-mini was rejected. Other ids are sent as given.
+                           Measured 2026-11-05: gpt-6.1-terra ≈50 s for a line set, ≈80 s
+                           filled, clean in 5 of 5 sets; gpt-5.4 ≈20 s but unreliable;
+                           gpt-5.5 ≈60 s, uneven; gpt-5.5-mini was rejected.
+                           Other ids are sent as given.
   --quality <level>        ${SVG_QUALITIES.join(", ")} (default: ${DEFAULT_SVG_QUALITY}) — sets the
-                           reference picture, not the vector's precision
+                           reference picture the author draws from
   --image-size <WxH>       Reference canvas (default: ${DEFAULT_SVG_SIZE}); edges multiples of 16,
                            longest edge <= 3840, aspect <= 3:1, 655,360..8,294,400 pixels
   --background <mode>      ${SVG_BACKGROUNDS.join(", ")} (omitted unless passed)
@@ -476,6 +492,11 @@ renders a reference picture, then an author model writes the SVG markup.
   --filename-prefix <name> File name without extension (default: ${DEFAULT_SVG_PREFIX}); an
                            existing file is never overwritten
   --help, -h               This text
+
+The defaults (Sunburst, medium, gpt-6.1-terra) take about a minute. The fast
+settings (--model flare --quality low --author gpt-5.4, ≈20 s) broke 2 of 4
+line sets and collapsed both filled sets; do not use them to save time. Render every
+result and look: even the defaults misplace an accent stroke at times.
 
 Limits: one SVG per request; no reference images (it cannot vectorise an
 existing raster — describe the drawing precisely); lettering is unreliable

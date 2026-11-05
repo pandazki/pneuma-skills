@@ -60,8 +60,9 @@ Pass the `brand.json` palette values as `--palette "#F57843,#254F42"`. Write a
 precise drawing brief: subject of each element, layout (for example six icons
 in a 3×2 grid), stroke weight, caps and corners, fill or outline, the palette
 hex values and the role of each, and "no background, no text, flat shapes"
-unless those belong to the asset. Line icon sets came out excellent and a
-geometric mark acceptable in measured runs (2026-11-05).
+unless those belong to the asset. Keep the script's defaults (Sunburst, medium
+quality, the gpt-6.1-terra author): in measured runs (2026-11-05) they produced
+clean line and filled icon sets in 5 of 5 attempts.
 
 Know the limits before planning the work:
 
@@ -72,15 +73,20 @@ Know the limits before planning the work:
   raster mark. Every result is a new drawing. If the approved mark is raster,
   keep it as the master, and record that a designer must still redraw it as a
   vector. Do not present a new SVG as the same mark.
-- One SVG per request, about 20 s with the default author and up to about
-  60 s with others (`--author`, see `--help`); `--model sunburst` upgrades
-  the reference picture. Each run is a paid request, so do not loop or resend
-  after an error or timeout. The printed request ID identifies a possibly billed job.
+- One SVG per request, and it is slow: about a minute with the defaults
+  (around 50 s for a line set, up to about 80 s for a filled set). Tell the
+  user before starting. Faster settings exist (`--model flare --quality low
+  --author gpt-5.4`, about 20 s), but in measured runs they broke 2 of 4 line
+  sets and collapsed both filled sets into blobs, so do not trade the defaults
+  for speed. Each run is a paid request, so do not loop or resend after an
+  error or timeout. The printed request ID identifies a possibly billed job.
 - fal reports no usage for this endpoint. The script prints `cost: unknown`
   with fal's list price; tell the user that rather than estimating a figure.
 
-Inspect before recording. Look at the rendered file at full size and at small
-icon size, and read the JSON `report`:
+Inspect before recording, even with the defaults: clean measured sets still
+placed an accent stroke oddly at times, and the report cannot see a drawing
+defect. Look at the rendered file at full size and at small icon size, and
+read the JSON `report`:
 
 - `vector.pure: false` means it embeds raster images; it is not a vector asset.
 - `text.elements` above zero means its lettering depends on installed fonts.
