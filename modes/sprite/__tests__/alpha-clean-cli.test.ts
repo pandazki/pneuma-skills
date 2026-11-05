@@ -75,6 +75,18 @@ describe.skipIf(!HAS_MEDIA)("alpha cleanup real CLI", () => {
     expect(existsSync(join(dir, "copy"))).toBe(false);
     expect(readFileSync(source)).toEqual(before);
   });
+  test("refuses 16-bit PNG rather than quantizing protected pixels", () => {
+    const dir = fresh(); const source = join(dir, "source.png"); const high = join(dir, "high.png");
+    writePng(source, [254, 8]);
+    ffmpeg(["-i", source, "-pix_fmt", "rgba64be", "-frames:v", "1", high]);
+    const before = readFileSync(high);
+    expect(before[24]).toBe(16);
+    const result = run("alpha-clean", high, "--out", join(dir, "copy"));
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("16-bit PNG is unsupported");
+    expect(existsSync(join(dir, "copy"))).toBe(false);
+    expect(readFileSync(high)).toEqual(before);
+  });
   test("inspect uses atlas durations and reports GIF packet delays without resampling", () => {
     const dir = fresh(); const frames = join(dir, "frames"); mkdirSync(frames);
     writePng(join(frames, "00.png"), [255, 255]); writePng(join(frames, "01.png"), [127, 127]); writePng(join(frames, "02.png"), [255, 255]);

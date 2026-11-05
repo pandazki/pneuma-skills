@@ -61,7 +61,9 @@ Intentional faint detached particles or glow can still be removed from an image
 with support. The report measures removed pixels and their bounding rectangle,
 records parameters and file hashes, and keeps artistic quality unknown.
 
-Animated PNG is refused rather than silently flattening its animation.
+The codec and pixel-preservation contract use decoded RGBA8 pixels. 16-bit PNG
+is refused rather than losing stronger-support precision. Animated PNG is
+refused rather than silently flattening its animation.
 
 Sources remain byte-identical. Existing outputs, overlapping paths and symlink
 frame aliases are refused. The command stages every frame and its report before

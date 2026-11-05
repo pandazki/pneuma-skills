@@ -3245,6 +3245,7 @@ function stepAlphaClean(inputPath, outPath, options) {
     if (!statSync(entry.path).isFile()) fail("alpha-clean: input must be a regular PNG file");
     const bytes = readFileSync(entry.path);
     if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) fail("alpha-clean: input must have a PNG signature");
+    if (bytes.length >= 25 && bytes[24] === 16) fail("alpha-clean: 16-bit PNG is unsupported; cleanup preserves decoded RGBA8 pixels only");
     for (let offset = 8; offset + 12 <= bytes.length;) {
       if (bytes.toString("ascii", offset + 4, offset + 8) === "acTL") fail("alpha-clean: animated PNG is unsupported; provide its decoded frames directory");
       offset += bytes.readUInt32BE(offset) + 12;
