@@ -22,8 +22,9 @@
  *   - one image per request (`num_images` must be 1);
  *   - the body MUST carry `provider_options: { svg: { model: <author> } }`;
  *     without it fal answers 422 "Invalid request". fal's docs do not
- *     list the allowed authors, so an unmeasured id is sent with a note;
- *     gpt-5.5-mini was rejected.
+ *     list the allowed authors, so an unmeasured id is sent with a note.
+ *     GPT authors before GPT-6 are refused before any request: every one
+ *     measured was unreliable or rejected (below).
  *   - Quality depends on the settings far more than one sample suggests.
  *     An A/B on two six-icon briefs (line and filled): Sunburst / medium /
  *     gpt-6.1-terra was clean in 5 of 5 runs (47–49 s line, ~80 s filled),
@@ -75,15 +76,16 @@ export const SVG_ENDPOINTS = Object.freeze({
 /** Sunburst / medium / gpt-6.1-terra: clean in 5 of 5 measured sets (see the header). */
 export const DEFAULT_SVG_MODEL = "sunburst";
 export const DEFAULT_SVG_AUTHOR = "gpt-6.1-terra";
-/**
- * Authors measured on 2026-11-05: typical wall time, and a caution printed
- * before a paid run when the measured results were unreliable.
- */
+/** Author models measured on 2026-11-05 and their typical wall time. */
 export const MEASURED_SVG_AUTHORS = Object.freeze({
-  "gpt-6.1-terra": Object.freeze({ time: "≈50–80 s", caution: null }),
-  "gpt-5.5": Object.freeze({ time: "≈60 s", caution: "gpt-5.5 was uneven at Flare / low and decent only at Sunburst / high in measured runs" }),
-  "gpt-5.4": Object.freeze({ time: "≈20 s", caution: "gpt-5.4 is fast but measured unreliable: broken or overlapping line icons, filled sets collapsed into blobs" }),
+  "gpt-6.1-terra": Object.freeze({ time: "≈50–80 s" }),
 });
+/**
+ * The oldest GPT generation accepted as an SVG author. On 2026-11-05
+ * gpt-5.4 broke 4 of 6 sets, gpt-5.5 was uneven and gpt-5.5-mini was
+ * rejected by fal, while gpt-6.1-terra was clean in 5 of 5.
+ */
+export const MIN_GPT_AUTHOR_GENERATION = 6;
 /** fal's quality enum; for SVG it sets the reference picture the author draws from. */
 export const SVG_QUALITIES = ["auto", "low", "medium", "high"];
 export const DEFAULT_SVG_QUALITY = "medium";
@@ -165,6 +167,10 @@ export function buildSvgRequest({
   const authorId = String(author ?? "").trim();
   // A shape check only: fal publishes no list of author ids to validate against.
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(authorId)) throw new Error(`Invalid --author: ${author} (expected a model id such as ${DEFAULT_SVG_AUTHOR})`);
+  const generation = /^gpt-(\d+)/i.exec(authorId);
+  if (generation && Number(generation[1]) < MIN_GPT_AUTHOR_GENERATION) {
+    throw new Error(`--author ${authorId}: SVG authors before GPT-${MIN_GPT_AUTHOR_GENERATION} are not used (measured unreliable or rejected); use ${DEFAULT_SVG_AUTHOR}`);
+  }
   if (!SVG_QUALITIES.includes(quality)) throw new Error(`Invalid --quality. Choices: ${SVG_QUALITIES.join(", ")}`);
   if (background != null && !SVG_BACKGROUNDS.includes(background)) throw new Error(`Invalid --background. Choices: ${SVG_BACKGROUNDS.join(", ")}`);
   const size = parseSvgSize(imageSize);
@@ -444,9 +450,7 @@ export async function generateSvg(options, { fetchImpl = fetch, sleep } = {}) {
 
   const measured = Object.hasOwn(MEASURED_SVG_AUTHORS, request.author) ? MEASURED_SVG_AUTHORS[request.author] : null;
   if (!measured) {
-    onNote(`NOTE: author ${request.author} is not one of the measured ones (${Object.keys(MEASURED_SVG_AUTHORS).join(", ")}); fal may reject it (gpt-5.5-mini was rejected 2026-11-05).`);
-  } else if (measured.caution) {
-    onNote(`NOTE: ${measured.caution}. The default ${DEFAULT_SVG_AUTHOR} was clean in every measured run.`);
+    onNote(`NOTE: author ${request.author} is not one of the measured ones (${Object.keys(MEASURED_SVG_AUTHORS).join(", ")}); fal may reject it, and its quality is unknown.`);
   }
   onNote(`[fal:${request.model} → svg by ${request.author}] one request, typically ${measured?.time ?? "about a minute"}...`);
 
@@ -520,9 +524,8 @@ renders a reference picture, then an author model writes the SVG markup.
   --model <name>           sunburst (default) or flare
   --author <id>            SVG author model (default: ${DEFAULT_SVG_AUTHOR})
                            Measured 2026-11-05: gpt-6.1-terra ≈50 s for a line set, ≈80 s
-                           filled, clean in 5 of 5 sets; gpt-5.4 ≈20 s but unreliable;
-                           gpt-5.5 ≈60 s, uneven; gpt-5.5-mini was rejected.
-                           Other ids are sent as given.
+                           filled, clean in 5 of 5 sets. GPT authors before GPT-6 are
+                           refused; other ids are sent as given.
   --quality <level>        ${SVG_QUALITIES.join(", ")} (default: ${DEFAULT_SVG_QUALITY}) — sets the
                            reference picture the author draws from
   --image-size <WxH>       Reference canvas (default: ${DEFAULT_SVG_SIZE}); edges multiples of 16,
@@ -534,10 +537,10 @@ renders a reference picture, then an author model writes the SVG markup.
                            existing file is never overwritten
   --help, -h               This text
 
-The defaults (Sunburst, medium, gpt-6.1-terra) take about a minute. The fast
-settings (--model flare --quality low --author gpt-5.4, ≈20 s) broke 2 of 4
-line sets and collapsed both filled sets; do not use them to save time. Render every
-result and look: even the defaults misplace an accent stroke at times.
+The defaults (Sunburst, medium, gpt-6.1-terra) take about a minute; keep them.
+Faster settings measured unreliable (broken line sets, filled sets collapsed
+into blobs). Render every result and look: even the defaults misplace an
+accent stroke at times.
 
 Limits: one SVG per request; no reference images (it cannot vectorise an
 existing raster — describe the drawing precisely); lettering is unreliable

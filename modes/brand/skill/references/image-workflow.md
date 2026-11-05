@@ -75,10 +75,9 @@ Know the limits before planning the work:
   vector. Do not present a new SVG as the same mark.
 - One SVG per request, and it is slow: about a minute with the defaults
   (around 50 s for a line set, up to about 80 s for a filled set). Tell the
-  user before starting. Faster settings exist (`--model flare --quality low
-  --author gpt-5.4`, about 20 s), but in measured runs they broke 2 of 4 line
-  sets and collapsed both filled sets into blobs, so do not trade the defaults
-  for speed. Each run is a paid request, so do not loop or resend after an
+  user before starting. Keep the defaults: faster settings broke line sets and
+  collapsed filled sets into blobs in measured runs, and the script refuses
+  GPT authors before GPT-6. Each run is a paid request, so do not loop or resend after an
   error or timeout. The printed request ID identifies a possibly billed job.
   Before each run, tell the user in the chat what it will make, that it takes
   about a minute and that its cost cannot be quoted (below), and keep within

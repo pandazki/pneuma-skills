@@ -6,11 +6,10 @@
 export const SVG_ENDPOINTS: Readonly<{ flare: string; sunburst: string }>;
 export const DEFAULT_SVG_MODEL: "sunburst";
 export const DEFAULT_SVG_AUTHOR: string;
-/**
- * Author models measured on 2026-11-05: typical wall time, and the caution
- * printed before a paid run when their measured results were unreliable.
- */
-export const MEASURED_SVG_AUTHORS: Readonly<Record<string, Readonly<{ time: string; caution: string | null }>>>;
+/** Author models measured on 2026-11-05 and their typical wall time. */
+export const MEASURED_SVG_AUTHORS: Readonly<Record<string, Readonly<{ time: string }>>>;
+/** GPT authors older than this generation are refused before any request. */
+export const MIN_GPT_AUTHOR_GENERATION: number;
 export const SVG_QUALITIES: string[];
 export const DEFAULT_SVG_QUALITY: string;
 export const SVG_BACKGROUNDS: string[];

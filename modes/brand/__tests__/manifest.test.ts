@@ -33,7 +33,7 @@ describe("brand install surface", () => {
     for (const name of (manifest.skill.sharedScripts ?? []).filter((n) => n !== "fal-queue.mjs")) {
       expect({ name, shown: skillText.includes(`"<SKILL_DIR>/scripts/${name}"`) }).toEqual({ name, shown: true });
     }
-    expect(manifest.version).toBe("0.3.0");
+    expect(manifest.version).toBe("0.3.1");
     expect(manifest.changelog?.[manifest.version]?.length).toBeGreaterThan(0);
   });
 });

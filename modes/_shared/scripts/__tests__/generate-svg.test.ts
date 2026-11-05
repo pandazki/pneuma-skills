@@ -85,12 +85,24 @@ describe("the request fal is sent", () => {
 
   test("the fast settings, another author, a size and a background are sent as asked", () => {
     for (const model of ["flare", "gpt-image-2.6-flare", "openai/gpt-image-2.6-flare"]) {
-      const request = buildSvgRequest({ prompt: "A mark", model, author: "gpt-5.4", quality: "low", imageSize: "1536x1024", background: "transparent" });
+      const request = buildSvgRequest({ prompt: "A mark", model, author: "gpt-6.1-sol", quality: "low", imageSize: "1536x1024", background: "transparent" });
       expect(request.url).toBe("https://fal.run/openai/gpt-image-2.6/flare/text-to-image");
       expect(request.model).toBe("openai/gpt-image-2.6-flare");
-      expect(request.body).toMatchObject({ quality: "low", image_size: { width: 1536, height: 1024 }, background: "transparent", provider_options: { svg: { model: "gpt-5.4" } } });
+      expect(request.body).toMatchObject({ quality: "low", image_size: { width: 1536, height: 1024 }, background: "transparent", provider_options: { svg: { model: "gpt-6.1-sol" } } });
     }
     expect(buildSvgRequest({ prompt: "x" })).not.toHaveProperty("body.background");
+  });
+
+  test("GPT authors before GPT-6 are refused before any request", async () => {
+    for (const author of ["gpt-5.4", "gpt-5.5", "gpt-5.5-mini", "GPT-4o", "gpt-5"]) {
+      expect(() => buildSvgRequest({ prompt: "x", author })).toThrow(/before GPT-6 are not used/);
+    }
+    for (const author of ["gpt-6.1-terra", "gpt-6.1-sol", "gpt-7"]) {
+      expect(buildSvgRequest({ prompt: "x", author }).body.provider_options).toEqual({ svg: { model: author } });
+    }
+    const fal = fakeFal();
+    await expect(generateSvg({ prompt: "x", author: "gpt-5.4", apiKey: "k", outputDir: freshDir() }, { fetchImpl: fal.fetchImpl })).rejects.toThrow(/before GPT-6/);
+    expect(fal.calls).toHaveLength(0);
   });
 
   test("fal's published size limits and enums are enforced before a request", () => {
@@ -243,13 +255,13 @@ describe("one paid run", () => {
     expect(notes.join("\n")).not.toContain("NOTE:");
   });
 
-  test("an author measured unreliable is still sent, after a caution", async () => {
+  test("an unmeasured GPT-6 author is sent, after a note that its quality is unknown", async () => {
     const fal = fakeFal();
     const notes: string[] = [];
-    await generateSvg({ prompt: "x", author: "gpt-5.4", apiKey: "k", outputDir: freshDir(), onNote: (m) => notes.push(m) }, { fetchImpl: fal.fetchImpl });
-    expect(fal.posts()[0].body?.provider_options).toEqual({ svg: { model: "gpt-5.4" } });
-    expect(notes.join("\n")).toContain("NOTE: gpt-5.4 is fast but measured unreliable");
-    expect(notes.join("\n")).toContain("typically ≈20 s");
+    await generateSvg({ prompt: "x", author: "gpt-6.1-sol", apiKey: "k", outputDir: freshDir(), onNote: (m) => notes.push(m) }, { fetchImpl: fal.fetchImpl });
+    expect(fal.posts()[0].body?.provider_options).toEqual({ svg: { model: "gpt-6.1-sol" } });
+    expect(notes.join("\n")).toContain("NOTE: author gpt-6.1-sol is not one of the measured ones");
+    expect(notes.join("\n")).toContain("about a minute");
   });
 
   test("an unmeasured author is sent as given, with a note", async () => {
@@ -321,9 +333,9 @@ describe("one paid run", () => {
   });
 
   test("the cost line says unknown, why, and fal's list price — never a figure", () => {
-    const line = costLine(svgCost({ author: "gpt-5.5" }));
+    const line = costLine(svgCost({ author: "gpt-6.1-terra" }));
     expect(line).toStartWith("cost: unknown (");
-    expect(line).toContain("gpt-5.5 authoring pass");
+    expect(line).toContain("gpt-6.1-terra authoring pass");
     expect(line).toContain("reports no usage");
     expect(line).toContain("image output at $30 per 1M tokens");
     expect(line).not.toMatch(/≈/);
@@ -360,23 +372,23 @@ globalThis.fetch = async (input, init = {}) => {
 
   test("a run prints one JSON object on stdout and the cost line on stderr", () => {
     const outputDir = join(workspace, "cli-out");
-    const result = cli(["Two line icons", "--output-dir", outputDir, "--filename-prefix", "icons", "--palette", "#254F42", "--model", "flare", "--quality", "low", "--author", "gpt-5.4"]);
+    const result = cli(["Two line icons", "--output-dir", outputDir, "--filename-prefix", "icons", "--palette", "#254F42", "--model", "flare", "--quality", "low", "--author", "gpt-6.1-sol"]);
     expect(result.code).toBe(0);
     const json = JSON.parse(result.out);
-    expect(json).toMatchObject({ backend: "fal", model: "openai/gpt-image-2.6-flare", author: "gpt-5.4", quality: "low", requestId: "req-cli", files: [join(outputDir, "icons.svg")], report: { offPalette: [] } });
+    expect(json).toMatchObject({ backend: "fal", model: "openai/gpt-image-2.6-flare", author: "gpt-6.1-sol", quality: "low", requestId: "req-cli", files: [join(outputDir, "icons.svg")], report: { offPalette: [] } });
     expect(result.err).toContain("cost: unknown (");
     const posts = result.requests.filter((r) => r.method === "POST");
     expect(posts).toHaveLength(1);
     expect(posts[0].url).toBe("https://queue.fal.run/openai/gpt-image-2.6/flare/text-to-image");
-    expect(JSON.parse(posts[0].body)).toMatchObject({ output_format: "svg", quality: "low", provider_options: { svg: { model: "gpt-5.4" } } });
-    expect(result.err).toContain("measured unreliable");
+    expect(JSON.parse(posts[0].body)).toMatchObject({ output_format: "svg", quality: "low", provider_options: { svg: { model: "gpt-6.1-sol" } } });
+    expect(result.err).toContain("not one of the measured ones");
     expect(readFileSync(join(outputDir, "icons.svg"), "utf8")).toBe(ICONS);
   });
 
   test("--help documents the flags; a missing key or prompt fails before any request", () => {
     const help = cli(["--help"]);
     expect(help.code).toBe(0);
-    for (const flag of ["--model", "--author", "--quality", "--image-size", "--background", "--palette", "--output-dir", "--filename-prefix", "gpt-6.1-terra", "gpt-5.5-mini"]) {
+    for (const flag of ["--model", "--author", "--quality", "--image-size", "--background", "--palette", "--output-dir", "--filename-prefix", "gpt-6.1-terra", "before GPT-6"]) {
       expect(help.err).toContain(flag);
     }
     const noKey = cli(["x", "--output-dir", join(workspace, "no-key")], "");
