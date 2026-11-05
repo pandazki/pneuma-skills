@@ -468,14 +468,16 @@ function reportedCost(usage) {
 }
 
 /**
- * What a high-quality GPT Image 2.5 image cost on OpenRouter in the seed
- * rounds (2026-10, `usage.cost` per call): ≈ $0.055 for a 1:1 image with
- * either model, $0.034–0.05 for 16:9 (more with references, which add input
- * tokens). Used only until this project has reported prices of its own.
+ * What a high-quality image costs on OpenRouter, from the seed rounds
+ * (2026-10, `usage.cost` per call, measured on GPT Image 2.5): ≈ $0.055 for
+ * a 1:1 image with either model, $0.034–0.05 for 16:9 (more with references,
+ * which add input tokens). GPT Image 2.6 bills the same token prices
+ * (2026-11-05), so the figures carry over. Used only until this project has
+ * reported prices of its own; a model missing here is unpriced, never free.
  */
 const IMAGE_PRICE_TABLE = Object.freeze({
-  "openai/gpt-image-2.5-flare": 0.055,
-  "openai/gpt-image-2.5-sunburst": 0.055,
+  "openai/gpt-image-2.6-flare": 0.055,
+  "openai/gpt-image-2.6-sunburst": 0.055,
 });
 
 /**

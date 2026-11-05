@@ -79,7 +79,7 @@ describe("make-style-sample.mjs", () => {
     expect(out.reason).not.toContain("anchor");
     expect(statSync(join(styleDir, "anchor.png")).mtimeMs).toBe(before);
     // Requesting the other image model must not reuse the old generation.
-    const otherModel = DEFAULT_IMAGE_MODEL.endsWith("flare") ? "openai/gpt-image-2.5-sunburst" : "openai/gpt-image-2.5-flare";
+    const otherModel = DEFAULT_IMAGE_MODEL.endsWith("flare") ? "openai/gpt-image-2.6-sunburst" : "openai/gpt-image-2.6-flare";
     expect(JSON.parse(run(ws, "--set", "fourier", "--style-id", "papercraft", "--hook", "h", "--action", action, "--image-model", otherModel, "--json").out).reason).toContain("anchor");
     // A different topic is a different frame: the record no longer matches.
     writeFileSync(join(styleDir, "anchor.json"), JSON.stringify({ model: DEFAULT_IMAGE_MODEL, style_id: "papercraft", recipe, topic: "something else", action }));

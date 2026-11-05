@@ -183,7 +183,7 @@ describe("series.mjs CLI", () => {
     expect(bibleOf(dir).characters[0].sheet).toBeNull();
     const edge = edgeOf(dir, "char-lamp-sheet-1");
     expect(edge.operation.type).toBe("generate");
-    expect(edge.operation.params).toMatchObject({ provider: "openrouter", model: "openai/gpt-image-2.5-flare", cost: { usd: 0.05, basis: "reported" } });
+    expect(edge.operation.params).toMatchObject({ provider: "openrouter", model: "openai/gpt-image-2.6-flare", cost: { usd: 0.05, basis: "reported" } });
     expect(edge.operation.params.prompt).toContain('the name "Lamp" written in the top-left corner');
     expect(assetOf(dir, "char-lamp-sheet-1")).toMatchObject({ status: "ready", uri: "refs/char-lamp-sheet-1.webp", metadata: { width: 1024, height: 1024 } });
     // A pick must name a ready candidate of that entity.
@@ -369,7 +369,7 @@ describe("series.mjs CLI", () => {
     seedText(dir);
     // No sheets yet: the board would be drawn without references, by Flare, at the seed rounds' table price.
     const out = ok(dir, ["estimate", "--episode", "ep01"]);
-    expect(out.rows[0]).toMatchObject({ what: "ep01 part A storyboard (gpt-image-2.5-flare, default without references)", usd: 0.055, basis: "table" });
+    expect(out.rows[0]).toMatchObject({ what: "ep01 part A storyboard (gpt-image-2.6-flare, default without references)", usd: 0.055, basis: "table" });
     expect(out.rows[1]).toMatchObject({ what: "ep01 part A video 30 s 480p", usd: 6.168, basis: "estimate" });
     expect(out.unpriced).toEqual([]);
     const patch = ok(dir, ["estimate", "--episode", "ep01", "--shots", "6-6"]);
@@ -378,11 +378,16 @@ describe("series.mjs CLI", () => {
     const low = run(dir, ["estimate", "--episode", "ep01", "--what", "board", "--quality", "low"]);
     expect(low.out).toContain("total: unpriced");
     expect(low.out).not.toContain("$0.0000");
+    // A GPT Image 2.5 id is still accepted by name (retry re-sends recorded calls), but the table no longer prices it.
+    const legacy = run(dir, ["estimate", "--episode", "ep01", "--what", "board", "--model", "openai/gpt-image-2.5-flare"]);
+    expect(legacy.code).toBe(0);
+    expect(legacy.out).toContain("gpt-image-2.5-flare");
+    expect(legacy.out).toContain("total: unpriced");
 
     // With sheets attached the board is Sunburst, priced from this project's reported calls.
     const sheets = withSheets();
     const board = ok(sheets, ["estimate", "--episode", "ep01", "--what", "board"]);
-    expect(board.rows[0].what).toBe("ep01 part A storyboard (gpt-image-2.5-sunburst, default with 2 reference image(s); --model flare for the general model)");
+    expect(board.rows[0].what).toBe("ep01 part A storyboard (gpt-image-2.6-sunburst, default with 2 reference image(s); --model flare for the general model)");
     expect(board.rows[0]).toMatchObject({ usd: 0.055, basis: "table" });
     expect(ok(sheets, ["estimate", "--episode", "ep01", "--what", "board", "--model", "flare"]).rows[0]).toMatchObject({ usd: 0.05, basis: "estimate" });
   });
@@ -489,12 +494,12 @@ describe("series.mjs CLI — review findings", () => {
   test("the storyboard defaults to Sunburst once references are attached, and its dry run is priced", () => {
     const dir = withSheets();
     const dry = run(dir, ["shoot-board", "--episode", "ep01", "--dry-run", "--json"]);
-    expect(dry.err).toContain("storyboard model: openai/gpt-image-2.5-sunburst (default with 2 reference image(s)");
+    expect(dry.err).toContain("storyboard model: openai/gpt-image-2.6-sunburst (default with 2 reference image(s)");
     const [request] = JSON.parse(dry.out).requests;
-    expect(request).toMatchObject({ model: "openai/gpt-image-2.5-sunburst", cost: { usd: 0.055, basis: "table" } });
-    expect(request.body.model).toBe("openai/gpt-image-2.5-sunburst");
+    expect(request).toMatchObject({ model: "openai/gpt-image-2.6-sunburst", cost: { usd: 0.055, basis: "table" } });
+    expect(request.body.model).toBe("openai/gpt-image-2.6-sunburst");
     ok(dir, ["shoot-board", "--episode", "ep01", "--model", "flare"]);
-    expect(mockLog(dir).at(-1)).toMatchObject({ kind: "image", model: "openai/gpt-image-2.5-flare" });
+    expect(mockLog(dir).at(-1)).toMatchObject({ kind: "image", model: "openai/gpt-image-2.6-flare" });
   });
 
   test("add-episode writes the method's continuity lines unless told otherwise", () => {
@@ -630,11 +635,11 @@ describe("series.mjs CLI — review findings", () => {
 
   test("lineup draws the picked sheets side by side, registered and priced", () => {
     const dir = withSheets();
-    expect(ok(dir, ["estimate", "--lineup"]).rows[0]).toMatchObject({ what: "lineup of Lamp, Ox (gpt-image-2.5-sunburst, default with 2 reference image(s); --model flare for the general model)", usd: 0.055, basis: "table" });
+    expect(ok(dir, ["estimate", "--lineup"]).rows[0]).toMatchObject({ what: "lineup of Lamp, Ox (gpt-image-2.6-sunburst, default with 2 reference image(s); --model flare for the general model)", usd: 0.055, basis: "table" });
     const out = ok(dir, ["lineup"]);
     expect(out.result).toMatchObject({ id: "lineup-1", status: "ready" });
     const call = mockLog(dir).at(-1);
-    expect(call).toMatchObject({ kind: "image", model: "openai/gpt-image-2.5-sunburst", aspectRatio: "16:9" });
+    expect(call).toMatchObject({ kind: "image", model: "openai/gpt-image-2.6-sunburst", aspectRatio: "16:9" });
     expect(call.imageUrls.map((f: string) => f.split("/").pop())).toEqual(["char-lamp-sheet-2.webp", "char-ox-sheet-1.webp"]);
     expect(call.prompt.startsWith("Character lineup: reference image 1 is Lamp, reference image 2 is Ox.")).toBe(true);
     expect(sidecarOf(dir).lineups).toEqual([{ asset: "lineup-1", characters: ["lamp", "ox"], sheets: ["char-lamp-sheet-2", "char-ox-sheet-1"] }]);

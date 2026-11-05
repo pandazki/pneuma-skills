@@ -38,11 +38,11 @@
  *   --source-url  required. Local path or http(s) URL. Local files are
  *                 inlined as base64 data URI, same pattern as
  *                 generate_image.mjs --image-urls.
- *   --outfit      optional, comma-separated. If omitted, GPT Image 2.5
+ *   --outfit      optional, comma-separated. If omitted, GPT Image 2.6
  *                 reads the outfit from the source image.
  *   --traits      optional, comma-separated. If omitted, defaults to
  *                 the character appearance from the source image.
- *   --model       optional. sunburst (default) or a GPT Image 2.5 model ID; source edits preserve identity.
+ *   --model       optional. sunburst (default), flare, or a full model id; source edits preserve identity.
  *   --output      required. Workspace-relative path for the sheet.
  *
  * Environment:

@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --model)
       if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
-        echo "ERROR: --model requires flare, sunburst, or a full GPT Image 2.5 model ID." >&2
+        echo "ERROR: --model requires flare, sunburst, or a full GPT Image 2.6 model ID." >&2
         exit 1
       fi
       GENERATION_MODEL="$2"

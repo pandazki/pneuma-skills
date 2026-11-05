@@ -26,7 +26,7 @@ export const PRICES = {
   },
   imageGeneration: {
     // Legacy native image-tool calls do not report usage. Preserve their
-    // historical estimate; OpenRouter GPT Image 2.5 receipts always use
+    // historical estimate; OpenRouter GPT Image receipts (2.5 and 2.6) always use
     // usage.cost instead, and missing reported costs remain unpriced.
     perImage: 0.15,
   },

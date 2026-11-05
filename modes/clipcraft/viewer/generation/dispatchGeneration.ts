@@ -80,12 +80,12 @@ export interface GenerationRequest {
     /** Human label / semantic id, e.g. "asset-panda-sad-v2". */
     name: string;
     /** URI of the source asset, so the agent can feed it as a reference
-     *  to GPT Image 2.5's edit mode when appropriate. */
+     *  to GPT Image 2.6's edit mode when appropriate. */
     uri?: string | null;
     /** Prompt recorded on the source's provenance edge. */
     sourcePrompt?: string | null;
     /** Model id recorded on the source's provenance edge, e.g.
-     *  "openai/gpt-image-2.5-sunburst" or "bytedance/seedance-2.0/image-to-video". */
+     *  "openai/gpt-image-2.6-sunburst" or "bytedance/seedance-2.0/image-to-video". */
     sourceModel?: string | null;
     /** Image/video pixel dimensions from asset.metadata. Carried so the
      *  variant inherits exact size unless the change direction asks
@@ -244,7 +244,10 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       // it as a video anchor; otherwise request only the desired aspect ratio.
       const aspectRatio = p.aspectRatio ?? deriveAspectRatio(p.width, p.height) ?? "1:1";
       const reference = req.mode === "variant" ? req.source?.uri : null;
-      const model = reference ? "openai/gpt-image-2.5-sunburst" : "openai/gpt-image-2.5-flare";
+      // Mirrors DEFAULT_EDIT_IMAGE_MODEL / DEFAULT_IMAGE_MODEL in
+      // modes/_shared/scripts/generate_image.mjs (pinned by a test): the viewer
+      // bundle cannot import that Node module.
+      const model = reference ? "openai/gpt-image-2.6-sunburst" : "openai/gpt-image-2.6-flare";
       const scriptArgs: Record<string, string | number> = {
         "--model": model,
         "--quality": "high",
@@ -258,7 +261,7 @@ function resolveScriptForRequest(req: GenerationRequest): ResolvedScript {
       // `params.style` is a free-form direction note (e.g. "warm 1970s
       // 35mm"). The agent folds it into the prompt rather than passing
       // a flag — the shared style flag only accepts sketch/photo; a freeform
-      // hint embedded in the prompt is what actually steers GPT Image 2.5.
+      // hint embedded in the prompt is what actually steers GPT Image 2.6.
       return {
         params: {
           prompt: p.prompt,
