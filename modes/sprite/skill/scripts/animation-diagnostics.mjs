@@ -33,6 +33,7 @@ export function diagnoseAnimation(frames, { durationsMs = null, timingSource = "
     heldMs: knownTiming ? holds.reduce((sum, hold) => sum + hold.durationMs, 0) : null,
     heldFrameCount: holds.reduce((sum, hold) => sum + hold.frames, 0),
     timing: { source: knownTiming ? timingSource : "unknown", durationsMs: knownTiming ? [...durationsMs] : null, totalMs: knownTiming ? durationsMs.reduce((a, b) => a + b, 0) : null },
+    loop,
     wrapStep: loop === true && frames.length > 1 ? frameDistance(thumbs.at(-1), thumbs[0]) : null,
     changeSpikes: steps.flatMap((step, i) => step > Math.max(duplicateStep, 3 * median) ? [{ from: i, to: i + 1, step, certainty: "suspected", meaning: "change spike; intent unknown" }] : []),
     alphaMass, alphaChanges: alphaMass.slice(1).map((mass, i) => ({ from: i, to: i + 1, delta: mass - alphaMass[i], certainty: "measured" })),

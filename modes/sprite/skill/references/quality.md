@@ -24,12 +24,14 @@ packet delays without writing beside the source. The decoder's median fallback
 for unreadable delays is reported in warnings; exact timing and held milliseconds
 then remain unknown. Estimated delays never become measured hold durations.
 
-Timing belongs to the measured artifact. `inspect` reads atlas frame durations
-only for a Pneuma atlas with one animation whose unique `_NN` frame keys are
-in the same contiguous index order as the numbered frames. Reordered, unnamed
-or ambiguous animations retain unknown timing even when counts match. This
-binds duration declarations by frame index; final atlas pixels are verified by
-the separate final-artifact comparison command. Missing usable timing remains
+Timing belongs to the measured artifact. `inspect` validates the actual final
+Pneuma atlas and sheet through the final-artifact loader. One animation must
+have unique contiguous `_NN` frame keys in numbered-frame order, and every
+extracted frame must match the inspected frame's dimensions and full decoded
+pixel hash. The sheet is decoded once, and hashes of inspected frames reuse
+their existing decode. A missing, invalid, reordered or stale atlas leaves both
+new diagnostic timing and loop/wrap knowledge unknown, with a reason. Legacy
+geometry fields retain their previous definitions. Missing usable timing remains
 `unknown`. Loop and transition reports use their exported frame rate. A GIF's
 raw delays describe that GIF only. A derived atlas can play differently, so its
 report must never call source GIF delays its playback durations. Legacy fields

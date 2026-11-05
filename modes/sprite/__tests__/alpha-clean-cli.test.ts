@@ -90,10 +90,26 @@ describe.skipIf(!HAS_MEDIA)("alpha cleanup real CLI", () => {
   test("inspect uses atlas durations and reports GIF packet delays without resampling", () => {
     const dir = fresh(); const frames = join(dir, "frames"); mkdirSync(frames);
     writePng(join(frames, "00.png"), [255, 255]); writePng(join(frames, "01.png"), [127, 127]); writePng(join(frames, "02.png"), [255, 255]);
-    writeFileSync(join(dir, "atlas.json"), JSON.stringify({ meta: { app: "pneuma-sprite", loop: true }, frames: { cycle_00: { duration: 20 }, cycle_01: { duration: 150 }, cycle_02: { duration: 70 } }, animations: { cycle: ["cycle_00", "cycle_01", "cycle_02"] } }));
+    writeFileSync(join(dir, "atlas.json"), JSON.stringify({ meta: { app: "pneuma-sprite", image: "missing.png", loop: true }, frames: { cycle_00: { duration: 20 }, cycle_01: { duration: 150 }, cycle_02: { duration: 70 } }, animations: { cycle: ["cycle_00", "cycle_01", "cycle_02"] } }));
+    const missing = JSON.parse(run("inspect", dir).out).animation;
+    expect(missing.timing.source).toBe("unknown");
+    expect(missing.timing.reason).toContain("could not be verified");
+    expect(missing.loop).toBeNull();
+    expect(missing.wrapStep).toBeNull();
+    expect(run("pack", frames, "--out", join(dir, "sheet.png"), "--atlas", join(dir, "atlas.json"), "--name", "cycle", "--fps", "10", "--loop").code).toBe(0);
+    const packed = JSON.parse(readFileSync(join(dir, "atlas.json"), "utf8"));
+    Object.values(packed.frames).forEach((frame, index) => { (frame as { duration: number }).duration = [20, 150, 70][index]!; });
+    writeFileSync(join(dir, "atlas.json"), JSON.stringify(packed));
     const atlas = run("inspect", dir);
     expect(atlas.code).toBe(0);
     expect(JSON.parse(atlas.out).animation.timing).toEqual({ source: "atlas-frame-durations", durationsMs: [20, 150, 70], totalMs: 240 });
+    writePng(join(frames, "01.png"), [255, 255]);
+    const stale = JSON.parse(run("inspect", dir).out).animation;
+    expect(stale.timing.source).toBe("unknown");
+    expect(stale.timing.reason).toContain("pixels or geometry differ");
+    expect(stale.loop).toBeNull();
+    expect(stale.wrapStep).toBeNull();
+    writePng(join(frames, "01.png"), [127, 127]);
     const reordered = JSON.parse(readFileSync(join(dir, "atlas.json"), "utf8"));
     reordered.animations.cycle.reverse();
     writeFileSync(join(dir, "atlas.json"), JSON.stringify(reordered));
@@ -113,6 +129,10 @@ describe.skipIf(!HAS_MEDIA)("alpha cleanup real CLI", () => {
     expect(result.code).toBe(0);
     expect(JSON.parse(result.out).animation.timing.durationsMs).toEqual(expected);
     expect(JSON.parse(result.out).animation.frameCount).toBe(expected.length);
+    const comparedGif = run("compare", gif, "--candidate", gif, "--out", join(dir, "gif-evidence"));
+    expect(comparedGif.code).toBe(0);
+    expect(JSON.parse(comparedGif.out).artifacts.baseline.durationsMs).toEqual(expected);
+    expect(JSON.parse(comparedGif.out).status).toBe("identical");
     const tools = join(dir, "tools"); mkdirSync(tools);
     const actualProbe = spawnSync("which", ["ffprobe"], { encoding: "utf8" }).stdout.trim();
     const fallbackPackets = expected.map((ms, i) => i === 1 ? "N/A" : (ms / 1000).toFixed(6)).join("\n");

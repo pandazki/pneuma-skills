@@ -45,7 +45,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { assertStaticPng } from "./static-png.mjs";
-import { runCompare } from "./compare.mjs";
+import { loadFinalArtifact, runCompare } from "./compare.mjs";
 import { cleanAlphaHaze } from "./alpha-clean.mjs";
 import { diagnoseAnimation } from "./animation-diagnostics.mjs";
 import { tmpdir } from "node:os";
@@ -3208,20 +3208,24 @@ function frameAlphaMass(image) {
   return total / (image.width * image.height);
 }
 
-function inspectTiming(dir, count) {
+function inspectTiming(dir, measured) {
   const path = join(dir, "atlas.json");
-  if (!existsSync(path)) return {};
-  const atlas = JSON.parse(readFileSync(path, "utf-8"));
-  const animations = Object.values(atlas.animations ?? {});
-  const order = animations[0];
-  if (atlas.meta?.app !== "pneuma-sprite" || animations.length !== 1 || !Array.isArray(order) || order.length !== count) return {};
-  if (new Set(order).size !== count || order.some((key, index) => {
-    const match = typeof key === "string" ? /_(\d{2,3})$/.exec(key) : null;
-    return !match || Number(match[1]) !== index;
-  })) return {};
-  const durationsMs = order.map((key) => atlas.frames?.[key]?.duration);
-  if (durationsMs.some((ms) => !Number.isFinite(ms) || ms <= 0)) return {};
-  return { durationsMs, timingSource: "atlas-frame-durations" };
+  const unknown = (reason) => ({ loop: null, reason });
+  if (!existsSync(path)) return unknown("No final atlas is available to bind playback to the inspected frames");
+  try {
+    const artifact = loadFinalArtifact(path, { readRgba });
+    if (artifact.frames.length !== measured.length || artifact.order.some((key, index) => {
+      const match = /_(\d{2,3})$/.exec(key);
+      return !match || Number(match[1]) !== index;
+    })) return unknown("Final atlas order does not map to the inspected numbered frames");
+    if (artifact.frames.some((frame, index) => frame.width !== measured[index].width
+      || frame.height !== measured[index].height
+      || createHash("sha256").update(frame.data).digest("hex") !== measured[index].pixelSha256))
+      return unknown("Final atlas pixels or geometry differ from the inspected numbered frames");
+    return { durationsMs: artifact.durationsMs, timingSource: "atlas-frame-durations", loop: artifact.loop.plays === "infinite" };
+  } catch (error) {
+    return unknown(`Final atlas could not be verified: ${error.message}`);
+  }
 }
 
 function diagnosticFrame(image) {
@@ -3326,6 +3330,7 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
       // twice: the 64² thumbnail the step between frames is measured on.
       thumb: stepThumb(image),
       alphaMass: frameAlphaMass(image),
+      pixelSha256: createHash("sha256").update(image.data).digest("hex"),
       ...(pixel ? { lattice: latticeCheck(image, pixel.scale, paletteColors) } : {}),
     };
   });
@@ -3555,7 +3560,9 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     ? measured.map((f) => (f.bbox ? round(measuredAnchor.y - (f.bbox.y + f.bbox.h), 2) : null))
     : null;
 
-  const animation = diagnoseAnimation(measured, { ...inspectTiming(dir, measured.length), loop });
+  const playback = inspectTiming(dir, measured);
+  const animation = diagnoseAnimation(measured, playback);
+  if (playback.reason) animation.timing.reason = playback.reason;
   const summary = {
     animation,
     frameCount: measured.length,
