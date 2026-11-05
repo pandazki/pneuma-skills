@@ -76,7 +76,13 @@ export interface SvgReport {
   offPalette?: string[];
   /** The full-canvas rect's paint when the first drawn shape is one, else null. */
   background: string | null;
-  activeContent: { scripts: number; eventHandlers: number; foreignObjects: number };
+  /**
+   * Anything that can run code, counted to over-count rather than miss (the
+   * distribution gate): script elements in any case or namespace, `on*=`
+   * attributes, `javascript:` / `vbscript:` URLs however encoded,
+   * `<foreignObject>`, and `<iframe>` / `<embed>` / `<object>`.
+   */
+  activeContent: { scripts: number; eventHandlers: number; foreignObjects: number; embeds: number; scriptUrls: number };
   warnings: string[];
 }
 

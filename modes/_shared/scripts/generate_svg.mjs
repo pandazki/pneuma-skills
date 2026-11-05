@@ -39,7 +39,8 @@
  * (`<image>`, raster data URIs — then it is not a true vector), `<text>`
  * (font-dependent), colours used (and, with `--palette`, which are off it),
  * a full-canvas background rect, and active content (`<script>`, event
- * handlers, `<foreignObject>`). Those facts are in the JSON `report` and
+ * handlers, script URLs, `<foreignObject>`, `<iframe>`/`<embed>`/`<object>`,
+ * counted to over-count rather than miss). Those facts are in the JSON `report` and
  * every concern is a line in `report.warnings`.
  *
  * One request per run: a lost answer may still be a paid job, so nothing is
@@ -232,6 +233,42 @@ function attribute(tag, name) {
   return match ? (match[1] ?? match[2]) : undefined;
 }
 
+/** An element named `name` in any case, with or without a namespace prefix. */
+const element = (name) => new RegExp(`<(?:[A-Za-z_][\\w.-]*:)?(?:${name})\\b`, "gi");
+const count = (text, pattern) => (text.match(pattern) ?? []).length;
+
+/**
+ * Everything in a document that can run code once it is opened or inlined:
+ * script elements, event-handler attributes, script URLs (`javascript:` /
+ * `vbscript:` in any attribute — `href`, `xlink:href`, an animation's `to`
+ * or `values`), `<foreignObject>` (HTML inside SVG) and embedded browsing
+ * contexts (`<iframe>`, `<embed>`, `<object>`).
+ *
+ * The brand skill treats any nonzero count as "do not distribute", so this
+ * scan is built to over-count rather than miss: it reads the whole text,
+ * not parsed tags — a quoted `>` before a handler, an upper-case or
+ * namespaced element name, an entity-encoded or whitespace-split scheme are
+ * all still found, at the price of counting such a word in prose.
+ */
+function activeContent(text) {
+  const decoded = text
+    .replace(/&#x([0-9a-f]+);?/gi, (_, n) => String.fromCodePoint(Math.min(parseInt(n, 16), 0x10ffff)))
+    .replace(/&#(\d+);?/g, (_, n) => String.fromCodePoint(Math.min(Number(n), 0x10ffff)))
+    .replace(/&(?:Tab|NewLine);/g, " ")
+    .replace(/&colon;/g, ":");
+  // URL parsers drop ASCII whitespace and control characters inside a scheme.
+  const squeezed = decoded.replace(/[\u0000-\u0020]+/g, "").toLowerCase();
+  return {
+    scripts: count(text, element("script")),
+    // An attribute starts after whitespace, a quote (`a="x"onclick=…` is
+    // still an attribute to an HTML parser) or a slash (`<svg/onload=…>`).
+    eventHandlers: count(text, /[\s"'/]on[a-z]+\s*=/gi),
+    foreignObjects: count(text, element("foreignObject")),
+    embeds: count(text, element("iframe|embed|object")),
+    scriptUrls: count(squeezed, /(?:java|vb)script:/g),
+  };
+}
+
 /**
  * The document's root `<svg …>` start tag, or a thrown error saying what
  * the bytes are instead. A complete document closes with `</svg>`; a
@@ -282,9 +319,7 @@ export function inspectSvg(input, { palette } = {}) {
   for (const m of text.matchAll(/font-family\s*(?:=\s*(?:"([^"]*)"|'([^']*)')|:\s*([^;"}]+))/gi)) {
     fonts.add((m[1] ?? m[2] ?? m[3]).trim());
   }
-  const scripts = byTag.script ?? 0;
-  const foreignObjects = byTag.foreignObject ?? 0;
-  const eventHandlers = (text.match(/<[^>]*?\son[a-z]+\s*=/gi) ?? []).length;
+  const { scripts, eventHandlers, foreignObjects, embeds, scriptUrls } = activeContent(text);
 
   // Paint: presentation attributes, `style="…"` declarations and <style> blocks.
   const colors = new Set();
@@ -339,7 +374,7 @@ export function inspectSvg(input, { palette } = {}) {
     text: { elements: textElements, fonts: [...fonts] },
     colors: [...colors],
     background,
-    activeContent: { scripts, eventHandlers, foreignObjects },
+    activeContent: { scripts, eventHandlers, foreignObjects, embeds, scriptUrls },
     warnings: [],
   };
   if (paletteHexes) report.offPalette = report.colors.filter((c) => !paletteHexes.includes(c));
@@ -348,7 +383,9 @@ export function inspectSvg(input, { palette } = {}) {
   if (!report.vector.pure) w.push(`embeds raster content (${imageElements} <image>, ${rasterDataUris} raster data URI) — not a true vector; it will not scale cleanly or recolour`);
   if (externalRefs) w.push(`references ${externalRefs} external URL(s) — not self-contained; an <img> will not load them`);
   if (textElements) w.push(`uses ${textElements} <text> element(s)${fonts.size ? ` (font-family: ${[...fonts].join(" | ")})` : ""} — lettering renders in whatever font the viewer has; set type in a real specimen or outline it`);
-  if (scripts || eventHandlers || foreignObjects) w.push(`carries active content (${scripts} <script>, ${eventHandlers} event handler, ${foreignObjects} <foreignObject>) — strip it before distributing; never inline this file into a page`);
+  if (scripts || eventHandlers || foreignObjects || embeds || scriptUrls) {
+    w.push(`carries active content (${scripts} <script>, ${eventHandlers} event handler, ${scriptUrls} javascript:/vbscript: URL, ${foreignObjects} <foreignObject>, ${embeds} <iframe>/<embed>/<object>) — strip it before distributing; never inline this file into a page`);
+  }
   if (background) w.push(`paints its own full-canvas background (${background}) — the asset is not transparent`);
   if (report.offPalette?.length) w.push(`uses colours outside the palette: ${report.offPalette.join(", ")}`);
   if (!viewBox) w.push("has no viewBox — it will not scale predictably");

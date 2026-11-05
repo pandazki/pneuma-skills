@@ -119,7 +119,7 @@ describe("what the SVG is", () => {
       vector: { pure: true, imageElements: 0, rasterDataUris: 0, externalRefs: 0 },
       text: { elements: 0, fonts: [] },
       colors: ["#254f42"], offPalette: [], background: null,
-      activeContent: { scripts: 0, eventHandlers: 0, foreignObjects: 0 },
+      activeContent: { scripts: 0, eventHandlers: 0, foreignObjects: 0, embeds: 0, scriptUrls: 0 },
       warnings: [],
     });
     expect(inspectSvg(ICONS)).not.toHaveProperty("offPalette");
@@ -129,12 +129,43 @@ describe("what the SVG is", () => {
     const report = inspectSvg(`<svg viewBox="0 0 10 10"><image href="data:image/png;base64,AAAA" width="10" height="10"/><image href="https://example.com/a.png"/><text x="1" y="5" font-family="Inter, sans-serif">MORROW</text><g onload="x()"><script>x()</script></g></svg>`);
     expect(report.vector).toEqual({ pure: false, imageElements: 2, rasterDataUris: 1, externalRefs: 1 });
     expect(report.text).toEqual({ elements: 1, fonts: ["Inter, sans-serif"] });
-    expect(report.activeContent).toEqual({ scripts: 1, eventHandlers: 1, foreignObjects: 0 });
+    expect(report.activeContent).toEqual({ scripts: 1, eventHandlers: 1, foreignObjects: 0, embeds: 0, scriptUrls: 0 });
     const warnings = report.warnings.join("\n");
     expect(warnings).toContain("not a true vector");
     expect(warnings).toContain("external URL");
     expect(warnings).toContain("<text>");
     expect(warnings).toContain("active content");
+  });
+
+  test("every way an SVG can run code is counted — the count is the distribution gate, so it may over-count but never miss", () => {
+    const active = (body: string) => inspectSvg(`<svg viewBox="0 0 10 10">${body}</svg>`).activeContent;
+    const total = (body: string) => Object.values(active(body)).reduce((a, n) => a + n, 0);
+    // A handler after a quoted value holding '>' (the old scan stopped there).
+    expect(active(`<g title="a>b" onclick="x()"><path d="M0 0"/></g>`).eventHandlers).toBeGreaterThanOrEqual(1);
+    expect(active(`<path d="M0 0"/><svg/onload=alert(1)><path d="M0 0"/></svg>`).eventHandlers).toBeGreaterThanOrEqual(1);
+    // Script URLs, however the attribute is spelled or encoded.
+    for (const link of [
+      `<a href="javascript:alert(1)"><path d="M0 0"/></a>`,
+      `<a xlink:href="javascript:alert(1)"><path d="M0 0"/></a>`,
+      `<a href=" JavaScript:alert(1)"><path d="M0 0"/></a>`,
+      `<a href="&#106;avascript:alert(1)"><path d="M0 0"/></a>`,
+      `<a href="java&#x09;script:alert(1)"><path d="M0 0"/></a>`,
+      `<a><set attributeName="href" to="javascript:alert(1)"/><path d="M0 0"/></a>`,
+    ]) {
+      expect(active(link).scriptUrls).toBeGreaterThanOrEqual(1);
+    }
+    // Elements, in any case and with a namespace prefix.
+    expect(active(`<SCRIPT>alert(1)</SCRIPT>`).scripts).toBeGreaterThanOrEqual(1);
+    expect(active(`<svg:script>alert(1)</svg:script>`).scripts).toBeGreaterThanOrEqual(1);
+    expect(active(`<foreignobject><div/></foreignobject>`).foreignObjects).toBeGreaterThanOrEqual(1);
+    for (const tag of ["iframe", "embed", "object", "IFRAME"]) {
+      expect(active(`<${tag} src="x"></${tag}>`).embeds).toBeGreaterThanOrEqual(1);
+    }
+    // And a drawing with none of it counts nothing, with words that only look close.
+    expect(total(`<title>Icons based on a grid</title><desc>javascript-free; one onion</desc><g fill="none" stroke="#000"><path d="M0 0"/></g>`)).toBe(0);
+    const warned = inspectSvg(`<svg viewBox="0 0 10 10"><a href="javascript:x()"><path d="M0 0"/></a></svg>`).warnings.join("\n");
+    expect(warned).toContain("active content");
+    expect(warned).toContain("javascript:");
   });
 
   test("colours from attributes, inline styles and <style> are normalised; non-paints are not colours", () => {
