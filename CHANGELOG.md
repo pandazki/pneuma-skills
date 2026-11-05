@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.61.0] - 2026-11-05
+
+### Added
+- **Sprite motions from one animated GIF** — Sprite gains a fifth way to make a motion: GPT Image 2.6 draws the whole animation as a GIF from the character's references in about 20 seconds, with every frame already in register and on a transparent background. Frames are cut one per drawing at the GIF's own timing, scaled to the height of the character's other motions, then aligned, packed and inspected like any other motion. It suits outlined and cel-shaded characters best (GIF edges are hard and the palette is limited); sheets and clips remain for soft styles and pixel art. Every take is kept with its request, so a retake never replaces a paid one.
+- **Brand vector assets** — Brand Studio can generate real SVG icon sets, pictograms and simple geometric marks with GPT Image 2.6 on fal.ai. Each file is checked before it is recorded: whether it is pure vector, whether it uses text or colours outside the palette, and whether it carries anything active that must not be distributed. Wordmarks stay in real type, and an SVG is a new drawing that cannot trace an approved raster mark. Defaults were chosen by repeated comparison (Sunburst, medium quality, GPT-6.1 Terra as the vector author); a set takes about a minute.
+
+### Improved
+- **GPT Image 2.6 in every image workflow** — All image-generating modes move from GPT Image 2.5 to 2.6 on OpenRouter: Flare for new images, Sunburst for edits, about 50% faster at the same token prices. Both can now return a real transparent background. Recorded 2.5 calls can still be retried by name.
+- **Transparent artwork is legible in Brand Studio** — Image works sit on a light ground in the workbench, detail and compare views, so dark-ink icons and cut-out characters no longer disappear against the dark card.
+- **Brand Studio states the wait before a paid call** — The agent says what a generation makes and how long it takes before it runs, keeps its working renders inside the project where the chat can show them, and checks legibility at the size it claims.
+
+### Fixed
+- **Sprite no longer mis-samples GIFs as video** — Clip commands used the frame rate ffprobe guesses for a GIF and could repeat early frames and drop the end of the motion. Every clip command now refuses a GIF and points to the GIF source, which cuts each frame exactly once.
+- **Sprite viewer actions refuse a misplaced address** — Navigating, playing or reading playback with the address outside `params.address` used to report success while the stage stayed where it was. The action now refuses and shows the correct shape.
+- **Brand links to a work render as cards** — Brand Studio now teaches the locator tag's format, so a link to a work arrives as a clickable card instead of raw text.
+
 ## [3.60.4] - 2026-11-03
 
 ### Fixed
