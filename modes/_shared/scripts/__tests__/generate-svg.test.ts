@@ -119,7 +119,7 @@ describe("what the SVG is", () => {
       vector: { pure: true, imageElements: 0, rasterDataUris: 0, externalRefs: 0 },
       text: { elements: 0, fonts: [] },
       colors: ["#254f42"], offPalette: [], background: null,
-      activeContent: { scripts: 0, eventHandlers: 0, foreignObjects: 0, embeds: 0, scriptUrls: 0 },
+      activeContent: { scripts: 0, eventHandlers: 0, foreignObjects: 0, embeds: 0, scriptUrls: 0, entities: 0 },
       warnings: [],
     });
     expect(inspectSvg(ICONS)).not.toHaveProperty("offPalette");
@@ -129,7 +129,7 @@ describe("what the SVG is", () => {
     const report = inspectSvg(`<svg viewBox="0 0 10 10"><image href="data:image/png;base64,AAAA" width="10" height="10"/><image href="https://example.com/a.png"/><text x="1" y="5" font-family="Inter, sans-serif">MORROW</text><g onload="x()"><script>x()</script></g></svg>`);
     expect(report.vector).toEqual({ pure: false, imageElements: 2, rasterDataUris: 1, externalRefs: 1 });
     expect(report.text).toEqual({ elements: 1, fonts: ["Inter, sans-serif"] });
-    expect(report.activeContent).toEqual({ scripts: 1, eventHandlers: 1, foreignObjects: 0, embeds: 0, scriptUrls: 0 });
+    expect(report.activeContent).toEqual({ scripts: 1, eventHandlers: 1, foreignObjects: 0, embeds: 0, scriptUrls: 0, entities: 0 });
     const warnings = report.warnings.join("\n");
     expect(warnings).toContain("not a true vector");
     expect(warnings).toContain("external URL");
@@ -160,6 +160,18 @@ describe("what the SVG is", () => {
     expect(active(`<foreignobject><div/></foreignobject>`).foreignObjects).toBeGreaterThanOrEqual(1);
     for (const tag of ["iframe", "embed", "object", "IFRAME"]) {
       expect(active(`<${tag} src="x"></${tag}>`).embeds).toBeGreaterThanOrEqual(1);
+    }
+    // An internal DTD entity hides markup from the text: a browser opening
+    // the file as SVG expands it into a live element.
+    for (const value of [
+      "&#60;script&#62;alert(1)&#60;/script&#62;",
+      "&#x3c;foreignObject&#x3e;&#x3c;iframe src='x'/&#x3e;&#x3c;/foreignObject&#x3e;",
+      "&#60;iframe src='x'&#62;&#60;/iframe&#62;",
+    ]) {
+      const report = inspectSvg(`<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY x "${value}">]><svg viewBox="0 0 10 10">&x;</svg>`);
+      expect(Object.values(report.activeContent).reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(1);
+      expect(report.activeContent.entities).toBe(1);
+      expect(report.warnings.join("\n")).toContain("active content");
     }
     // And a drawing with none of it counts nothing, with words that only look close.
     expect(total(`<title>Icons based on a grid</title><desc>javascript-free; one onion</desc><g fill="none" stroke="#000"><path d="M0 0"/></g>`)).toBe(0);

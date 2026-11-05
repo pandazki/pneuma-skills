@@ -40,7 +40,7 @@
  * (font-dependent), colours used (and, with `--palette`, which are off it),
  * a full-canvas background rect, and active content (`<script>`, event
  * handlers, script URLs, `<foreignObject>`, `<iframe>`/`<embed>`/`<object>`,
- * counted to over-count rather than miss). Those facts are in the JSON `report` and
+ * `<!ENTITY` declarations, counted to over-count rather than miss). Those facts are in the JSON `report` and
  * every concern is a line in `report.warnings`.
  *
  * One request per run: a lost answer may still be a paid job, so nothing is
@@ -241,8 +241,11 @@ const count = (text, pattern) => (text.match(pattern) ?? []).length;
  * Everything in a document that can run code once it is opened or inlined:
  * script elements, event-handler attributes, script URLs (`javascript:` /
  * `vbscript:` in any attribute — `href`, `xlink:href`, an animation's `to`
- * or `values`), `<foreignObject>` (HTML inside SVG) and embedded browsing
- * contexts (`<iframe>`, `<embed>`, `<object>`).
+ * or `values`), `<foreignObject>` (HTML inside SVG), embedded browsing
+ * contexts (`<iframe>`, `<embed>`, `<object>`) and `<!ENTITY` declarations:
+ * a browser opening the file as SVG expands an internal entity into live
+ * markup this text scan cannot see (`<!ENTITY x "&#60;script&#62;…">` then
+ * `&x;`), and a generated drawing has no use for one.
  *
  * The brand skill treats any nonzero count as "do not distribute", so this
  * scan is built to over-count rather than miss: it reads the whole text,
@@ -266,6 +269,7 @@ function activeContent(text) {
     foreignObjects: count(text, element("foreignObject")),
     embeds: count(text, element("iframe|embed|object")),
     scriptUrls: count(squeezed, /(?:java|vb)script:/g),
+    entities: count(text, /<!ENTITY/gi),
   };
 }
 
@@ -319,7 +323,7 @@ export function inspectSvg(input, { palette } = {}) {
   for (const m of text.matchAll(/font-family\s*(?:=\s*(?:"([^"]*)"|'([^']*)')|:\s*([^;"}]+))/gi)) {
     fonts.add((m[1] ?? m[2] ?? m[3]).trim());
   }
-  const { scripts, eventHandlers, foreignObjects, embeds, scriptUrls } = activeContent(text);
+  const { scripts, eventHandlers, foreignObjects, embeds, scriptUrls, entities } = activeContent(text);
 
   // Paint: presentation attributes, `style="…"` declarations and <style> blocks.
   const colors = new Set();
@@ -374,7 +378,7 @@ export function inspectSvg(input, { palette } = {}) {
     text: { elements: textElements, fonts: [...fonts] },
     colors: [...colors],
     background,
-    activeContent: { scripts, eventHandlers, foreignObjects, embeds, scriptUrls },
+    activeContent: { scripts, eventHandlers, foreignObjects, embeds, scriptUrls, entities },
     warnings: [],
   };
   if (paletteHexes) report.offPalette = report.colors.filter((c) => !paletteHexes.includes(c));
@@ -383,8 +387,8 @@ export function inspectSvg(input, { palette } = {}) {
   if (!report.vector.pure) w.push(`embeds raster content (${imageElements} <image>, ${rasterDataUris} raster data URI) — not a true vector; it will not scale cleanly or recolour`);
   if (externalRefs) w.push(`references ${externalRefs} external URL(s) — not self-contained; an <img> will not load them`);
   if (textElements) w.push(`uses ${textElements} <text> element(s)${fonts.size ? ` (font-family: ${[...fonts].join(" | ")})` : ""} — lettering renders in whatever font the viewer has; set type in a real specimen or outline it`);
-  if (scripts || eventHandlers || foreignObjects || embeds || scriptUrls) {
-    w.push(`carries active content (${scripts} <script>, ${eventHandlers} event handler, ${scriptUrls} javascript:/vbscript: URL, ${foreignObjects} <foreignObject>, ${embeds} <iframe>/<embed>/<object>) — strip it before distributing; never inline this file into a page`);
+  if (scripts || eventHandlers || foreignObjects || embeds || scriptUrls || entities) {
+    w.push(`carries active content (${scripts} <script>, ${eventHandlers} event handler, ${scriptUrls} javascript:/vbscript: URL, ${foreignObjects} <foreignObject>, ${embeds} <iframe>/<embed>/<object>, ${entities} <!ENTITY> declaration) — strip it before distributing; never inline this file into a page`);
   }
   if (background) w.push(`paints its own full-canvas background (${background}) — the asset is not transparent`);
   if (report.offPalette?.length) w.push(`uses colours outside the palette: ${report.offPalette.join(", ")}`);

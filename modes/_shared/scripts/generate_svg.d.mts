@@ -80,9 +80,10 @@ export interface SvgReport {
    * Anything that can run code, counted to over-count rather than miss (the
    * distribution gate): script elements in any case or namespace, `on*=`
    * attributes, `javascript:` / `vbscript:` URLs however encoded,
-   * `<foreignObject>`, and `<iframe>` / `<embed>` / `<object>`.
+   * `<foreignObject>`, `<iframe>` / `<embed>` / `<object>`, and `<!ENTITY`
+   * declarations (an internal entity expands into markup the scan cannot see).
    */
-  activeContent: { scripts: number; eventHandlers: number; foreignObjects: number; embeds: number; scriptUrls: number };
+  activeContent: { scripts: number; eventHandlers: number; foreignObjects: number; embeds: number; scriptUrls: number; entities: number };
   warnings: string[];
 }
 
