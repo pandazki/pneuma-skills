@@ -31,7 +31,7 @@ scheduled to migrate onto the shared modules behind their fixture tests.
   "provenance": [
     { "toAssetId": "ref-guang", "fromAssetId": null,
       "operation": { "type": "generate", "actor": "agent", "timestamp": 1800000002000,
-        "params": { "model": "openai/gpt-image-2.5-flare", "prompt": "…", "cost": { "usd": 0.0388, "basis": "reported" },
+        "params": { "model": "openai/gpt-image-2.6-flare", "prompt": "…", "cost": { "usd": 0.0388, "basis": "reported" },
                     "requestId": "gen-1", "finishedAt": 1800000003000 } } }
   ],
   "series": { "…": "the mode's sidecar" }
