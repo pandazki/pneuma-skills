@@ -239,6 +239,31 @@ describe("one paid run", () => {
     expect(existsSync(outputDir)).toBe(false);
   });
 
+  test("a file that appears at the target while the job runs is never replaced; the paid result is kept beside it", async () => {
+    // Two runs with one prefix both pass the pre-payment check. The one that
+    // lands second must not replace the first: its bytes are kept elsewhere.
+    const outputDir = freshDir();
+    const target = join(outputDir, "mark.svg");
+    const fal = fakeFal();
+    const racing = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input) === "https://cdn.test/a.svg") {
+        mkdirSync(outputDir, { recursive: true });
+        writeFileSync(target, "the other run's mark");
+      }
+      return fal.fetchImpl(input, init);
+    }) as typeof fetch;
+    const error = await generateSvg({ prompt: "x", apiKey: "k", outputDir, filenamePrefix: "mark", onNote: () => {} }, { fetchImpl: racing })
+      .then(() => null, (e) => e);
+    expect(readFileSync(target, "utf8")).toBe("the other run's mark");
+    expect(error?.requestId).toBe("req-svg-1");
+    expect(error?.message).toContain("https://cdn.test/a.svg");
+    expect(error?.message).toContain("do not resubmit");
+    const kept = readdirSync(outputDir).filter((name) => name !== "mark.svg");
+    expect(kept).toHaveLength(1);
+    expect(error?.message).toContain(join(outputDir, kept[0]));
+    expect(readFileSync(join(outputDir, kept[0]), "utf8")).toBe(ICONS);
+  });
+
   test("an existing target, a missing key or a bad option stops it before any request", async () => {
     const outputDir = freshDir();
     mkdirSync(outputDir, { recursive: true });

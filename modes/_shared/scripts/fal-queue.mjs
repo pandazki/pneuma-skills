@@ -54,7 +54,8 @@
  * Node 22+, no dependencies.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { constants, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -654,6 +655,55 @@ export async function uploadFalFile(path, { key, label = "input", fetchImpl = fe
     throw new Error(`${label}: fal storage upload failed (HTTP ${stored.status}): ${text.slice(0, 300)}`);
   }
   return fileUrl;
+}
+
+/**
+ * Put a result's bytes at `path` without ever replacing a file there.
+ *
+ * Checking for the file and then renaming over it is not that: two runs
+ * with the same target both pass the check, both pay, and the second rename
+ * replaces the first result. Here the bytes go to a uniquely named staged
+ * file beside `path`, and a hard link creates `path` from it — `link` fails
+ * with EEXIST instead of overwriting, and nobody sees a half-written file.
+ * The staged name is removed once `path` holds the bytes.
+ *
+ * If the staged file cannot be placed, it is KEPT, because it holds a result
+ * that may have been paid for: the thrown error carries `keptAt` (and
+ * `code: "EEXIST"` when another file got there first). A file system with
+ * no hard links (exFAT, some network mounts) falls back to an exclusive
+ * copy, which still never replaces a file but is not atomic.
+ *
+ * @param {string} path
+ * @param {Uint8Array | string} bytes
+ * @returns {string} `path`
+ */
+export function writeNewFile(path, bytes) {
+  const dir = dirname(path);
+  mkdirSync(dir, { recursive: true });
+  const staged = join(dir, `.${basename(path)}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`);
+  try {
+    writeFileSync(staged, bytes, { flag: "wx" });
+  } catch (error) {
+    rmSync(staged, { force: true });
+    throw error;
+  }
+  try {
+    try {
+      linkSync(staged, path);
+    } catch (error) {
+      if (error?.code === "EEXIST") throw error;
+      copyFileSync(staged, path, constants.COPYFILE_EXCL);
+    }
+  } catch (error) {
+    const kept = new Error(error?.code === "EEXIST"
+      ? `${path} already exists — another run wrote it first; nothing was overwritten and these bytes are kept at ${staged}`
+      : `could not write ${path} (${error instanceof Error ? error.message : String(error)}); the bytes are kept at ${staged}`);
+    kept.code = error?.code;
+    kept.keptAt = staged;
+    throw kept;
+  }
+  rmSync(staged, { force: true });
+  return path;
 }
 
 /**

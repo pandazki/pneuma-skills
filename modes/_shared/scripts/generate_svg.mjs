@@ -44,8 +44,10 @@
  *
  * One request per run: a lost answer may still be a paid job, so nothing is
  * resent once fal has accepted it (`fal-queue.mjs` only resends a submit fal
- * refused before a job existed). The file is written atomically and a run
- * never overwrites an existing file — the target is checked before paying.
+ * refused before a job existed). A run never overwrites an existing file:
+ * the target is checked before paying, and the result is placed atomically
+ * with no-clobber semantics (`writeNewFile`), so when a parallel run took
+ * the name meanwhile, this result is kept beside it and reported.
  *
  * stdout: one JSON object { backend, model, author, endpoint, requestId,
  * files, urls, report, cost, ... }. stderr: progress, warnings and one
@@ -57,12 +59,12 @@
  * `fal-queue.mjs::loadFalKey`. Never printed, never an argv.
  */
 
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { downloadFalFile, loadFalKey, runFalJob } from "./fal-queue.mjs";
+import { downloadFalFile, loadFalKey, runFalJob, writeNewFile } from "./fal-queue.mjs";
 
 /** Image model → fal's synchronous text-to-image endpoint (the queue host is derived). */
 export const SVG_ENDPOINTS = Object.freeze({
@@ -442,13 +444,12 @@ export async function generateSvg(options, { fetchImpl = fetch, sleep } = {}) {
     throw withRequestId(new Error(`fal's result is ${error instanceof Error ? error.message : String(error)} (content type ${image.content_type ?? "unreported"}; ${image.url}) — nothing was saved`), requestId);
   }
 
-  mkdirSync(resolve(outputDir), { recursive: true });
-  const staged = join(resolve(outputDir), `.${filenamePrefix}.${process.pid}.svg.tmp`);
+  // The target was free before paying; a parallel run may have taken it
+  // since. `writeNewFile` never replaces it and keeps these bytes instead.
   try {
-    writeFileSync(staged, bytes, { flag: "wx" });
-    renameSync(staged, path);
-  } finally {
-    rmSync(staged, { force: true });
+    writeNewFile(path, bytes);
+  } catch (error) {
+    throw withRequestId(new Error(`the SVG was generated but not saved: ${error instanceof Error ? error.message : String(error)} — it is also at ${image.url}; do not resubmit`), requestId);
   }
   onNote(`[fal] Saved: ${path}`);
   for (const warning of report.warnings) onNote(`WARN: ${warning}`);

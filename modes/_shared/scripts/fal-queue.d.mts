@@ -162,6 +162,21 @@ export interface UploadFalFileOptions {
  */
 export function uploadFalFile(path: string, options: UploadFalFileOptions): Promise<string>;
 
+/** Thrown by `writeNewFile` when the staged bytes could not be placed. */
+export interface WriteNewFileError extends Error {
+  /** `"EEXIST"` when another file was at the path first. */
+  code?: string;
+  /** Where the bytes are, since the target could not take them. */
+  keptAt: string;
+}
+
+/**
+ * Write `bytes` at `path` atomically without ever replacing a file there
+ * (staged file + hard link). Throws a `WriteNewFileError` naming where the
+ * bytes were kept when the path is taken or the placement fails.
+ */
+export function writeNewFile(path: string, bytes: Uint8Array | string): string;
+
 /** Attempts one artifact download spends before it gives up. */
 export const DOWNLOAD_ATTEMPTS: number;
 
