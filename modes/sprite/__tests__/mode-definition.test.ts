@@ -245,6 +245,16 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
     expect(mirror).toContain("Source: mirror of walk (its frames flipped left↔right)");
   });
 
+  test("a GIF motion names the GIF its frames are", () => {
+    const body = JSON.parse(withWalk());
+    body.sprite.motions.push({
+      id: "swing", label: "Swing", prompt: "", grid: { rows: 3, cols: 4 }, fps: 11.111, loop: false, anchor: "bottom",
+      status: "ready", source: "gif", gifRaw: "swing-gif-raw", frames: [], videos: [],
+    });
+    const context = extractSpriteContext({ address: { contentSet: "mini", motion: "swing" } } as never, files({ "mini/project.json": JSON.stringify(body) }));
+    expect(context).toContain("Source: GIF (every frame of swing-gif-raw)");
+  });
+
   test("a breathe's context carries what a re-run starts from: the boundary it used, and a manual torso", () => {
     const body = JSON.parse(withWalk());
     body.sprite.motions.push({
@@ -521,8 +531,23 @@ describe("the definition and the manifest agree", () => {
     }
   });
 
+  test("0.7.0 is the GIF source release, in the user's words, and ships the GIF script", () => {
+    expect(spriteManifest.version).toBe("0.7.0");
+    const notes = spriteManifest.changelog!["0.7.0"];
+    expect(notes.length).toBeGreaterThanOrEqual(1);
+    for (const note of notes) {
+      expect(note).not.toMatch(/`|\*\*|^- /);
+      expect(note.endsWith(".")).toBe(false);
+      expect(note).not.toMatch(/\.mjs|--[a-z]|\.json\b/);
+    }
+    expect(notes.join(" ")).toMatch(/animated GIF/);
+    // The skill's B-gif steps call it, and it imports fal-queue.mjs, which
+    // must ship beside it (sharedScripts is a whitelist).
+    expect(spriteManifest.skill.sharedScripts).toContain("generate_gif.mjs");
+    expect(spriteManifest.skill.sharedScripts).toContain("fal-queue.mjs");
+  });
+
   test("0.6.0 is the game asset pipeline release, in the user's words", () => {
-    expect(spriteManifest.version).toBe("0.6.1");
     const notes = spriteManifest.changelog!["0.6.0"];
     expect(notes.length).toBeGreaterThanOrEqual(6);
     for (const note of notes) {

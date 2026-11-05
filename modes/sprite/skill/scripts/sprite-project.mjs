@@ -13,8 +13,8 @@
  * previous project untouched.
  *
  * Subcommands: init, set-character, add-ref, add-motion, set-motion,
- * sheet-prompt, set-sheet, set-keyframe, register-run, register-export,
- * register-recolor, add-video, set-video, remove-motion, show.
+ * sheet-prompt, set-sheet, gif-prompt, set-gif, set-keyframe, register-run,
+ * register-export, register-recolor, add-video, set-video, remove-motion, show.
  */
 
 import { spawnSync } from "node:child_process";
@@ -29,8 +29,8 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import {
-  CHARACTER_VIEWS, DIRECTIONS, GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES, SIDE_GEOMETRY,
-  buildSheetPrompt, sheetGrid, sideClause, stateOf,
+  CHARACTER_VIEWS, DIRECTIONS, GENERATION_CELL_MAX, GIF_FRAME_RANGE, GUIDE_DEFAULT, RECOMMENDED_FRAMES, SHEET_FRAME_COUNTS, SHEET_STATES,
+  SIDE_GEOMETRY, buildGifPrompt, buildSheetPrompt, sheetGrid, sideClause, stateOf,
 } from "./sheet-prompt.mjs";
 // Facing sheets and packs (0.6.0): the layouts and the prompts, one authority
 // shared with sprite-sheet.mjs, which cuts by the same layout.
@@ -105,9 +105,17 @@ const LOOP_TARGET_FPS = [60, 48, 30, 24];
 const MOTION_KINDS = ["loop", "transition", "cutscene"];
 /** How a motion's frames were obtained. Absent means "sheet" — every motion
  *  made before the video source existed. `breathe` frames are warps of one
- *  still; `mirror` frames are another motion's flipped left↔right. Both are
- *  recorded by register-run from the run that made them. */
-const MOTION_SOURCES = ["sheet", "video", "breathe", "mirror"];
+ *  still; `mirror` frames are another motion's flipped left↔right; `gif`
+ *  frames are every frame of one generated (or uploaded) animated GIF. All
+ *  are recorded by register-run from the run that made them. */
+const MOTION_SOURCES = ["sheet", "video", "breathe", "mirror", "gif"];
+/** Sources whose grid and rate come from the run, not from add-motion. */
+const RUN_TIMED_SOURCES = ["breathe", "mirror", "gif"];
+/** The canvas every GIF motion is generated at, per frame: the size a
+ *  sheet cell is drawn at (`sheet-prompt.mjs` GENERATION_CELL_MAX), so a
+ *  character stands as tall in a GIF motion as in a sheet one. */
+const GIF_FRAME_SIZE = `${GENERATION_CELL_MAX}x${GENERATION_CELL_MAX}`;
+
 const FACINGS = ["left", "right"];
 /** What the user is making — the route. Recorded so a later session does
  *  not ask again; absent means nobody recorded one. */
@@ -117,7 +125,8 @@ const MIRRORED = { left: "right", right: "left" };
 const BREATHE_MODES = ["smooth", "pixel"];
 
 const SUBCOMMANDS = [
-  "init", "set-character", "add-ref", "add-motion", "set-motion", "sheet-prompt", "set-sheet", "set-keyframe",
+  "init", "set-character", "add-ref", "add-motion", "set-motion", "sheet-prompt", "set-sheet", "gif-prompt", "set-gif",
+  "set-keyframe",
   "register-run", "register-export", "register-recolor", "add-video", "set-video", "remove-motion", "show",
   "facing-prompt", "register-facings", "add-pack", "pack-prompt", "register-pack",
   "items-prompt", "register-items",
@@ -231,11 +240,13 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       --source records how the frames will be obtained (a generated sheet, a
       sampled video clip, a breathe of one still, a mirror of another motion)
       before anything is generated. Omitted means sheet; register-run
-      corrects it from the run that lands. --source breathe or mirror makes
-      --rows / --cols and --fps optional (1x1 at 8 fps until the run lands):
-      a breathe is drawn on no grid and timed by its run, a mirror plays on
-      its source's, and register-run takes the grid and the fps from the
-      run (a mirror's loop and anchor too).
+      corrects it from the run that lands. --source breathe, mirror or gif
+      makes --rows / --cols and --fps optional (1x1 at 8 fps until the run
+      lands): a breathe is drawn on no grid and timed by its run, a mirror
+      plays on its source's, a GIF's frames are packed by from-gif — and
+      register-run takes the grid and the fps from the run (a mirror's loop
+      and anchor too). A GIF motion's --fps is still worth giving: gif-prompt
+      turns it into the GIF's frame time.
       --direction is the way the motion faces; name it <state>-<direction>
       (walk-left) so every export carries the direction in its keys.
       --kind loop declares a seamless transparent animation for a UI instead
@@ -316,6 +327,39 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       stage shows a placeholder; calling it again once the file has landed
       measures it and flips the same asset to ready. A missing file under any
       other status is an error.
+
+  gif-prompt --motion <motionId> --action "<the phase plan, by frame>" --frames ${GIF_FRAME_RANGE.min}-${GIF_FRAME_RANGE.max}
+             [--state ${[...SHEET_STATES, "generic"].join("|")}]
+      Build the prompt for a GIF motion in code and record it (motion.prompt,
+      motion.promptParts, builder gif-prompt/1): the character's style
+      sentence verbatim, one animation of --frames frames on one fixed
+      canvas, identity over motion, the facing, the asymmetry lock, the
+      state's guards (the sheet's, said of frames), the loop closure or
+      final pose, and a transparent background. Printed on stdout; stderr
+      (or --json) adds the generate_gif.mjs flags — --frame-count, the
+      motion's fps as --frame-duration-ms (10 ms steps), --image-size
+      ${GIF_FRAME_SIZE}, --background transparent, --output
+      motions/<id>/gif-raw.gif — and the references to attach, in order
+      (the direction's anchor first, then the others). Refused on a loop,
+      a transition, a breathe or a mirror, and on a pixel-art character
+      (its frames belong on the pixel lattice: draw them as sheets).
+
+  set-gif --motion <motionId> --status generating --file <path> --from <assetId,…> --model <id> --prompt <text>
+  set-gif --motion <motionId> --report <generate_gif.json|->
+  set-gif --motion <motionId> --status failed --notes "<why>" [--request-id <id>]
+  set-gif --motion <motionId> --uploaded --file <path>
+      The GIF a motion's frames are cut from, as <motion>-gif-raw
+      (motion.gifRaw). Recorded BEFORE the paid call: '--status generating'
+      reserves it with its model, prompt and references (--from, required:
+      every generation carries the character). Then exactly one of: landed
+      from generate_gif.mjs's --json report — the file must be the reserved
+      one and hold the frames the recorded prompt asked for; it is measured
+      (width, height, frames, frameDurationMs, duration) and its edge gains
+      the request id, endpoint and returned model — or failed, with the
+      reason the user reads and the request id when there was one
+      (params.failure, billing unknown: a job that ran may be billed).
+      --uploaded registers a GIF the user brought (an 'upload' edge).
+      Motion status: generating, then processing (or failed).
 
   set-keyframe --motion <motionId> --file <path> [--alpha <path>] [--model]
                [--prompt] [--from <assetId,…>] [--status ${MOTION_STATUSES.join("|")}]
@@ -398,6 +442,10 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       and sets motion.source = "video". The clip must already be a registered
       video asset (add-video); --video names which one when there is more
       than one, and the newest is used with a note when there is not.
+      A 'from-gif' summary (source: "gif") derives frame i from the GIF
+      asset (motion.gifRaw, which must be landed and be the file the run
+      names as sourceGif) with params.frameIndex, and sets
+      motion.source = "gif"; the grid and fps become the run's.
       A 'loop' summary (kind: "loop") has no sheet, atlas or GIF and is not
       asked for one: it registers three-digit frames, the WebP, the APNG, the
       WebM and the Lottie (each with its size in bytes), sets motion.kind =
@@ -513,7 +561,7 @@ const ASSET_KEYS = ["id", "type", "uri", "name", "metadata", "createdAt", "statu
 const MOTION_KEYS = [
   "id", "label", "direction", "prompt", "promptParts", "kind", "brief", "grid", "fps", "loop", "anchor", "status",
   "notes", "source", "mirrorOf", "breathe",
-  "keyframe", "keyframeAlpha", "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames",
+  "keyframe", "keyframeAlpha", "gifRaw", "sheetRaw", "sheetAlpha", "sheet", "atlas", "frames",
   "gif", "webp", "exports", "variants", "videos", "inspect",
 ];
 /** A 0.4.x character's keys come first, in the order `init` has always
@@ -702,6 +750,38 @@ function videoMetadata(path) {
   return { metadata, warning: null };
 }
 
+/**
+ * A GIF asset's measurements: canvas, frame count and the frame time, from
+ * ffprobe's packets — the per-frame delays the GIF carries. A GIF that
+ * ffprobe cannot read, or that holds fewer than two frames, is refused: it
+ * is not an animation anything here can cut.
+ */
+function gifMetadata(path) {
+  const head = Buffer.alloc(6);
+  const fd = openSync(path, "r");
+  let read;
+  try {
+    read = readSync(fd, head, 0, 6, 0);
+  } finally {
+    closeSync(fd);
+  }
+  const signature = head.toString("latin1", 0, read);
+  if (signature !== "GIF89a" && signature !== "GIF87a") fail(`${path} is not a GIF`);
+  const size = imageMetadata(path, "--file");
+  const r = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=duration_time", "-of", "csv=p=0", path], { encoding: "utf-8" });
+  if (r.error || r.status !== 0) fail(`ffprobe could not read the frames of ${path}`);
+  const delays = String(r.stdout).trim().split("\n").map((l) => Math.round(Number(l.trim().replace(/,$/, "")) * 1000)).filter((ms) => Number.isFinite(ms));
+  if (delays.length < 2) fail(`${path} holds ${delays.length} frame(s) — not an animation`);
+  const total = delays.reduce((a, b) => a + b, 0);
+  const uniform = delays.every((d) => d === delays[0]);
+  return {
+    ...size,
+    frames: delays.length,
+    frameDurationMs: uniform ? delays[0] : Math.round(total / delays.length),
+    duration: Math.round(total) / 1000,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Document helpers
 // ---------------------------------------------------------------------------
@@ -719,7 +799,7 @@ function assetOwner(doc, id) {
   for (const motion of doc.sprite.motions) {
     const exports = motion.exports && typeof motion.exports === "object" ? motion.exports : {};
     const slots = [
-      motion.sheetRaw, motion.sheetAlpha, motion.sheet, motion.atlas, motion.gif, motion.webp,
+      motion.gifRaw, motion.sheetRaw, motion.sheetAlpha, motion.sheet, motion.atlas, motion.gif, motion.webp,
       motion.keyframe, motion.keyframeAlpha, ...Object.values(exports), ...variantAssetIds(motion),
     ];
     if (slots.includes(id)
@@ -2225,6 +2305,13 @@ function motionLines(motion, doc) {
     } else if (motion.source === "mirror" && motion.mirrorOf) {
       lines.push(`  mirror of ${motion.mirrorOf}`);
     }
+    if (motion.gifRaw) {
+      const asset = doc?.assets.find((a) => a.id === motion.gifRaw);
+      const params = doc?.provenance.find((e) => e.toAssetId === motion.gifRaw)?.operation?.params ?? {};
+      const m = asset?.metadata ?? {};
+      const facts = asset?.status === "ready" && m.frames ? `, ${m.frames} frames × ${m.frameDurationMs} ms, ${m.width}x${m.height}` : "";
+      lines.push(`  GIF ${motion.gifRaw}${asset ? ` (${asset.uri}) — ${asset.status}${facts}` : " — missing"}${params.model ? `, ${params.model}` : ""}${params.requestId ? `, request ${params.requestId}` : ""}${params.failure ? `: ${params.failure.reason}` : ""}`);
+    }
     if (motion.slice) lines.push(`  ${sliceText(motion.slice)}`);
     const lift = motion.inspect?.lift;
     if (Array.isArray(lift)) lines.push(`  lift above the ground (y from cell): ${lift.map((v) => v ?? "-").join(", ")} px`);
@@ -2288,7 +2375,7 @@ function compactMotion(motion) {
     ...(motion.kind ? { kind: motion.kind } : {}),
     // The 0.5.0 fields follow the same rule: only when the motion has them.
     ...(motion.direction ? { direction: motion.direction } : {}),
-    ...(motion.source === "breathe" || motion.source === "mirror" ? { source: motion.source } : {}),
+    ...(motion.source === "breathe" || motion.source === "mirror" || motion.source === "gif" ? { source: motion.source } : {}),
     ...(motion.source === "mirror" && motion.mirrorOf ? { mirrorOf: motion.mirrorOf } : {}),
     ...(motion.variants && Object.keys(motion.variants).length ? { variants: Object.keys(motion.variants) } : {}),
     // Loop motions only, and only once recorded WHOLE — the same rule `kind`
@@ -2359,6 +2446,15 @@ const OPTIONS = {
   "set-sheet": {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
     model: { type: "string" }, prompt: { type: "string" }, background: { type: "string" }, status: { type: "string" },
+  },
+  "gif-prompt": {
+    motion: { type: "string" }, action: { type: "string" }, frames: { type: "string" }, state: { type: "string" },
+  },
+  "set-gif": {
+    motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
+    model: { type: "string" }, prompt: { type: "string" }, status: { type: "string" },
+    report: { type: "string" }, uploaded: { type: "boolean", default: false },
+    notes: { type: "string" }, "request-id": { type: "string" },
   },
   "set-keyframe": {
     motion: { type: "string" }, file: { type: "string" }, alpha: { type: "string" },
@@ -3091,7 +3187,7 @@ function main() {
       const isCutscene = kind === "cutscene";
       // A mirror plays on its source's grid, at its source's rate, and the
       // run that flips it says both: register-run takes them from it.
-      const timedByRun = values.source === "breathe" || values.source === "mirror";
+      const timedByRun = RUN_TIMED_SOURCES.includes(values.source);
       const gridFromRun = isLoop || timedByRun || isCutscene;
       const gridSide = (flag, raw) => (gridFromRun
         ? num(raw, flag, { integer: true, min: 1, fallback: 1 })
@@ -3155,7 +3251,7 @@ function main() {
         // needs them from somebody: said below, once the flags given in this
         // same call are in.
         const was = motion.source;
-        if ((was === "breathe" || was === "mirror") && (source === "sheet" || source === "video")) {
+        if (RUN_TIMED_SOURCES.includes(was) && (source === "sheet" || source === "video")) {
           const timed = values.fps !== undefined || values.loop || values["no-loop"];
           sourceNotes.push(() => `note: ${motion.id} was planned as a ${was}, whose run brings the grid${timed ? "" : ", the rate and the loop"} — ${source === "sheet" ? "sheet-prompt --frames <n> draws the grid" : "from-video brings the grid"}${timed ? "" : `; the ${motion.fps} fps and loop=${motion.loop} here are placeholders: set-motion --fps <n> --loop|--no-loop`}`);
         }
@@ -3293,8 +3389,8 @@ function main() {
       if (!doc.sprite.character.description?.trim()) {
         notes.push("note: the character has no description — the references carry the identity alone (set-character --description)");
       }
-      if (motion.source === "video") {
-        notes.push(`note: ${motion.id} was declared --source video; register-run records sheet when this sheet's frames land`);
+      if (motion.source === "video" || motion.source === "gif") {
+        notes.push(`note: ${motion.id} was declared --source ${motion.source}; register-run records sheet when this sheet's frames land`);
       }
       recordPromptParts(motion, built.parts, built.prompt);
       saveProject(dir, doc);
@@ -3385,6 +3481,196 @@ function main() {
       emit(values, motion, [placeholder
         ? `${motion.id}: reserved ${assetId} for ${uri} (generating — measured once the file lands)`
         : `${motion.id}: sheet ${uri} registered as ${assetId} (${motion.status})`]);
+      break;
+    }
+
+    case "gif-prompt": {
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      if (motion.kind) {
+        fail(`gif-prompt: '${motion.id}' is a ${motion.kind} — a GIF gives a sprite motion its frames`);
+      }
+      if (motion.source === "breathe" || motion.source === "mirror") {
+        fail(`gif-prompt: '${motion.id}' is a ${motion.source} motion — its frames are made from ${motion.source === "mirror" ? "another motion's frames" : "one still"}, not drawn from a prompt${(motion.frames ?? []).length ? `; to draw it instead, remove-motion --motion ${motion.id} and add it again with --source gif` : `; to draw it instead: set-motion --motion ${motion.id} --source gif, then gif-prompt`}`);
+      }
+      const action = requireFlag(values.action, "--action");
+      const frames = num(requireFlag(values.frames, "--frames"), "--frames", { integer: true, min: 1 });
+      const state = values.state === undefined ? undefined : oneOf(values.state, [...SHEET_STATES, "generic"], "--state");
+      let built;
+      try {
+        built = buildGifPrompt({ character: doc.sprite.character, motion, refs: doc.sprite.refs, action, state, frames });
+      } catch (error) {
+        fail(`gif-prompt: ${error.message}`);
+      }
+      const notes = [];
+      if (!doc.sprite.character.description?.trim()) {
+        notes.push("note: the character has no description — the references carry the identity alone (set-character --description)");
+      }
+      if (motion.source !== "gif") {
+        notes.push(`note: ${motion.id} is declared --source ${motion.source ?? "sheet"}; register-run records gif when the GIF's frames land`);
+      }
+      recordPromptParts(motion, built.parts, built.prompt);
+      saveProject(dir, doc);
+
+      const onDisk = (uri) => (values.dir === undefined ? uri : join(values.dir, uri));
+      const attach = [...new Set(built.attach.map((refId) => {
+        const ref = doc.sprite.refs.find((r) => r.id === refId);
+        return onDisk(doc.assets.find((a) => a.id === ref.asset)?.uri ?? `refs/${refId}.png`);
+      }))];
+      if (!attach.length) notes.push("note: no references are registered — the GIF would be a fresh draw of the description, not this character (add-ref first)");
+      // The motion's planned rate as the GIF's frame time, on fal's 10 ms
+      // grid and inside its 20–2000 ms range. from-gif reads the rate back
+      // off the file, so what lands is what plays.
+      const frameDurationMs = Math.min(2000, Math.max(20, Math.round(1000 / motion.fps / 10) * 10));
+      const output = onDisk(`motions/${motion.id}/gif-raw.gif`);
+      const payload = {
+        motion: motion.id,
+        state: built.state,
+        frames,
+        prompt: built.prompt,
+        promptParts: motion.promptParts,
+        attach,
+        frameCount: frames,
+        frameDurationMs,
+        imageSize: GIF_FRAME_SIZE,
+        background: "transparent",
+        output,
+        sides: SIDE_GEOMETRY,
+        notes,
+      };
+      emit(values, payload, [built.prompt]);
+      if (!values.json) {
+        console.error(`recorded ${built.parts.builder} on ${motion.id}: ${frames} frames, state ${built.state}; guards ${built.parts.guards.join(", ")}`);
+        console.error(`gif: --frame-count ${frames} --frame-duration-ms ${frameDurationMs} --image-size ${GIF_FRAME_SIZE} --background transparent --output ${output}`);
+        console.error(`attach in this order: ${attach.join(", ") || "(no references registered)"}`);
+        const asymmetric = doc.sprite.character.asymmetric;
+        const facing = motion.direction ?? doc.sprite.character.facing;
+        if (typeof asymmetric === "string" && asymmetric.trim() && sideClause(facing)) console.error(`sides: ${SIDE_GEOMETRY[facing]}`);
+        for (const note of notes) console.error(note);
+      }
+      break;
+    }
+
+    case "set-gif": {
+      const doc = loadProject(dir);
+      const motion = findMotion(doc, requireFlag(values.motion, "--motion"));
+      if (motion.kind) fail(`set-gif: '${motion.id}' is a ${motion.kind} — a GIF gives a sprite motion its frames`);
+      if (motion.source === "breathe" || motion.source === "mirror") {
+        fail(`set-gif: '${motion.id}' is a ${motion.source} motion — set-motion --motion ${motion.id} --source gif first (only before it has frames)`);
+      }
+      const assetId = `${motion.id}-gif-raw`;
+      const owner = `motion '${motion.id}'`;
+      const existing = doc.assets.find((a) => a.id === assetId) ?? null;
+      const leg = values.uploaded ? "upload"
+        : values.status === "generating" ? "reserve"
+          : values.status === "failed" ? "fail"
+            : values.report !== undefined ? "land"
+              : null;
+      if (!leg) {
+        fail("set-gif: say which leg — '--status generating' before the generate_gif.mjs call (with --file, --from, --model, --prompt), '--report <its --json output>' after it lands, '--status failed --notes \"<why>\"' when it failed, or '--uploaded --file <gif>' for a GIF the user brought");
+      }
+      const refuse = (flags, why) => {
+        for (const [flag, key] of flags) if (values[key] !== undefined && values[key] !== false) fail(`set-gif ${flag}: ${why}`);
+      };
+      if (leg !== "fail" && values.notes !== undefined) fail("set-gif --notes: only a failed GIF carries a reason (--status failed)");
+
+      if (leg === "upload") {
+        refuse([["--model", "model"], ["--prompt", "prompt"], ["--from", "from"], ["--report", "report"], ["--request-id", "request-id"], ["--status", "status"]],
+          "a GIF the user brought was not generated here — --uploaded takes --file only");
+        const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
+        const file = requireFile(dir, uri, "--file");
+        upsertAsset(doc, {
+          id: assetId, type: "image", uri, name: `${motion.id} GIF (uploaded)`,
+          metadata: gifMetadata(file), createdAt: now, status: "ready",
+        }, owner);
+        setEdge(doc, edge(assetId, [], operation("upload", now, {}, [], "human")));
+        motion.gifRaw = assetId;
+        motion.status = "processing";
+      } else if (leg === "reserve") {
+        refuse([["--report", "report"], ["--request-id", "request-id"]], "the reserving call comes before the request — land it afterwards with --report");
+        const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
+        const model = requireFlag(values.model, "--model");
+        const prompt = requireFlag(values.prompt, "--prompt");
+        const inputs = parseInputs(doc, values.from, "--from");
+        if (!inputs.length) {
+          fail("set-gif --from: name the references the GIF is generated from, in the order gif-prompt printed (ref-<refId>,…) — every generation carries the character references");
+        }
+        upsertAsset(doc, {
+          id: assetId, type: "image", uri, name: `${motion.id} GIF (generated)`,
+          metadata: {}, createdAt: now, status: "generating",
+        }, owner);
+        setEdge(doc, edge(assetId, inputs, operation("generate", now, { model, prompt }, inputs)));
+        motion.gifRaw = assetId;
+        motion.status = "generating";
+      } else if (leg === "land") {
+        refuse([["--file", "file"], ["--from", "from"], ["--prompt", "prompt"], ["--status", "status"], ["--request-id", "request-id"], ["--model", "model"]],
+          "landing takes everything from --report, the generate_gif.mjs --json output — the request, the model and the file");
+        if (!existing || existing.status !== "generating") {
+          fail(`set-gif --report: ${assetId} is ${existing ? existing.status : "not registered"} — reserve it BEFORE the paid call (set-gif --status generating --file … --from … --model … --prompt …), then land it`);
+        }
+        const report = readJsonReport(values.report, "--report");
+        const path = Array.isArray(report.files) ? report.files[0] : undefined;
+        if (typeof path !== "string" || !path) fail("--report: no 'files' — is this 'generate_gif.mjs --json' output?");
+        // The report names the file as generate_gif.mjs was given it: from
+        // the workspace, where both commands run — not from --dir.
+        const uri = toUri(dir, resolve(path), "--report files[0]");
+        if (uri !== existing.uri) fail(`--report: the GIF landed at ${uri}, but ${assetId} was reserved for ${existing.uri}`);
+        const file = requireFile(dir, uri, "--report files[0]");
+        const metadata = gifMetadata(file);
+        if (report.frameCount !== undefined && report.frameCount !== metadata.frames) {
+          fail(`--report says ${report.frameCount} frames but ${uri} holds ${metadata.frames}`);
+        }
+        const planned = Number((motion.promptParts?.guards ?? []).find((g) => /^frames:\d+$/.test(g))?.slice(7));
+        if (Number.isInteger(planned) && planned !== metadata.frames) {
+          fail(`--report: ${uri} holds ${metadata.frames} frames but the recorded GIF prompt asked for ${planned} — record it as failed (set-gif --status failed --notes …)`);
+        }
+        const previous = doc.provenance.find((e) => e.toAssetId === assetId);
+        const params = previous?.operation?.params ?? {};
+        const inputs = Array.isArray(params.inputs) ? params.inputs : previous?.fromAssetId ? [previous.fromAssetId] : [];
+        upsertAsset(doc, {
+          id: assetId, type: "image", uri, name: existing.name,
+          metadata, createdAt: now, status: "ready",
+        }, owner);
+        setEdge(doc, edge(assetId, inputs, operation("generate", previous?.operation?.timestamp ?? now, {
+          model: typeof report.model === "string" && report.model ? report.model : params.model,
+          prompt: params.prompt,
+          provider: "fal",
+          endpoint: typeof report.endpoint === "string" ? report.endpoint : undefined,
+          requestId: typeof report.requestId === "string" ? report.requestId : undefined,
+          finishedAt: now,
+        }, inputs)));
+        motion.gifRaw = assetId;
+        motion.status = "processing";
+      } else {
+        refuse([["--file", "file"], ["--from", "from"], ["--prompt", "prompt"], ["--report", "report"], ["--model", "model"]],
+          "recording a failure changes nothing about the request");
+        const reason = String(requireFlag(values.notes, "--notes")).trim();
+        if (!reason) fail("set-gif --notes: the reason is required — the user reads it on the stage");
+        if (!existing || existing.status === "ready") {
+          fail(`set-gif --status failed: ${assetId} is ${existing ? "ready" : "not registered"} — only a reserved GIF can fail`);
+        }
+        const previous = doc.provenance.find((e) => e.toAssetId === assetId);
+        const params = previous?.operation?.params ?? {};
+        const inputs = Array.isArray(params.inputs) ? params.inputs : previous?.fromAssetId ? [previous.fromAssetId] : [];
+        upsertAsset(doc, { ...existing, metadata: {}, status: "failed" }, owner);
+        setEdge(doc, edge(assetId, inputs, operation(previous?.operation?.type ?? "generate", previous?.operation?.timestamp ?? now, {
+          ...params,
+          inputs: undefined,
+          requestId: values["request-id"] ?? params.requestId,
+          // Whether a failed job was billed is not knowable from here: fal
+          // reports no usage, and a job that ran may have been charged.
+          failure: { reason, at: now, billing: "unknown" },
+        }, inputs)));
+        motion.status = "failed";
+        motion.notes = reason;
+      }
+      saveProject(dir, doc);
+      const asset = doc.assets.find((a) => a.id === assetId);
+      emit(values, motion, [
+        leg === "reserve" ? `${motion.id}: reserved ${assetId} for ${asset.uri} (generating — land it with --report once the GIF is on disk)`
+          : leg === "fail" ? `${motion.id}: ${assetId} failed — ${motion.notes}`
+            : `${motion.id}: ${assetId} ${leg === "upload" ? "uploaded" : "landed"} — ${asset.metadata.frames} frames of ${asset.metadata.width}x${asset.metadata.height}${asset.metadata.frameDurationMs ? ` at ${asset.metadata.frameDurationMs} ms` : ""}; next: sprite-sheet.mjs from-gif ${values.dir === undefined ? asset.uri : join(values.dir, asset.uri)} --out ${values.dir === undefined ? `motions/${motion.id}` : join(values.dir, "motions", motion.id)} --name ${motion.id} … | register-run`,
+      ]);
       break;
     }
 
@@ -3593,6 +3879,25 @@ function main() {
         }
       }
 
+      // A `from-gif` run's frames are the GIF's own: their parent is the GIF
+      // asset `set-gif` registered — landed, so its request and model are on
+      // record before any frame claims to come from it.
+      const gifRun = run.source === "gif";
+      let gifAssetId = null;
+      if (gifRun) {
+        const asset = motion.gifRaw ? doc.assets.find((a) => a.id === motion.gifRaw) : null;
+        if (!asset) {
+          fail(`--run says these frames are a GIF's, but motion '${motion.id}' has no GIF registered. Register it first: set-gif --dir <character> --motion ${motion.id} (it becomes ${motion.id}-gif-raw)`);
+        }
+        if (asset.status !== "ready") {
+          fail(`--run: ${asset.id} is ${asset.status} — land it first (set-gif --motion ${motion.id} --report <generate_gif.mjs --json output>)${asset.status === "failed" ? "; a failed GIF has no frames to register" : ""}`);
+        }
+        if (typeof run.sourceGif !== "string" || !run.sourceGif) fail("--run: a gif summary names no 'sourceGif' — is this 'sprite-sheet.mjs from-gif --json' output?");
+        const cutFrom = toUri(dir, run.sourceGif, "--run sourceGif");
+        if (cutFrom !== asset.uri) fail(`--run was cut from ${cutFrom} but ${asset.id} is ${asset.uri}`);
+        gifAssetId = asset.id;
+      }
+
       let sheetAlphaId;
       if (run.sheetAlpha) {
         sheetAlphaId = `${motion.id}-sheet-alpha`;
@@ -3640,6 +3945,11 @@ function main() {
           setEdge(doc, edge(id, [mirror.source.frames[index]], operation("derive", now, {
             tool: TOOL, step: "mirror", frameIndex: index,
           })));
+          return id;
+        }
+        if (gifRun) {
+          // Frame i IS the GIF's frame i.
+          setEdge(doc, edge(id, [gifAssetId], operation("derive", now, { tool: TOOL, step: "from-gif", frameIndex: index })));
           return id;
         }
         const parents = fromVideo ? [videoAssetId] : (sourceId ? [sourceId] : []);
@@ -3823,6 +4133,7 @@ function main() {
       // is still a sheet's frames. `sheet` stays unwritten when nothing ever
       // claimed otherwise, because absent already means sheet.
       if (fromVideo || transitionRun) motion.source = "video";
+      else if (gifRun) motion.source = "gif";
       else if (breatheRun) motion.source = "breathe";
       else if (mirrorRun) motion.source = "mirror";
       else if (motion.source !== undefined && motion.source !== "sheet") motion.source = "sheet";
@@ -3892,7 +4203,7 @@ function main() {
       emit(values, warnings.length ? { ...motion, warnings } : motion, [
         loopRun
           ? `${motion.id}: ${frameIds.length} loop frames cut from ${videoAssetId} @ ${motion.fps}fps, ${Object.keys(exportIds).join(" + ") || "no exports"} registered (ready)`
-          : `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : breathe ? ` warped from ${stillId}` : mirror ? ` flipped from ${mirror.source.id}` : ""}, atlas + preview registered (ready)`,
+          : `${motion.id}: ${frameIds.length} frames${fromVideo ? ` sampled from ${videoAssetId}` : gifRun ? ` cut from ${gifAssetId}` : breathe ? ` warped from ${stillId}` : mirror ? ` flipped from ${mirror.source.id}` : ""}, atlas + preview registered (ready)`,
         ...(motion.inspect?.warnings ?? []),
       ]);
       for (const warning of warnings) console.error(`WARN: ${warning}`);
@@ -4119,7 +4430,7 @@ function main() {
       }
       const staleWhole = characterExportsHolding(doc, motion.id);
       const owned = new Set([
-        `${motion.id}-sheet-raw`,
+        `${motion.id}-sheet-raw`, `${motion.id}-gif-raw`,
         `${motion.id}-keyframe`, `${motion.id}-keyframe-alpha`,
         ...runOwnedIds(doc, motion.id),
         ...(motion.videos ?? []).map((v) => v.asset),

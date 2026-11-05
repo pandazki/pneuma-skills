@@ -644,9 +644,10 @@ export interface LoopClip {
  * `breathe` frames are warps of ONE still (`BreatheRecord`), made locally in
  * seconds; `mirror` frames are another motion's frames flipped left↔right
  * (`Motion.mirrorOf`). Neither was drawn frame by frame, which is why the
- * stage does not offer to realign them.
+ * stage does not offer to realign them. `gif` frames are every frame of one
+ * generated (or uploaded) animated GIF (`Motion.gifRaw`).
  */
-export const MOTION_SOURCES = ["sheet", "video", "breathe", "mirror"] as const;
+export const MOTION_SOURCES = ["sheet", "video", "breathe", "mirror", "gif"] as const;
 
 export type MotionSource = (typeof MOTION_SOURCES)[number];
 
@@ -772,6 +773,8 @@ export interface Motion {
   keyframe?: string;
   /** Loop motions: the same keyframe with its background removed. */
   keyframeAlpha?: string;
+  /** `source: "gif"`: the animated GIF the frames were cut from (`set-gif`). */
+  gifRaw?: string;
   sheetRaw?: string;
   sheetAlpha?: string;
   sheet?: string;
@@ -1633,6 +1636,9 @@ function parseMotion(value: unknown): Motion | null {
       : {}),
     ...(optionalStr(value.keyframeAlpha)
       ? { keyframeAlpha: value.keyframeAlpha as string }
+      : {}),
+    ...(optionalStr(value.gifRaw)
+      ? { gifRaw: value.gifRaw as string }
       : {}),
     ...(optionalStr(value.sheetRaw)
       ? { sheetRaw: value.sheetRaw as string }

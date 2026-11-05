@@ -12,8 +12,11 @@
  * maths in JS; every image is written by an ffmpeg filter chain.
  *
  * Subcommands: probe, key, flatten, slice, align, pack, gif, inspect, run,
- * contact, from-video, retime, loop, lineup, sizes, export, rive, fit, breathe,
- * pixel, mirror, recolor, recolor-palette.
+ * contact, from-video, from-gif, retime, loop, lineup, sizes, export, rive, fit,
+ * breathe, pixel, mirror, recolor, recolor-palette.
+ *
+ * `from-gif` is the one way frames come out of an animated GIF: every frame
+ * once, its own alpha, its own delays. The clip commands refuse a GIF.
  *
  * `pixel` (and `run --pixel`) snaps generated pixel art onto the pixel grid
  * it was drawn on; the lattice itself lives in `pixel-lattice.mjs`.
@@ -350,7 +353,7 @@ const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 const SUBCOMMANDS = [
   "guide",
   "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
-  "inspect", "run", "contact", "from-video", "retime", "loop", "transition", "lineup", "sizes", "export", "rive",
+  "inspect", "run", "contact", "from-video", "from-gif", "retime", "loop", "transition", "lineup", "sizes", "export", "rive",
   "fit", "breathe", "pixel",
   "mirror", "recolor", "recolor-palette",
   "pack-split", "split-facings", "pack-plate", "split-items",
@@ -706,6 +709,29 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       a jump's travel above the floor it takes off from (see align); the
       summary's lift says how far each frame rose.
       The clip is only read: it is never copied or moved into <motionDir>.
+
+  from-gif <gif> --out <motionDir> --name <motionId>
+      [--fps N] [--loop|--no-loop] [--anchor bottom|center]
+      [--x-from cell|trend|feet|bbox|body] [--y-from anchor|cell] [--no-clean]
+      [--cell auto|WxH] [--pad ${DEFAULT_PAD}] [--smooth] [--scale 1] [--nearest] [--width W]
+      [--no-webp] [--cols C] [--threshold ${DEFAULT_THRESHOLD}]
+      The GIF source: EVERY frame of an animated GIF, once and in order, into
+      <motionDir>/${CELLS_DIRNAME}/NN.png with the GIF's own (1-bit) alpha — nothing is
+      sampled, keyed or invented — then clean -> align -> pack -> gif (+webp)
+      -> inspect, the chain 'run' drives. A GIF with no transparent background
+      is refused. --fps defaults to the GIF's own rate, frames / total delay
+      (a 12-frame GIF at 90 ms a frame plays at 11.111 fps); frames with
+      different delays are played at that one rate, and warned about.
+      --loop / --no-loop decide the atlas and the preview only: every frame
+      is kept either way. The frames sit on one canvas, as a clip's do:
+      --x-from defaults to cell here (no horizontal re-placement — the model
+      already placed the body; 'feet' pins a stepping foot and adds sway),
+      trend is the walk/run choice when the figure slides across the canvas,
+      and --y-from cell keeps a jump's drawn height. The summary's 'sourceGif' is the GIF; 'gif' is the
+      preview, as in every run. The GIF is only read.
+      Every clip command (contact, from-video, pack-split, loop, transition,
+      retime) refuses a GIF and points here: a GIF has no frame rate, and the
+      one ffprobe guesses misplaces every sample.
 
   retime <clip> --keep <ranges> --out <mp4> [--fps N]
       Replay a clip's OWN frames in another order: an apex hold cut short, a
@@ -4110,6 +4136,7 @@ function everyTimes({ start, end, every, last }) {
  * clamp it, and the ones that report the window the user asked for do not.
  */
 function clipWindow(input, { trimStart, trimEnd, label }) {
+  refuseGifClip(input, label);
   const duration = probeDuration(input, label);
   const start = trimStart ?? 0;
   const end = trimEnd ?? duration;
@@ -5329,6 +5356,206 @@ function stepFromVideo(clip, options) {
 }
 
 // ---------------------------------------------------------------------------
+// from-gif — an animated GIF's own frames
+// ---------------------------------------------------------------------------
+
+/**
+ * `from-gif`'s horizontal placement when none is asked for: `cell`, the
+ * frames where the model drew them. A GIF's frames share one canvas and one
+ * camera, so the drawn placement is the motion — measured 2026-11-05 on
+ * three GPT Image 2.6 GIFs (head drift added over the source's own):
+ * a 12-frame lantern attack, `feet` 14.4 px (max step 40 px, the stepping
+ * foot pinned) against `cell` 1.9 (source 1.8); an 8-frame walk in place,
+ * `feet` 10.9 against `cell`/`trend` 0.45 (source 0.45); a 16-frame idle,
+ * 0.44 under all three. A walk or run that slides across its canvas takes
+ * `--x-from trend`, which removes the slide and keeps the rest.
+ */
+const GIF_X_FROM = "cell";
+
+/** Whether `path` holds a GIF, by its signature — never by its name. */
+function isGif(path) {
+  const head = Buffer.alloc(6);
+  let read = 0;
+  try {
+    const fd = openSync(path, "r");
+    try {
+      read = readSync(fd, head, 0, head.length, 0);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+  const signature = head.toString("latin1", 0, read);
+  return signature === "GIF89a" || signature === "GIF87a";
+}
+
+/**
+ * The refusal every clip command gives a GIF. A GIF has no frame rate:
+ * ffprobe's `r_frame_rate` for one is a guess (a 12-frame GIF at 90 ms a
+ * frame reads as 89/4 = 22.25 fps), and the clip commands place their last
+ * seekable frame and their sample times with it — measured 2026-11-05,
+ * `from-video --frames 12` on that GIF sampled 0.472 s seven times and never
+ * reached the second half of the swing, and `--at 0.495` was refused as past
+ * the last frame. `from-gif` is the one path frames come out of a GIF by.
+ */
+function refuseGifClip(input, label) {
+  if (isGif(input)) {
+    fail(`${label}: ${input} is a GIF — a list of drawings with their own delays, not a clip with a frame rate, and sampling it by time repeats some drawings and skips others. Cut it with 'sprite-sheet.mjs from-gif', which takes every frame exactly once.`);
+  }
+}
+
+/**
+ * Every frame of a GIF, decoded exactly once and in order, into
+ * `<outDir>/NN.png`, and how long each one is shown — the one place this
+ * script decides how frames come out of a GIF.
+ *
+ * `-fps_mode passthrough` writes each decoded frame as it comes: no frame is
+ * duplicated or dropped to fit a rate the GIF does not have. ffmpeg's GIF
+ * decoder composites each frame with its disposal and keeps the GIF's own
+ * (1-bit) transparency, so nothing is keyed. The delays come from the
+ * packets, which carry each frame's own; a frame whose delay ffprobe cannot
+ * read takes the median of the others, and says so.
+ */
+function decodeGifFrames(input, outDir, label) {
+  const probe = spawnSync(
+    "ffprobe",
+    ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=duration_time", "-of", "csv=p=0", input],
+    { encoding: "utf-8" },
+  );
+  if (probe.error || probe.status !== 0) fail(`${label}: ffprobe could not read ${input}: ${(probe.stderr || "").trim()}`);
+  const raw = String(probe.stdout).trim().split("\n").map((line) => line.trim().replace(/,$/, "")).filter(Boolean);
+  if (raw.length < 2) fail(`${label}: ${input} holds ${raw.length} frame(s) — an animation needs at least 2`);
+  if (raw.length > MAX_FRAMES) fail(`${label}: ${input} holds ${raw.length} frames, over the ${MAX_FRAMES}-frame limit (frame files are two digits)`);
+  const read = raw.map((value) => Math.round(Number(value) * 1000));
+  const known = read.filter((ms) => Number.isFinite(ms) && ms > 0);
+  if (!known.length) fail(`${label}: ${input} carries no frame delays ffprobe can read`);
+  const fallbackMs = median(known);
+  const notes = [];
+  const delaysMs = read.map((ms, i) => {
+    if (Number.isFinite(ms) && ms > 0) return ms;
+    notes.push(i);
+    return fallbackMs;
+  });
+
+  resetFramesDir(outDir);
+  ffmpeg([
+    "-i", input, "-fps_mode", "passthrough", "-pix_fmt", "rgba", "-start_number", "0",
+    "--", join(outDir, "%02d.png"),
+  ], `${label} decode`);
+  const written = readdirSync(outDir).filter((name) => /^\d{2}\.png$/.test(name)).length;
+  if (written !== delaysMs.length) {
+    fail(`${label}: ${input} holds ${delaysMs.length} frames but ${written} decoded — the GIF is damaged`);
+  }
+  return {
+    delaysMs,
+    warnings: notes.length
+      ? [`frame(s) ${notes.map((i) => String(i).padStart(2, "0")).join(", ")} of the GIF carry no readable delay — shown for ${fallbackMs} ms, the median of the others`]
+      : [],
+  };
+}
+
+/**
+ * The GIF source: a generated (or uploaded) animated GIF, every frame of it,
+ * through the same clean -> align -> pack -> gif -> inspect chain `run` and
+ * `from-video` drive.
+ *
+ * A GIF's frames are drawings, so none is sampled, skipped or invented; the
+ * rate is the GIF's own (frames / total delay) unless `--fps` says otherwise.
+ * Its alpha is its own: a GIF with no transparent background is refused, not
+ * keyed. The GIF is read and never written — it is a registered asset
+ * (`sprite-project.mjs set-gif`), and `register-run` hangs each frame's
+ * provenance off it.
+ */
+function stepFromGif(gif, options) {
+  const input = resolve(gif);
+  if (!existsSync(input)) fail(`file not found: ${input}`);
+  if (!isGif(input)) fail(`from-gif: ${input} is not a GIF (it does not start with a GIF signature) — a clip is cut with from-video`);
+  const motionDir = resolve(options.out);
+  mkdirSync(motionDir, { recursive: true });
+
+  const cellsDir = join(motionDir, CELLS_DIRNAME);
+  const decoded = decodeGifFrames(input, cellsDir, "from-gif");
+  const { delaysMs } = decoded;
+  const warnings = [...decoded.warnings];
+  const count = delaysMs.length;
+  const durationMs = delaysMs.reduce((sum, ms) => sum + ms, 0);
+  const uniform = delaysMs.every((ms) => ms === delaysMs[0]);
+  const ownFps = round((count * 1000) / durationMs, 3);
+  if (!uniform && options.fps === null) {
+    warnings.push(`the GIF shows its frames for different times (${delaysMs.join(", ")} ms); the motion plays them at one rate, ${Math.max(1, ownFps)} fps, so a frame the GIF held longer plays shorter`);
+  }
+  if (ownFps < 1 && options.fps === null) {
+    warnings.push(`the GIF plays at ${ownFps} fps; the motion's rate is floored at 1 fps`);
+  }
+  const fps = options.fps ?? Math.max(1, ownFps);
+
+  const source = probeSize(join(cellsDir, frameName(0)), "from-gif");
+  const cleanStats = [];
+  const measures = [];
+  const coverages = [];
+  for (let index = 0; index < count; index++) {
+    const path = join(cellsDir, frameName(index));
+    const image = readRgba(path);
+    let rewrite = false;
+    if (options.clean) {
+      const result = cleanCell(image, options.threshold);
+      cleanStats.push({ index, ...result });
+      if (result.removedPixels) rewrite = true;
+    }
+    // The palette colour under a transparent pixel is not the character's,
+    // and a rescale would mix it into the edge.
+    if (zeroKeyedRgb(image, options.threshold)) rewrite = true;
+    if (rewrite) writeRgbaPng(path, image, `from-gif cell ${index}`);
+    const measure = measureFrame(image, options.threshold);
+    measures.push(measure);
+    coverages.push(measure.coverage);
+  }
+  const meanCoverage = coverages.reduce((a, b) => a + b, 0) / coverages.length;
+  if (meanCoverage > KEYED_OPAQUE_ALERT) {
+    fail(`from-gif: ${input} is ${(meanCoverage * 100).toFixed(0)}% opaque in every frame — it has no transparent background, and a GIF's plate is not keyed here. Generate it with --background transparent.`);
+  }
+  const cleaned = options.clean ? cleanSummary(cleanStats) : null;
+  if (cleaned) warnings.push(...cleaned.warnings);
+
+  const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, { ...options, fps, keyColor: null }, {
+    measures, sourceCell: source, warnings,
+  });
+
+  return {
+    motionDir,
+    name: options.name,
+    source: "gif",
+    // The GIF the frames were cut from. `gif` stays what it is in every run
+    // summary — the preview this run wrote — so register-run reads it alike.
+    sourceGif: input,
+    frameCount: count,
+    delaysMs,
+    duration: round(durationMs / 1000, 3),
+    grid: packed.grid,
+    keyed: false,
+    alphaCoverage: round(meanCoverage, 4),
+    ...(cleaned ? { cleaned: cleaned.cleaned } : {}),
+    cells: cellsDir,
+    frames: aligned.frames.map((f) => f.path),
+    sheet: packed.sheet,
+    atlas: packed.atlas,
+    gif: preview.gif,
+    ...(preview.webp ? { webp: preview.webp } : {}),
+    inspect: summary,
+    cell: aligned.cell,
+    fps,
+    loop: options.loop,
+    anchor: options.anchor,
+    xFrom: aligned.xFrom,
+    ...(aligned.lift ? { yFrom: aligned.yFrom, lift: aligned.lift } : {}),
+    ...(aligned.drift ? { drift: aligned.drift } : {}),
+    scale: options.scale,
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // retime — a clip's own frames, in another order
 // ---------------------------------------------------------------------------
 
@@ -5382,6 +5609,7 @@ function parseKeepRanges(raw) {
 function stepRetime(clip, options) {
   const input = resolve(clip);
   if (!existsSync(input)) fail(`file not found: ${input}`);
+  refuseGifClip(input, "retime");
   const out = resolve(options.out);
   if (extname(out).toLowerCase() !== ".mp4") {
     fail(`--out: expected an .mp4 path — a retimed plate is opaque H.264, which is what the interpolation and matting steps take (got '${options.out}')`);
@@ -9378,6 +9606,17 @@ const OPTIONS = {
     keyer: { type: "string" },
     "no-clean": { type: "boolean", default: false }, "body-height": { type: "string" },
   },
+  "from-gif": {
+    out: { type: "string" }, name: { type: "string" },
+    fps: { type: "string" }, loop: { type: "boolean", default: false },
+    "no-loop": { type: "boolean", default: false },
+    anchor: { type: "string" }, "x-from": { type: "string" }, "y-from": { type: "string" },
+    cell: { type: "string" }, pad: { type: "string" },
+    smooth: { type: "boolean", default: false }, scale: { type: "string" },
+    nearest: { type: "boolean", default: false }, cols: { type: "string" },
+    width: { type: "string" }, "no-webp": { type: "boolean", default: false },
+    threshold: { type: "string" }, "no-clean": { type: "boolean", default: false },
+  },
   "pack-split": {
     character: { type: "string" }, pack: { type: "string" }, frames: { type: "string" },
     loop: { type: "boolean", default: false }, "no-loop": { type: "boolean", default: false },
@@ -10083,6 +10322,34 @@ function main() {
       emit(values, out, [
         `${out.name}: ${out.frames.length} frames of ${out.cell.width}x${out.cell.height} sampled from ${basename(out.video)} at ${out.fps}fps → ${out.motionDir}`,
         ...residueLine(out.inspect),
+        ...(out.warnings.length ? out.warnings : ["no warnings"]),
+      ]);
+      break;
+    }
+    case "from-gif": {
+      const out = stepFromGif(requirePositional(positionals, "<gif>"), {
+        out: requireFlag(values.out, "--out"),
+        name: requireFlag(values.name, "--name"),
+        fps: values.fps === undefined ? null : num(values.fps, "--fps", { min: 1 }),
+        loop: pickLoop(values),
+        anchor: pickAnchor(values.anchor),
+        // The frames were drawn on one canvas by one call, so where the model
+        // put the body is the animation: `cell` keeps it (GIF_X_FROM).
+        xFrom: pickXFrom(values["x-from"] ?? GIF_X_FROM),
+        yFrom: pickYFrom(values["y-from"]),
+        cell: parseCell(values.cell),
+        pad: num(values.pad, "--pad", { integer: true, min: 0, fallback: DEFAULT_PAD }),
+        smooth: values.smooth,
+        scale: num(values.scale, "--scale", { min: 0.01, fallback: 1 }),
+        nearest: values.nearest,
+        cols: values.cols === undefined ? null : num(values.cols, "--cols", { integer: true, min: 1 }),
+        width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 1 }),
+        webp: !values["no-webp"],
+        threshold,
+        clean: !values["no-clean"],
+      });
+      emit(values, out, [
+        `${out.name}: all ${out.frameCount} frames of ${basename(out.sourceGif)} at ${out.fps}fps, ${out.cell.width}x${out.cell.height} → ${out.motionDir}`,
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;

@@ -124,3 +124,36 @@ export declare function buildSheetPrompt(input: {
   /** Ref ids the text assumes are attached, in order; the caller appends the rhythm sheet, then the guide. */
   attach: string[];
 };
+
+/** The version of the GIF prompt text. */
+export declare const GIF_PROMPT_BUILDER: string;
+/** The frame counts a GIF motion is drawn at (measured up to 16). */
+export declare const GIF_FRAME_RANGE: Readonly<{ min: number; max: number }>;
+/** A sheet guard's sentence said of the frames of one animation; throws when a cell, sheet or grid is left in it. */
+export declare function gifWording(sentence: string): string;
+export declare function gifGuards(input: {
+  character: SheetCharacter;
+  motion: SheetMotion;
+  state: SheetState;
+  frames: number;
+  anchor?: boolean;
+}): string[];
+export declare function renderGifPrompt(
+  input: { character: SheetCharacter; motion: SheetMotion },
+  parts: SheetPromptParts,
+): string;
+export declare function buildGifPrompt(input: {
+  character: SheetCharacter;
+  motion: SheetMotion;
+  refs?: SheetRef[];
+  action: string;
+  state?: SheetState;
+  frames: number;
+}): {
+  prompt: string;
+  parts: SheetPromptParts;
+  state: SheetState;
+  frames: number;
+  /** Ref ids the text assumes are attached, in order. */
+  attach: string[];
+};

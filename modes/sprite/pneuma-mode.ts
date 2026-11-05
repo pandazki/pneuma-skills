@@ -165,6 +165,12 @@ function describeMotion(
         ? `Source: mirror of ${motion.mirrorOf} (its frames flipped left↔right)`
         : "Source: mirror (its frames flipped left↔right)",
     );
+  } else if (motion.source === "gif") {
+    lines.push(
+      motion.gifRaw
+        ? `Source: GIF (every frame of ${motion.gifRaw})`
+        : "Source: GIF (every frame of one animated GIF)",
+    );
   }
   lines.push(`Frames: ${motion.frames.length}`);
   // Its baked colourways — what the Export tab offers besides the motion's own files.
