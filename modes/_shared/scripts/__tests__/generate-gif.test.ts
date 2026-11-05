@@ -138,7 +138,7 @@ describe("generateGif", () => {
       { prompt: "Idle", output, apiKey: "k", frameCount: 12, frameDurationMs: 90, imageUrls: [turnaround], background: "transparent" },
       { runJob: job(), download: async () => gif(12, { delayCs: 9 }) },
     );
-    expect(readFileSync(output)).toEqual(gif(12, { delayCs: 9 }));
+    expect(readFileSync(output).equals(gif(12, { delayCs: 9 }))).toBe(true);
     expect(existsSync(`${output}.tmp`)).toBe(false);
     expect(result).toMatchObject({
       backend: "fal",

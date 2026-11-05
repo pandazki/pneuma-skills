@@ -245,6 +245,16 @@ describe("extractContext — routes, directions, breathe and mirror", () => {
     expect(mirror).toContain("Source: mirror of walk (its frames flipped left↔right)");
   });
 
+  test("a GIF motion names the GIF its frames are", () => {
+    const body = JSON.parse(withWalk());
+    body.sprite.motions.push({
+      id: "swing", label: "Swing", prompt: "", grid: { rows: 3, cols: 4 }, fps: 11.111, loop: false, anchor: "bottom",
+      status: "ready", source: "gif", gifRaw: "swing-gif-raw", frames: [], videos: [],
+    });
+    const context = extractSpriteContext({ address: { contentSet: "mini", motion: "swing" } } as never, files({ "mini/project.json": JSON.stringify(body) }));
+    expect(context).toContain("Source: GIF (every frame of swing-gif-raw)");
+  });
+
   test("a breathe's context carries what a re-run starts from: the boundary it used, and a manual torso", () => {
     const body = JSON.parse(withWalk());
     body.sprite.motions.push({

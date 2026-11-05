@@ -514,3 +514,164 @@ export function buildSheetPrompt({ character, motion, refs = [], action, state, 
   ];
   return { prompt, parts, state: chosen, geometry, attach };
 }
+
+// ---------------------------------------------------------------------------
+// The GIF prompt — the same character, one animated GIF instead of a sheet
+// ---------------------------------------------------------------------------
+
+/** The version of the GIF text below; bumps with any change to a sentence. */
+export const GIF_PROMPT_BUILDER = "gif-prompt/1";
+
+/** The frame counts a GIF motion is drawn at — 8, 12 and 16 were measured
+ *  (2026-11-05); fal accepts up to 64, but nothing past 16 has been looked at. */
+export const GIF_FRAME_RANGE = Object.freeze({ min: 2, max: 16 });
+
+/**
+ * A sheet sentence said of a GIF. The state guards and facing locks were
+ * written, and measured, for cells of a sheet; the GIF prompt says the same
+ * things of frames of one animation, through this one fixed mapping, so
+ * there is one text per guard. A sentence that still names a cell, a sheet
+ * or a grid afterwards is a guard this mapping does not cover yet: refused,
+ * not sent.
+ */
+const GIF_WORDING = [
+  ["inside the safe area of its own cell", "inside the frame with a clear margin"],
+  ["inside its own cell", "inside the frame"],
+  ["inside the safe area", "inside the frame with a clear margin"],
+  ["across the cell", "across the frame"],
+  ["in every cell", "in every frame"],
+  ["in one cell at most", "in one frame at most"],
+  ["Every cell", "Every frame"],
+  ["the whole sheet", "the whole animation"],
+];
+
+export function gifWording(sentence) {
+  let text = sentence;
+  for (const [from, to] of GIF_WORDING) text = text.split(from).join(to);
+  const left = /\b(cells?|sheets?|grids?)\b/i.exec(text);
+  if (left) throw new Error(`${GIF_PROMPT_BUILDER}: the sentence still speaks of a ${left[1].toLowerCase()} — add its wording to GIF_WORDING: ${text}`);
+  return text;
+}
+
+/** The clause ids a GIF prompt carries, in the order its parts record them. */
+export function gifGuards({ character, motion, state, frames, anchor = false }) {
+  if (!Number.isInteger(frames) || frames < GIF_FRAME_RANGE.min || frames > GIF_FRAME_RANGE.max) {
+    throw new Error(`--frames: a GIF motion is drawn at ${GIF_FRAME_RANGE.min} to ${GIF_FRAME_RANGE.max} frames (got ${frames})`);
+  }
+  const guards = [`frames:${frames}`];
+  if (motion.direction) {
+    if (!DIRECTIONS.includes(motion.direction)) throw new Error(`unknown direction '${motion.direction}'`);
+    guards.push(`direction:${motion.direction}`);
+    if (anchor) guards.push(`anchor:${motion.direction}`);
+  }
+  if (typeof character?.asymmetric === "string" && character.asymmetric.trim() !== "") guards.push("asymmetric");
+  guards.push(`state:${state}`);
+  guards.push(motion.loop ? "loop-close" : "one-shot-end");
+  return guards;
+}
+
+function readGifGuards(guards) {
+  const read = { frames: null, direction: null, anchor: null, asymmetric: false, state: null, ending: null };
+  for (const id of guards) {
+    let m;
+    if ((m = /^frames:(\d+)$/.exec(id)) && Number(m[1]) >= GIF_FRAME_RANGE.min && Number(m[1]) <= GIF_FRAME_RANGE.max) read.frames = Number(m[1]);
+    else if ((m = /^direction:([\w-]+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.direction = m[1];
+    else if ((m = /^anchor:([\w-]+)$/.exec(id)) && DIRECTIONS.includes(m[1])) read.anchor = m[1];
+    else if (id === "asymmetric") read.asymmetric = true;
+    else if ((m = /^state:(\w+)$/.exec(id)) && (SHEET_STATES.includes(m[1]) || m[1] === "generic")) read.state = m[1];
+    else if (id === "loop-close" || id === "one-shot-end") read.ending = id;
+    else throw new Error(`${GIF_PROMPT_BUILDER} does not know the clause '${id}'`);
+  }
+  if (!read.frames) throw new Error("the guards name no frame count (frames:<n>)");
+  if (!read.state) throw new Error("the guards name no state (state:<name>)");
+  if (!read.ending) throw new Error("the guards name no ending (loop-close or one-shot-end)");
+  if (read.anchor && read.anchor !== read.direction) throw new Error(`anchor:${read.anchor} without direction:${read.anchor}`);
+  return read;
+}
+
+/**
+ * The GIF prompt text for recorded parts — the sheet prompt's grammar (style
+ * anchor verbatim, subject and identity, motion, background) with frames of
+ * one animation where the sheet has cells of a grid, and a transparent
+ * background where the sheet has a white plate: a GIF is asked for with
+ * `background: transparent` and its 1-bit alpha is used as it comes.
+ * Deterministic: the same character, motion and parts give the same string.
+ */
+export function renderGifPrompt({ character, motion }, parts) {
+  if (!parts || parts.builder !== GIF_PROMPT_BUILDER) {
+    throw new Error(`this builder is ${GIF_PROMPT_BUILDER}; it cannot render parts built by ${parts?.builder ?? "nothing"}`);
+  }
+  const style = typeof character?.style === "string" ? character.style.trim() : "";
+  if (!style) throw new Error("the character has no style sentence — record it first (set-character --style \"…\")");
+  if (whole(character?.pixel?.logicalHeight)) {
+    throw new Error("a pixel-art character's frames are snapped onto its pixel lattice and quantised to its pinned palette, which from-gif does not do — draw its motions as sheets (run --pixel)");
+  }
+  const action = typeof parts.action === "string" ? parts.action.trim() : "";
+  if (!action) throw new Error("--action: the motion plan is required — the phases by frame, in your words");
+  const g = readGifGuards(parts.guards);
+  const n = g.frames;
+  const description = typeof character.description === "string" ? character.description.trim() : "";
+
+  const text = [];
+  // 1. The style anchor, verbatim.
+  text.push(closed(style));
+  // 2. What the file is, and how the character sits in every frame.
+  text.push(`One animated GIF of ${n} frames on one fixed canvas: the whole character exactly once in every frame, at the same size, with a clear margin of empty background on every side — anything the character holds or wears that moves included — and nothing cut off by the edge of the frame.`);
+  // 3. The subject, its facing, and identity over motion.
+  text.push("The same character in every frame, matching the attached references exactly.");
+  if (description) text.push(closed(description));
+  text.push("Keep white and pale details inside the character — highlights, eye whites, pale hair or clothing — fully opaque; only the background is transparent.");
+  if (g.direction) text.push(gifWording(FACING_LOCK[g.direction]));
+  else if (character.facing === "left" || character.facing === "right") text.push(`The character faces ${character.facing}.`);
+  if (g.anchor) {
+    text.push(`The attached ${g.anchor}-facing anchor is authoritative for that facing: match its view in every frame, while the other references carry the identity.`);
+  }
+  if (VIEW_TEXT[character.view]) text.push(VIEW_TEXT[character.view]);
+  text.push("Fixed camera: consistent body proportions, drawing scale and camera distance in every frame, and ground contacts share one baseline while the character stands on the ground.");
+  text.push("The references own the identity — face, hair shape, markings, palette, outline weight, proportions, outfit and props stay exactly as they show, and whatever is worn or held on one side stays on that side. This animation owns motion only: spend the variation on pose, limb contacts, body height, torso lean, head bob, and hair and cloth follow-through. Prefer a subtler animation over any change that alters the character's identity.");
+  if (g.asymmetric) {
+    const sentence = typeof character.asymmetric === "string" ? character.asymmetric.trim() : "";
+    if (!sentence) throw new Error("the asymmetric clause needs character.asymmetric");
+    text.push(`These details are side-specific and never flip or change sides in any frame: ${closed(sentence)}`);
+    const facing = g.direction ?? (character.facing === "left" || character.facing === "right" ? character.facing : null);
+    const sides = facing ? sideClause(facing) : null;
+    if (sides) text.push(sides);
+  }
+  // 4. The motion: the agent's plan, then what the state demands.
+  text.push(`The motion (${plural(n, "frame")}, ${g.ending === "loop-close" ? "looping" : "played once"}): ${closed(action)}`);
+  text.push(gifWording(stateText(g.state, g.direction)));
+  text.push(g.ending === "loop-close"
+    ? `Frame ${n} leads smoothly into frame 1 on the next beat, with compatible movement direction and without an extra hold: it is the pose just before frame 1, not a copy of it.`
+    : `Frame ${n} is the pose the motion ends on.`);
+  text.push("Show it through pose, expression and silhouette, never through effects: nothing detached from the character — no floating sparkles, symbols, smoke, dust, motion arcs, speed lines, afterimages, smears, glows or impact bursts.");
+  // 5. The background.
+  text.push("A fully transparent background in every frame. No floor, no ground line, no drop shadow, no ground shadow, no scenery, no text, no motion blur.");
+  return text.join(" ");
+}
+
+/**
+ * Build a GIF prompt for a motion: choose the guards, record the parts,
+ * render the text. The references are attached in the order a sheet attaches
+ * them (`buildSheetPrompt`): this direction's anchor first, then every other
+ * reference as registered.
+ */
+export function buildGifPrompt({ character, motion, refs = [], action, state, frames }) {
+  const chosen = state ?? stateOf(motion);
+  if (!(SHEET_STATES.includes(chosen) || chosen === "generic")) {
+    throw new Error(`--state: expected ${[...SHEET_STATES, "generic"].join(", ")}, got '${chosen}'`);
+  }
+  const anchorRef = motion.direction
+    ? refs.find((r) => r.role === "anchor" && r.direction === motion.direction) ?? null
+    : null;
+  const parts = {
+    builder: GIF_PROMPT_BUILDER,
+    action: typeof action === "string" ? action.trim() : "",
+    guards: gifGuards({ character, motion, state: chosen, frames, anchor: Boolean(anchorRef) }),
+  };
+  const prompt = renderGifPrompt({ character, motion }, parts);
+  const attach = [
+    ...(anchorRef ? [anchorRef.id] : []),
+    ...refs.filter((r) => r.role !== "anchor").map((r) => r.id),
+  ];
+  return { prompt, parts, state: chosen, frames, attach };
+}
