@@ -451,6 +451,37 @@ export interface SpriteAddress {
  * frame written as `"later"` is not a frame and is dropped rather than
  * becoming `NaN` three layers down.
  */
+/** The keys of a sprite address — they belong inside `params.address`. */
+const ADDRESS_KEYS = ["contentSet", "motion", "ref", "item", "frame"] as const;
+
+/**
+ * Why an action's params carry no address the viewer can act on, or null.
+ *
+ * `parseAddress` reads anything that is not an object as the empty address,
+ * and the empty address resolves to "the character" — so `navigate-to
+ * { contentSet, motion }` used to answer success with the stage unmoved, and
+ * the 2026-11-05 cold-start agent captured the wrong motion. Address keys at
+ * the top level of params, a non-object `address`, and (when `required`) no
+ * address at all are refused with the shape that works instead.
+ */
+export function addressParamsProblem(
+  action: string,
+  params: Record<string, unknown> | undefined,
+  { required }: { required: boolean },
+): string | null {
+  const shape = `${action} takes the place in params.address, a ViewerAddress: { "address": { "contentSet": "<set>", "motion": "<id>", "frame": 0 } }${action === "navigate-to" ? ` (with "tab" beside it to open a panel tab; "tab" alone opens it for the motion on stage)` : ""}`;
+  const stray = ADDRESS_KEYS.filter((key) => params?.[key] !== undefined);
+  if (stray.length) {
+    return `${shape}. ${stray.map((key) => `"${key}"`).join(", ")} ${stray.length > 1 ? "were" : "was"} given at the top level of params, where nothing reads ${stray.length > 1 ? "them" : "it"} — not acted on.`;
+  }
+  const address = params?.address;
+  if (address !== undefined && (typeof address !== "object" || address === null || Array.isArray(address))) {
+    return `${shape}. params.address was ${JSON.stringify(address)}, not an object — not acted on.`;
+  }
+  if (required && address === undefined) return `${shape}. No address was given — not acted on.`;
+  return null;
+}
+
 export function parseAddress(raw: unknown): SpriteAddress {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
   const record = raw as Record<string, unknown>;

@@ -215,3 +215,47 @@ describe("navigate-to opens a panel tab", () => {
     await stage.unmount();
   });
 });
+
+describe("an address outside params.address is refused, not answered as success", () => {
+  // The 2026-11-05 cold-start trial sent `navigate-to { contentSet, motion }`:
+  // the answer was success with the stage still on idle, and the agent
+  // captured the wrong motion.
+  test("navigate-to with the address keys at the top level, with nothing, or with a non-object address", async () => {
+    const stage = await mount(withPlanned());
+    for (const [id, params] of [
+      ["s1", { contentSet: "mini", motion: "hop" }],
+      ["s2", {}],
+      ["s3", { address: "mini/hop" }],
+      ["s4", { address: { contentSet: "mini", motion: "hop" }, frame: 1 }],
+    ] as const) {
+      await stage.render(action(id, "navigate-to", params as Record<string, unknown>));
+      const { requestId, result } = stage.last();
+      expect(requestId).toBe(id);
+      expect(result.success).toBe(false);
+      expect(result.message).toContain("params.address");
+      expect(result.message).toContain("ViewerAddress");
+      // Nothing moved, and the answer says where the stage still is.
+      expect(result.data).toMatchObject({ motion: "bounce" });
+    }
+    expect(stage.last().result.message).toContain("frame");
+    // The right shape still moves it, and a tab alone still opens a tab.
+    await stage.render(action("s5", "navigate-to", { address: { contentSet: "mini", motion: "hop" } }));
+    expect(stage.last().result).toMatchObject({ success: true, data: { motion: "hop" } });
+    await stage.render(action("s6", "navigate-to", { tab: "atlas" }));
+    expect(stage.last().result).toMatchObject({ success: true, data: { motion: "hop", tab: "atlas" } });
+    await stage.unmount();
+  });
+
+  test("play and get-playback-state refuse address keys at the top level too", async () => {
+    const stage = await mount(withPlanned());
+    await stage.render(action("p1", "play", { motion: "hop" }));
+    expect(stage.last().result.success).toBe(false);
+    expect(stage.last().result.message).toContain("params.address");
+    await stage.render(action("p2", "get-playback-state", { motion: "hop" }));
+    expect(stage.last().result.success).toBe(false);
+    expect(stage.last().result.message).toContain("params.address");
+    await stage.render(action("p3", "get-playback-state", {}));
+    expect(stage.last().result).toMatchObject({ success: true, data: { motion: "bounce" } });
+    await stage.unmount();
+  });
+});

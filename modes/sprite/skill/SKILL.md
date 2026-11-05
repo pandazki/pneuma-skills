@@ -236,7 +236,9 @@ clickable card that takes the user there — or into the `capture` action's
 
 - **`navigate-to`** — point the stage at a character, motion, ref, or frame.
   Call it before `capture`, and after a motion is finished so the user lands
-  on it. `tab` (`gif`, `loop`, `video`, `atlas`, `export`) also opens that
+  on it. The address goes in `params.address` — `{ "address": { "contentSet":
+  "lumi", "motion": "attack" } }`; address keys at the top level of `params`
+  are refused (as on `play` and `get-playback-state`). `tab` (`gif`, `loop`, `video`, `atlas`, `export`) also opens that
   panel tab for the motion on stage; a tab the motion does not have — Export
   before it is ready, GIF on a loop — is refused with the tabs it has, and
   the answer's `tab` is the one on screen.
@@ -715,7 +717,7 @@ Do this before any motion exists — every later prompt is anchored to it.
 4. **Record it** — `sprite-project.mjs init` (with `--purpose`, and
    `--pixel` / `--asymmetric` when the route asked), then `add-ref` for each
    reference. Later changes go through `set-character`.
-5. **Show them** — `navigate-to { "ref": "turnaround" }`, `capture`, look at
+5. **Show them** — `navigate-to { "address": { "contentSet": "<character>", "ref": "turnaround" } }`, `capture`, look at
    it yourself, then hand the user a locator card. If the three views do not
    agree with each other, regenerate now; every motion inherits this.
 

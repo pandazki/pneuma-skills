@@ -75,6 +75,7 @@ import {
 } from "./panel.js";
 import { PreviewPanel } from "./PreviewPanel.js";
 import {
+  addressParamsProblem,
   advance,
   clampFrame,
   contentSetMismatch,
@@ -647,6 +648,19 @@ export default function SpritePreview(props: ViewerPreviewProps) {
   useEffect(() => {
     if (!actionRequest || !onActionResult) return;
     const { requestId, actionId, params } = actionRequest;
+    // An address anywhere but params.address is refused before anything
+    // moves: read as "no address", it answered success for the stage as it was.
+    const shapeProblem = actionId === "navigate-to" || actionId === "play" || actionId === "get-playback-state"
+      ? addressParamsProblem(actionId, params, { required: actionId === "navigate-to" && params?.tab === undefined })
+      : null;
+    if (shapeProblem) {
+      onActionResult(requestId, {
+        success: false,
+        message: shapeProblem,
+        data: (latest.current.readState(undefined).data ?? {}) as Record<string, unknown>,
+      });
+      return;
+    }
 
     switch (actionId) {
       case "navigate-to": {
