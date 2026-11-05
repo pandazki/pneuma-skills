@@ -969,10 +969,13 @@ call, so the stage shows it working.
    rule above). Never `from-video` or `contact` on a GIF: they refuse it — a
    GIF has no frame rate, and sampled by time it repeats some drawings and
    skips others.
-6. **Look at the wrap and the props.** A looping GIF can end on a copy of
-   frame 0 (`inspect` names a near-duplicate `07→00`), and a prop can vanish
-   for a frame (measured: the lantern in 2 of 12 attack frames) — capture
-   the frames the plan says hold the prop.
+6. **Look at the wrap, the props and the facing.** A looping GIF can end on
+   a copy of frame 0 (`inspect` names a near-duplicate `07→00`), and a prop
+   can vanish for a frame (measured: the lantern in 2 of 12 attack frames) —
+   capture the frames the plan says hold the prop. Before calling it done,
+   check it faces the way the character's other motions do — `sizes` draws
+   one frame of each side by side (a trial's cheer came out front-facing
+   beside a right-facing idle, and nobody noticed).
 
 #### B-video — the sampled clip
 
