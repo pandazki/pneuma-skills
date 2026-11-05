@@ -5,8 +5,9 @@
  * (`character.purpose`): a game character, a picture brought to life, a
  * looping animation for a page, or a mascot for an app. The character is
  * designed once (or taken from the user's image); each motion's frames come
- * from a GPT Image 2.6 sheet, a chroma-green clip, a breathe of one still or a
- * mirror of another motion, and a deterministic pipeline turns them into
+ * from a GPT Image 2.6 sheet, a GPT Image 2.6 animated GIF (every frame kept),
+ * a chroma-green clip, a breathe of one still or a mirror of another motion,
+ * and a deterministic pipeline turns them into
  * aligned frames, a packed atlas and GIF/WebP previews.
  *
  * A motion can also be a `loop`: a keyframe, a first-last clip with the same
@@ -22,8 +23,13 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.6.1",
+  version: "0.7.0",
   changelog: {
+    "0.7.0": [
+      "A fifth way to make a motion: one generated animated GIF, about twenty seconds, with the character's references attached and every frame kept exactly as drawn, already transparent and on one canvas; offered for idles and walks in outlined styles, while sheets stay the choice for attacks, poses and painterly looks",
+      "A GIF is no longer cut as if it were a video, which repeated some drawings and skipped others",
+      "Each generated GIF is recorded before it is paid for and kept with its request when it lands or fails, so a failed take is never sent again without asking",
+    ],
     "0.6.1": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new pictures, Sunburst for edits; sheets still go on a white background and are cut out afterwards"],
     "0.6.0": [
       "Eight directions from one picture and one clip: the character is drawn once per facing on a 3×3 facing sheet, every state is one clip of all eight walking or idling in sync (a fast run is safer as a 4-way pack), and each facing becomes a motion of its own — the stage plays the whole compass at once",
@@ -123,8 +129,9 @@ const spriteManifest: ModeManifest = {
     // sharedScripts is a WHITELIST: every script a listed script imports must
     // itself be listed, or the copied script dies on its first import line.
     // seedance-video.mjs, remove-background.mjs, remove-video-background.mjs
-    // and interpolate-video.mjs all drive fal through fal-queue.mjs;
-    // generate_image.mjs / edit_image.mjs are the sheet and keyframe path.
+    // interpolate-video.mjs and generate_gif.mjs all drive fal through
+    // fal-queue.mjs; generate_image.mjs / edit_image.mjs are the sheet and
+    // keyframe path, generate_gif.mjs the GIF motion source.
     sharedScripts: [
       "generate_image.mjs",
       "edit_image.mjs",
@@ -135,6 +142,7 @@ const spriteManifest: ModeManifest = {
       "remove-video-background.mjs",
       "interpolate-video.mjs",
       "motion-transfer.mjs",
+      "generate_gif.mjs",
     ],
   },
 

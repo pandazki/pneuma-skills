@@ -19,6 +19,8 @@ correctly on disk.
                                   # anchor per direction (anchor-back.png…)
   motions/<motion-id>/
     sheet-raw.png                 # as generated
+    gif-raw.gif                   # a GIF motion: the GIF as generated (or
+                                  # uploaded); its frames are cut from it
     sheet-alpha.png               # background removed (only when raw had none)
     cells/00.png … NN.png         # raw sliced cells before alignment; kept so
                                   # `inspect` can measure clipping/jumps and
@@ -139,6 +141,7 @@ video, a sheet generated from one reference) is fully described by
 | `ref-<refId>` | A reference image |
 | `<motion>-sheet-raw` | The sheet as generated |
 | `<motion>-sheet-alpha` | The sheet after background removal |
+| `<motion>-gif-raw` | A GIF motion's animated GIF, as generated or uploaded (image, `metadata: { width, height, frames, frameDurationMs, duration }`). Written by `set-gif`; see *GIF motions* |
 | `<motion>-frame-NN` | One aligned frame |
 | `<motion>-sheet` | The packed atlas image |
 | `<motion>-atlas` | `atlas.json` (type `text`) |
@@ -163,7 +166,8 @@ files — `inspect` measures clipping on them and `align` can re-run from them �
 but they are not part of what the character *is*, so `register-run` ignores the
 `cells` key in the run summary and nothing in `assets[]` ever points at them.
 
-`<motion>-sheet-raw` is the one asset that legitimately exists before its file
+`<motion>-sheet-raw` (and a GIF motion's `<motion>-gif-raw`, through
+`set-gif`) is the one asset that legitimately exists before its file
 does: `set-sheet --status generating` reserves it with `status: "generating"`
 and an empty `metadata` so the stage has something to show while the model
 draws, and the second `set-sheet` (after the image lands) measures it and flips
@@ -358,11 +362,13 @@ interface Motion {
   status: "planned" | "generating" | "processing" | "ready" | "failed";
   notes?: string;                 // failure reason or your remarks
   sheetRaw?: string; sheetAlpha?: string; sheet?: string; atlas?: string;
+  gifRaw?: string;                // source "gif" only: the <motion>-gif-raw
+                                  // asset its frames were cut from
   frames: string[];               // asset ids in playback order
   gif?: string; webp?: string;
   videos: MotionVideo[];
   inspect?: InspectSummary;       // copied from inspect.json by register-run
-  source?: "sheet" | "video" | "breathe" | "mirror";
+  source?: "sheet" | "gif" | "video" | "breathe" | "mirror";
                                   // how the frames were obtained; absent means
                                   // "sheet" (set by add-motion --source, and
                                   // corrected by register-run from the run)
@@ -791,7 +797,7 @@ landing on a motion that had a built prompt drops the parts and the text
 they built (a prompt written by hand stays), and the viewer ignores parts
 beside `source: "breathe"` or `"mirror"`.
 
-**Re-planning a source.** `set-motion --source sheet|video|breathe|mirror`
+**Re-planning a source.** `set-motion --source sheet|gif|video|breathe|mirror`
 says again how a motion with no frames yet will get them — the way a planned
 mirror that an asymmetric character refuses becomes a drawn side (`--source
 sheet`, then `sheet-prompt`). Its `mirrorOf` / `breathe` record, if a
@@ -852,6 +858,39 @@ are per motion, mirrors included: a mirror registered from a recoloured motion
 has none (and is listed under `variantsMissing`) until `recolor` runs on it,
 and re-running its source notes the stale mirror without touching the
 mirror's own colourway files — they go when the mirror is registered again.
+
+### GIF motions (0.7.0)
+
+A motion with `source: "gif"` gets its frames from one animated GIF,
+`motions/<id>/gif-raw.gif`, registered as `<motion>-gif-raw` and named by
+`motion.gifRaw`. `add-motion --source gif` needs no grid (the run brings
+it); its `fps` and `loop` are what `gif-prompt` turns into the frame delay
+and the ending. Its prompt parts carry `builder: "gif-prompt/1"` and a
+`frames:<n>` guard ahead of the sheet's conditional guards.
+
+`set-gif` is the asset's only writer, in the craft lifecycle — record before
+send, land or fail:
+
+- `--status generating` reserves it (`status: "generating"`, empty
+  `metadata`) with a `generate` edge holding `model`, `prompt` and, with two
+  or more references, `params.inputs`; the motion goes `generating`.
+- `--report <generate_gif.json>` lands it: the file is measured (`width`,
+  `height`, `frames`, `frameDurationMs`, `duration`), its frame count must
+  equal the report's and the recorded `frames:<n>` guard, and the edge keeps
+  its inputs and prompt and gains `model` (the one that ran), `provider:
+  "fal"`, `endpoint`, `requestId` and `finishedAt`. The motion goes
+  `processing`.
+- `--status failed --notes` marks it `failed` with `params.failure: {
+  reason, at, billing: "unknown" }` and `params.requestId` when the job ran —
+  fal reports no usage, so whether a failed job was billed is not knowable
+  here. The motion goes `failed`. A new reservation replaces the record.
+- `--uploaded --file` records a GIF the user brought: an `upload` edge,
+  `actor: "human"`, no parents, measured at once.
+
+`register-run` of a `from-gif` summary requires `gifRaw` to be `ready` and to
+be the summary's `sourceGif`, hangs every frame's `derive` edge off it with
+`params: { tool, step: "from-gif", frameIndex }`, and sets `source: "gif"`.
+`remove-motion` takes `<motion>-gif-raw` with the motion (the file stays).
 
 ## Character identity vs content set
 

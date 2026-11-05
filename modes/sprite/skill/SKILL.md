@@ -79,30 +79,36 @@ and click a motion to hand you back exactly which one they mean.
   owns cell geometry and the anchor maths; a hand-cropped frame, or a sheet
   re-laid out by your own code, breaks the invariant the atlas promises and
   leaves the record describing a picture that is gone.
-- **Frames come from four places, and only these:** a generated sheet
-  (`run`), a clip shot on purpose on chroma green (`from-video`, `loop`,
-  `transition` — and `pack-split`, which crops one clip of a grid into one
-  clip per cell first), one registered still warped into a breath
+- **Frames come from five places, and only these:** a generated sheet
+  (`run`), a generated animated GIF (`from-gif` — every frame of it, never
+  sampled by time), a clip shot on purpose on chroma green (`from-video`,
+  `loop`, `transition` — and `pack-split`, which crops one clip of a grid
+  into one clip per cell first), one registered still warped into a breath
   (`breathe`), or a ready motion flipped to its other side (`mirror`). A clip
   made by motion transfer, a storyboard or a matte is a clip like any other.
-  A preview rendered from finished frames is never sampled back into frames.
+  A preview rendered from finished frames is never sampled back into frames,
+  and a GIF is never cut as a clip (the clip commands refuse one).
 - **Files a command registers live inside the character's directory.** A
   motion-library clip, another character's motion or a user's video is
   COPIED into `<character>/motions/<id>/` first (`driver.mp4`); `--file`
   outside the directory is refused.
-- **Every sheet is generated with the character references attached**, in
-  the order `sheet-prompt` prints, from the prompt it builds — which opens
-  with the `character.style` sentence verbatim. Drop the references and the
-  model redesigns the character between motions; drop the style sentence and
-  it drifts within one sheet.
+- **Every sheet and every GIF is generated with the character references
+  attached**, in the order `sheet-prompt` / `gif-prompt` prints, from the
+  prompt it builds — which opens with the `character.style` sentence
+  verbatim. Drop the references and the model redesigns the character
+  between motions; drop the style sentence and it drifts within one sheet.
 - **A sheet's background is asked for in words, then cut off afterwards**:
   the prompt asks for *a flat solid pure white background*, the call passes
   `--background opaque`, and the alpha comes from matting. GPT Image 2.6 on
-  OpenRouter does return real alpha for `--background transparent` (2.5
-  refused it with a `400`), but this mode's probes, keying and fit steps are
-  measured on the white plate; stay on that route. A
-  *clip* is asked for on flat chroma green and keyed afterwards (`--keyer
-  unmix`, the default, un-mixes the plate out of every edge).
+  OpenRouter does return alpha for `--background transparent`, and its edge
+  measured a little cleaner, but no pixel of it is fully opaque (≤ 254) and a
+  faint haze adds 14 % to the body's area for anything that reads alpha
+  above zero (4 % on the white plate's cut) — an engine's trim or hit mask (`references/pipeline.md` →
+  *Measured: transparent sheets*); stay on the white plate. A *GIF* is the
+  exception: it is asked for with `--background transparent` and its 1-bit
+  alpha is used as it comes. A *clip* is asked for on flat chroma green and
+  keyed afterwards (`--keyer unmix`, the default, un-mixes the plate out of
+  every edge).
 - **Use OpenRouter for image generation and editing.** New references, sheets,
   and keyframes default to GPT Image 2.6 Flare, including reference-guided
   generations. Add `--model sunburst` for a generation upgrade. Existing-image
@@ -116,7 +122,11 @@ and click a motion to hand you back exactly which one they mean.
   `seedance-video.mjs` and `generate-video.mjs` back off and retry on
   transient 5xx / 429 / dropped connections. Call once; if it fails, report
   the failure state and stop. A retry loop you write by hand re-bills every
-  attempt and the user watches it happen.
+  attempt and the user watches it happen. `generate_gif.mjs` re-sends only a
+  submit that never became a job: a job that ran and failed (fal's
+  `downstream_service_error` once, 2026-11-05) is reported with its request
+  id and may be billed — record it (`set-gif --status failed`), tell the
+  user, and ask before another take.
 
 ## Money and waiting
 
@@ -124,9 +134,11 @@ and click a motion to hand you back exactly which one they mean.
 costs and how long it takes** — not only before the first. After it, quote
 what it cost: `generate_image.mjs` reports it in its JSON `usage`; every
 fal helper — `remove-background.mjs`, `seedance-video.mjs`,
-`generate-video.mjs`, `remove-video-background.mjs` and
-`interpolate-video.mjs` — prints a `cost:` line (an estimate at fal's list
-price, or `cost: unknown (…)` with the reason). Keep
+`generate-video.mjs`, `remove-video-background.mjs`,
+`interpolate-video.mjs` and `generate_gif.mjs` — prints a `cost:` line (an
+estimate at fal's list price, or `cost: unknown (…)` with the reason). A GIF's
+is always unknown: fal bills it by tokens and reports none, so quote the
+estimate below as an estimate, never as what it cost. Keep
 a running total against the budget and ask before a call would pass it. A
 standing "just go ahead" in the user's preferences removes the wait for an
 answer, never the line with the price.
@@ -136,6 +148,7 @@ answer, never the line with the price.
 | a reference image (2048², `--quality high`) | ≈ $0.11 | 30–40 s |
 | a direction anchor (1024²) | ≈ $0.07–0.08 | ≈ 25 s |
 | a sheet (2048 wide, references attached) | ≈ $0.05–0.13 | 20–35 s |
+| an animated GIF (8–16 frames of 512², references attached, fal) | not reported — an estimate of ≈ $0.05–0.10 | 18–35 s |
 | a cut-out (`remove-background.mjs`, fal BiRefNet) | ≈ $0.0006 — under a cent | 6–20 s |
 | a 4 s 480p square clip (Seedance); 5 s | ≈ $0.83; ≈ $1.0 | 2–7 minutes (11 has been measured) |
 | a clip matte (`veed-gs` / `veed`) | ≈ $0.10 / ≈ $0.09 | ≈ 30 s |
@@ -306,13 +319,15 @@ the motion's pipeline again at `--scale 1` (free), then export — never just
 
 **Defaults** (said in the user's words): frames, rate and looping from
 workflow B's step 1 table — an idle is 8 frames, a slow 2.4 s breath; a
-**sheet** for idle, attack and poses; **video offered** for walk and run,
-where the model draws the in-betweens (a sheet when they would rather not
-pay); a jump decided with the user first (workflow B, *Jumps*).
+**GIF** for idle and walk when the style has clean outlines (cel, anime,
+flat, cartoon — not pixel art), a **sheet** for attacks, poses and soft
+painterly styles; **video offered** for walk and run when smoothness is the
+point, where the model draws the in-betweens; a jump decided with the user
+first (workflow B, *Jumps*).
 
 **Cost and wait**, the total with the first message: two references and
-three sheet motions ≈ $0.4–0.6 and a few minutes, plus ≈ $0.83 and 2–7
-minutes for each motion shot as a clip (**Money and waiting**).
+three sheet or GIF motions ≈ $0.4–0.6 and a few minutes, plus ≈ $0.83 and
+2–7 minutes for each motion shot as a clip (**Money and waiting**).
 
 **Where they look:** the refs rail as the turnaround and portrait land; each
 motion row moving planned → generating → processing → ready while the stage
@@ -593,7 +608,10 @@ edge — look before breathing it.
 
 **Then offer more** — *"Want it to walk, wave or jump?"* continues as route G
 with the same picture (`set-character --purpose game`, workflow A′); the
-next step is the first paid one, so quote it. Breathe mechanics:
+next step is the first paid one, so quote it. For a picture with clean
+outlines the quickest paid take is a GIF from the picture itself (workflow
+B-gif, about twenty seconds, cents); a soft painted picture loses its edges
+to the GIF's 1-bit alpha and palette — a sheet or a clip keeps them. Breathe mechanics:
 `references/pipeline.md` → `fit`, `breathe`.
 
 ## Route L — a looping animation for a page
@@ -747,19 +765,20 @@ Carry these choices into the action you write; no separate plan file or
 approval step is needed (`references/prompting.md` → frame-to-frame
 continuity).
 
-**Step 0 — pick the source.** A motion's frames come from one of four places:
+**Step 0 — pick the source.** A motion's frames come from one of five places:
 
 | Source | Cost & time | Best for |
 |---|---|---|
-| **sheet** — one generated image, sliced into cells | ≈ $0.05–0.13 and ≈ 35 s, one image | idle, poses, attacks. Frames are unevenly spaced — the model draws pictures, not an animation |
+| **sheet** — one generated image, sliced into cells | ≈ $0.05–0.13 and ≈ 35 s, one image | idle, poses, attacks, soft painterly styles. Frames are unevenly spaced — the model draws pictures, not an animation |
+| **GIF** — one generated animated GIF, every frame kept | not reported by fal (≈ $0.05–0.10 estimated) and 18–35 s | idle and walk for outlined styles (cel, anime, flat, cartoon): the frames come back registered on one canvas and already transparent. 2–16 frames; 1-bit alpha and a ≈ 256-colour palette, so soft painted edges and gradients suffer; not for pixel art (its lattice needs a sheet). Needs the fal key |
 | **video** — one clip on chroma green, sampled into frames | ≈ $0.83 and 2–7 min | walk, run, anything where smoothness is the point: the model draws the in-betweens |
 | **breathe** — one registered still, warped | free, seconds | a breathing idle from a single picture (route A) |
 | **mirror** — a ready side-facing motion, flipped | free, seconds | the other side of a left/right motion (G-4dir) |
 
-Between sheet and video the choice is the user's unless they already made it:
-say those two lines in one message and wait — it is the one decision that
-costs real money to get wrong. Record it: `add-motion --source
-sheet|video|breathe|mirror`. A **smooth transparent animation for a UI** is
+Between GIF, sheet and video the choice is the user's unless they already
+made it: say those lines in one message and wait — it is the one decision
+that costs real money to get wrong. Record it: `add-motion --source
+sheet|gif|video|breathe|mirror`. A **smooth transparent animation for a UI** is
 not a sprite motion at all: that is route L, workflow E.
 
 **Jumps — decide where the height lives, with the user, before anything is
@@ -801,8 +820,9 @@ at its destination. **Keep identity and camera scale fixed, allow the
 planned motion** — a crouch changes silhouette height, neither changes
 proportions. **Choose alignment for the movement**: `--x-from cell` keeps
 horizontal offsets already drawn; a **side-view walk** aligns with `body` on
-a sheet (`trend` on a clip), never the default `feet`, which pins the
-reaching foot and lurches the head by a stride; vertically every frame
+a sheet (`trend` on a clip; a GIF keeps the drawn placement, `cell`, by
+default), never the default `feet`, which pins the reaching foot and
+lurches the head by a stride; vertically every frame
 stands on the ground line unless `--y-from cell` keeps its drawn height
 (`references/pipeline.md` → `align`).
 
@@ -880,6 +900,62 @@ call, so the stage shows it working.
    had to be forced) and `slice.clipped` (poses clipped anyway), and look at
    those cells. Never re-lay a sheet by
    hand; a sheet that still clips is regenerated.
+
+#### B-gif — the generated GIF
+
+3. **Build the prompt in code** — the same action you would write for a
+   sheet, by frame instead of by cell (the planned rate goes on the motion:
+   `add-motion --source gif --fps <the step-1 rate> --loop|--no-loop`):
+
+   ```bash
+   mkdir -p <character>/motions/<id> && node {SKILL_PATH}/scripts/sprite-project.mjs gif-prompt \
+     --dir <character> --motion <id> --action "<the phase plan, by frame>" --frames 8 \
+     > <character>/motions/<id>/gif-prompt.txt
+   ```
+
+   It records `prompt` + `promptParts` (the style sentence first, the facing,
+   the sides, the state's guards, a transparent background) and prints on
+   stderr the `generate_gif.mjs` flags — `--frame-count`, the motion's rate
+   as `--frame-duration-ms`, `--image-size 512x512`, `--background
+   transparent`, `--output` — and the references to attach, in order.
+4. **Reserve, generate, land** — record it before the paid call, then land
+   it or fail it:
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-project.mjs set-gif --dir <character> --motion <id> --status generating \
+     --file motions/<id>/gif-raw.gif --from <ref asset ids, in the printed order> \
+     --model openai/gpt-image-2.6-flare --prompt "$(cat <character>/motions/<id>/gif-prompt.txt)"
+   node {SKILL_PATH}/scripts/generate_gif.mjs "$(cat <character>/motions/<id>/gif-prompt.txt)" \
+     --image-urls <each printed reference, in order> <the printed flags> --json > <character>/motions/<id>/gif.json
+   node {SKILL_PATH}/scripts/sprite-project.mjs set-gif --dir <character> --motion <id> --report <character>/motions/<id>/gif.json
+   ```
+
+   A failed call exits 1 with its `ERROR:` (and `fal request <id>` when the
+   job ran): `set-gif --motion <id> --status failed --notes "<why>"
+   --request-id <id>`, then tell the user — never a second take without
+   asking. A GIF holding another number of frames than asked is a failure
+   too. `--model sunburst` on both calls is the upgrade (`--model
+   openai/gpt-image-2.6-sunburst` on the reservation); landing records the
+   model that ran.
+5. **Cut every frame** — the GIF's own frames, alpha and rate, through the
+   same chain as a sheet:
+
+   ```bash
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs from-gif <character>/motions/<id>/gif-raw.gif \
+     --out <character>/motions/<id> --name <id> --loop --cols 4 --json > <character>/motions/<id>/run.json
+   ```
+
+   Its alignment default is `--x-from cell`, the placement as drawn — the
+   frames share one canvas (`feet` pinned a stepping foot and added 7–20 px
+   of head sway on the measured GIFs). `--x-from trend` only when the
+   character slides across the canvas; `--y-from cell` for a jump that keeps
+   its height; `--scale 0.5` to pack at half size. Never `from-video` or
+   `contact` on a GIF: they refuse it — a GIF has no frame rate, and sampled
+   by time it repeats some drawings and skips others.
+6. **Look at the wrap and the props.** A looping GIF can end on a copy of
+   frame 0 (`inspect` names a near-duplicate `07→00`), and a prop can vanish
+   for a frame (measured: the lantern in 2 of 12 attack frames) — capture
+   the frames the plan says hold the prop.
 
 #### B-video — the sampled clip
 
@@ -959,7 +1035,8 @@ call, so the stage shows it working.
    (or piped, `--run -`; `--video <videoId>` when the motion has more than
    one clip). It registers every frame, the atlas and the previews, copies
    the inspect summary, takes the grid and fps from the run, and sets the
-   motion `ready`.
+   motion `ready`. A GIF's frames are refused until its GIF has landed
+   (`set-gif --report`).
 9. **Read the numbers, then look** (**Look before you claim**). Report the
    inspect values, not "no warnings"; check identity, contacts, direction and
    held props in the captures; the last-to-first transition of a loop or the
@@ -1009,8 +1086,9 @@ in `references/video-preview.md`.
 
 {{#videoGenDisabled}}
 Video needs a fal.ai key and this session has none, so there is nothing to
-render a clip with — and no video motion source either: B-video is not
-available, so every motion is a generated sheet, a breathe or a mirror. Say
+render a clip with — and no video or GIF motion source either: B-video and
+B-gif are not available, so every motion is a generated sheet, a breathe or
+a mirror. Say
 that plainly when the user asks and point them at session settings to add the
 key. The GIF and WebP previews are built from the real frames and always work.
 {{/videoGenDisabled}}
@@ -1203,7 +1281,10 @@ character.
 - **`regenerate-motion`** — redraw the selected motion, folding in any note
   they attached, from the source it already has (`motion.source`), under the
   same id: `register-run` replaces the old frames, never duplicates them. Say
-  the price first when it is paid. **A breathe** is free: the same pipe with
+  the price first when it is paid. **A GIF** is a new take: `gif-prompt` with
+  the note folded into the action, then the B-gif steps from the
+  reservation on (`set-gif --status generating` reserves the same asset
+  again). **A breathe** is free: the same pipe with
   the parameter the note asks for, the rest from `show --motion <id>`. **A
   mirror**'s drawing lives in its source: regenerate that and mirror again
   (say so). **A pixel motion** keeps `--pixel`, then rebakes its colourways.
@@ -1217,8 +1298,9 @@ character.
   unintended `bodyDrift` → re-run `align` from `cells/` with `--x-from feet`
   or `cell`; head sway the alignment added (`headDrift` over
   `sourceHeadDrift`) on a walk → `--x-from trend` for a clip, `body` for a
-  sheet; unintended `maxJump` → `--smooth` or the other anchor. Pixel frames
-  re-align from `pixel/`. Check whether `scaleDrift` is a pose or prop change
+  sheet; unintended `maxJump` → `--smooth` or the other anchor. A GIF motion
+  re-runs `from-gif` with another `--x-from` (free; `cell` is its default).
+  Pixel frames re-align from `pixel/`. Check whether `scaleDrift` is a pose or prop change
   before regenerating; clipped cells need a drawing fix. Preserve intended
   movement. `references/pipeline.md` has the table and alignment limits.
 - **`export`** — they pressed Generate (or Regenerate) on a row of the Export

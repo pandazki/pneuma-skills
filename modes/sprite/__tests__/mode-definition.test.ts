@@ -531,8 +531,23 @@ describe("the definition and the manifest agree", () => {
     }
   });
 
+  test("0.7.0 is the GIF source release, in the user's words, and ships the GIF script", () => {
+    expect(spriteManifest.version).toBe("0.7.0");
+    const notes = spriteManifest.changelog!["0.7.0"];
+    expect(notes.length).toBeGreaterThanOrEqual(1);
+    for (const note of notes) {
+      expect(note).not.toMatch(/`|\*\*|^- /);
+      expect(note.endsWith(".")).toBe(false);
+      expect(note).not.toMatch(/\.mjs|--[a-z]|\.json\b/);
+    }
+    expect(notes.join(" ")).toMatch(/animated GIF/);
+    // The skill's B-gif steps call it, and it imports fal-queue.mjs, which
+    // must ship beside it (sharedScripts is a whitelist).
+    expect(spriteManifest.skill.sharedScripts).toContain("generate_gif.mjs");
+    expect(spriteManifest.skill.sharedScripts).toContain("fal-queue.mjs");
+  });
+
   test("0.6.0 is the game asset pipeline release, in the user's words", () => {
-    expect(spriteManifest.version).toBe("0.6.1");
     const notes = spriteManifest.changelog!["0.6.0"];
     expect(notes.length).toBeGreaterThanOrEqual(6);
     for (const note of notes) {

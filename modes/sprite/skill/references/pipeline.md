@@ -1130,6 +1130,56 @@ The clip is only ever read. Unlike a sheet it is not copied into the motion
 directory, because it is already an asset in its own right and the frames'
 provenance points at it.
 
+### `from-gif <gif> --out <motionDir> --name <motionId> [flags]`
+
+The GIF source, and the only path frames come out of an animated GIF by.
+Every frame is decoded once and in order (`ffmpeg -fps_mode passthrough`,
+which composites partial frames and disposal) into `<motionDir>/cells/NN.png`
+with the GIF's own 1-bit alpha — nothing is sampled, keyed or invented —
+and then the chain `run` drives: clean → align → pack → gif (+webp) →
+inspect. `register-run` consumes the JSON unchanged.
+
+```bash
+node {SKILL_PATH}/scripts/sprite-sheet.mjs from-gif <character>/motions/<id>/gif-raw.gif \
+  --out <character>/motions/<id> --name <id> --loop --cols 4 --json
+```
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--fps N` | the GIF's own rate | frames / total delay, read from the GIF's per-frame delays (a 12-frame GIF at 90 ms plays at 11.111). Frames with different delays play at that one rate, warned |
+| `--loop` / `--no-loop` | `--no-loop` | The atlas and the preview only — every frame is kept either way |
+| `--x-from` | **`cell`** | The model placed the body on one canvas, so the placement as drawn is the motion. `trend` for a walk or run that slides across its canvas; `feet` pins a stepping foot and adds head sway (measured below) |
+| `--y-from anchor\|cell` | `anchor` | `cell` keeps a jump's drawn height, as on a clip |
+| `--no-clean`, `--threshold` | cleaning on, 16 | As in `run` |
+| `--anchor` `--cell` `--pad` `--smooth` `--scale` `--nearest` `--cols` `--width` `--no-webp` | as `run` | |
+
+**Refused:** a file without a GIF signature (a clip is cut with
+`from-video`); fewer than 2 or more than 100 frames; a GIF whose frames are
+mostly opaque — a GIF's plate is not keyed here, so it is generated with
+`--background transparent`. A frame whose delay cannot be read is shown for
+the median of the others, warned.
+
+The extra keys on top of `run`'s JSON:
+
+```json
+{ "source": "gif", "sourceGif": "<abs path to the GIF>", "frameCount": 12,
+  "delaysMs": [90, 90, "…"], "duration": 1.08, "keyed": false,
+  "alphaCoverage": 0.29, "xFrom": "cell" }
+```
+
+`gif` stays the preview this run wrote, as in every run summary;
+`sourceGif` is the input. `register-run` requires the motion's GIF asset
+(`set-gif`) to be landed and to be this file, hangs every frame's `derive`
+edge off it with `params.frameIndex`, and sets `motion.source = "gif"`. The
+GIF is only read, never copied or rewritten.
+
+**Every clip command refuses a GIF, by its signature and not its name** —
+`contact`, `from-video`, `retime`, `loop`, `transition` and `pack-split`
+fail with a pointer here. A GIF is a list of drawings with their own delays,
+not a clip with a frame rate: `ffprobe` reports a guessed `r_frame_rate`
+(89/4 for 90 ms frames), and sampling by time lands several samples on one
+drawing (*Measured: GIF source*).
+
 ### `retime <clip> --keep <ranges> --out <mp4> [--fps N]`
 
 A clip's own frames, in another order. Nothing is generated and nothing is
@@ -2396,10 +2446,15 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `set-character [--description] [--style] [--facing] [--purpose] [--asymmetric "<sentence>"] [--pixel <H>] [--colors N] [--no-pixel] [--remove-variant <name,…>]` | Changes the character after `init`; only the flags given change. `--asymmetric ""` takes the sentence back. `--no-pixel` removes the pixel spec and unregisters the pinned palette and every colourway's files (the files stay on disk); `--remove-variant` drops the named colourways and their files. `show` prints the purpose, the pixel height and the sentence on its second line. |
 | `add-ref --id turnaround --file refs/turnaround.png --role turnaround\|portrait\|expression\|anchor\|custom [--direction front\|back\|left\|right] [--label] [--prompt] [--model] [--from <assetId,…>] [--uploaded \| --derived-from <refId\|assetId> [--op crop]]` | `--role anchor` needs `--direction`: one single-pose image facing that way, one per direction (a second anchor for the same direction is refused; re-register that id to replace it); no other role takes a direction (`prompting.md`, *Direction anchors*). Registers `ref-<id>` with a `generate` edge carrying the model and prompt you used. `--uploaded` instead records a file **the user brought**: an `upload` edge with `actor: "human"`, no parent and no params — it refuses `--model` / `--prompt` / `--from` by name, since none of them happened. `--derived-from <refId>` records an image you cut or cleaned out of another registered reference (a single pose out of an uploaded design sheet): a `derive` edge from that ref with `params.op` — `--op` is one word, default `crop`, and only valid here. Re-adding an id replaces its edge whatever its type. |
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned] [--direction front\|back\|left\|right]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. `--direction` is the way it faces; name it `<state>-<direction>` (`walk-left`) so every atlas key, Aseprite tag and Rive input carries it. |
-| `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt [--prompt-parts '<json>']] [--direction] [--source sheet\|video\|breathe\|mirror] [--status] [--notes]` | Edits motion metadata. `--source` says again how a motion with no frames yet will get them — the way out when a planned mirror is refused on an asymmetric character: `--source sheet`, then `sheet-prompt`; a motion with frames keeps the source that made them. `--notes` is where a failure reason belongs. `--prompt` alone is a hand-written prompt and drops any recorded parts; `--prompt-parts` records how code built the `--prompt` given with it (what `sheet-prompt` writes; `project-json.md`, *Recorded prompt parts*). A mirror's `--direction` must stay the opposite of its source's. |
+| `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt [--prompt-parts '<json>']] [--direction] [--source sheet\|gif\|video\|breathe\|mirror] [--status] [--notes]` | Edits motion metadata. `--source` says again how a motion with no frames yet will get them — the way out when a planned mirror is refused on an asymmetric character: `--source sheet`, then `sheet-prompt`; a motion with frames keeps the source that made them. `--notes` is where a failure reason belongs. `--prompt` alone is a hand-written prompt and drops any recorded parts; `--prompt-parts` records how code built the `--prompt` given with it (what `sheet-prompt` writes; `project-json.md`, *Recorded prompt parts*). A mirror's `--direction` must stay the opposite of its source's. |
 | `sheet-prompt --motion idle --action "<phase plan>" [--frames N] [--state …] [--guide\|--no-guide]` | Builds the sheet prompt in code from the character, the motion and your action, records `prompt` + `promptParts`, and prints the prompt (stdout alone without `--json`; `imageSize`, `attach`, `rhythm`, `guide` and `sides` with it — `sides[d]` is where the character's own right and left fall in view `d`). `--frames` redraws the motion's grid. Refused on loop, transition, breathe and mirror motions, a planned mirror included. Grammar, guards and the frames table: `prompting.md`, *Building the prompt*. |
+| `gif-prompt --motion idle --action "<phase plan, by frame>" --frames 2–16 [--state …]` | The GIF's `sheet-prompt`: builds the prompt in code (`gif-prompt/1`), records `prompt` + `promptParts`, prints the prompt (stdout alone without `--json`) and on stderr the `generate_gif.mjs` flags — `--frame-count`, `--frame-duration-ms` (1000 / the motion's fps, on fal's 10 ms grid, 20–2000), `--image-size 512x512`, `--background transparent`, `--output <character>/motions/<id>/gif-raw.gif` — and the references to attach, in order (the direction's anchor first). The state guards are the sheet's own sentences said of frames, and a word for cell, sheet or grid left in one is refused rather than sent. Refused on a loop, cutscene, breathe or mirror motion and on a pixel-art character (its lattice needs a sheet). |
+| `set-gif --motion idle --status generating --file motions/idle/gif-raw.gif --from ref-…[,…] --model openai/gpt-image-2.6-flare --prompt "<the prompt>"` | Reserves `<motion>-gif-raw` (`status: "generating"`) with its `generate` edge — model, prompt, `params.inputs` when two or more references — and sets the motion `generating`. **Before** the paid call. `--from` is required. |
+| `set-gif --motion idle --report <generate_gif.json \| ->` | Lands the reserved GIF from `generate_gif.mjs --json`: the report's file must be the reserved uri (workspace-relative, as the script printed it); the file is measured (`width`, `height`, `frames`, `frameDurationMs`, `duration`) and must hold the frames the recorded `frames:N` guard asked for; the edge gains `provider: "fal"`, `endpoint`, `requestId` and `finishedAt`, and the model the report names. The motion goes to `processing`. A report without a reservation is refused (reserve it before the paid call). |
+| `set-gif --motion idle --status failed --notes "<why>" [--request-id <id>]` | Fails the reserved GIF: `params.failure = { reason, at, billing: "unknown" }` (plus the request id when the job ran), the motion `failed` with the notes. A new reservation replaces it. |
+| `set-gif --motion idle --uploaded --file motions/idle/gif-raw.gif` | A GIF the user brought: an `upload` edge with `actor: "human"`, measured on the spot; refuses `--model`, `--prompt` and `--from`. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
-| `add-motion … [--source sheet\|video\|breathe\|mirror]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`; `register-run` corrects it from the run that lands. `--source breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the run lands: a breathe is drawn on no grid and timed by its run). `--source mirror` needs none of them either: a mirror plays on its source's grid, fps and loop, which `register-run` takes from the run. |
+| `add-motion … [--source sheet\|gif\|video\|breathe\|mirror]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`; `register-run` corrects it from the run that lands. `--source gif` needs no `--rows/--cols` (the run brings the grid); give `--fps` and `--loop` anyway, because `gif-prompt` turns the rate into the GIF's frame delay and the loop flag into its ending. `--source breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the run lands: a breathe is drawn on no grid and timed by its run). `--source mirror` needs none of them either: a mirror plays on its source's grid, fps and loop, which `register-run` takes from the run. |
 | `add-motion … [--kind loop]` | Declares a **loop motion** (workflow E). `--rows/--cols` become optional (1×1 is recorded), `source` defaults to `video`, and `set-keyframe` is accepted only here. A sprite motion is unchanged. |
 | `set-keyframe --motion <id> --file motions/<id>/keyframe.png [--alpha motions/<id>/keyframe-alpha.png] [--model] [--prompt] [--from <refIds>] [--status generating\|processing\|ready]` | The loop's `set-sheet`. Registers `<motion>-keyframe` with a `generate` edge carrying the model and prompt; `--alpha` registers `<motion>-keyframe-alpha` with a `derive` edge (`step: "key"`) from it. Refused on a motion that is not `--kind loop`. Called twice per keyframe, as `set-sheet` is — but the closing call needs only `--file` and `--alpha`: an omitted `--model` / `--prompt` / `--from` **keeps** what the reserving call recorded rather than blanking the edge. Once `--alpha` has reserved the cut-out, a closing call without `--alpha` is refused, because the stage prefers the cut-out and a placeholder there is a broken image. |
 | `add-video … --file motions/<id>/<clip> --derived-from <videoId> --op matte\|interpolate\|retime --model veed\|veed-gs\|bria\|topaz\|rife\|ffmpeg [--duration] [--status]` | Registers a clip made **from another clip**: a `derive` edge from the parent's asset with `params: { op, model }`, and a sidecar entry with `mode: "derived"`. `--file` is required here as everywhere. It takes no `--mode`, `--prompt` or `--from` — nothing was prompted, and a prompt invented to fill the field is what makes a later turn believe the clip was generated. `--op retime --model ffmpeg` is the local reorder (`sprite-sheet.mjs retime`), which invents no pixel and so is neither a matte nor an interpolation. `--status` defaults to **`ready`**: the script that made the clip wrote the file before there was anything to register, so there is no wait to show (a shot clip still defaults to `generating`). |
@@ -2474,6 +2529,8 @@ are in `loops.md`.
 | `mirror` + `register-run` | ≈ 5 s |
 | `sprite-sheet.mjs contact` (4 s clip, 24 stills + analysis) | ≈ 3 s |
 | `sprite-sheet.mjs from-video` (16 frames, 640² clip) | ≈ 12 s |
+| an animated GIF (`generate_gif.mjs`, 8–12 frames of 512², two references attached) | 18–22 s on Flare; 32 s on one Sunburst probe |
+| `sprite-sheet.mjs from-gif` (8–12 frames of 512²) | ≈ 5 s |
 | **a 4 s Seedance 480p clip** | **140–400 s**, and 632 s on one loop take — the queue decides, not the clip |
 
 Quote a Seedance take as a range. It is the step that looks broken and is
@@ -3043,3 +3100,110 @@ idle 247 / walk 246.25 / attack 246 (first frame; its median 229 is the
 lunges) — 0.4 %; the Lumi seed idle 234.5 / attack 227 — 3.3 %; the slime
 idle 26.5 / jump 25 logical px — 6 %, but within two pixels of the lattice,
 not warned. The 3.5 % bar sits between Lumi and the granny.
+
+## Measured: GIF source (2026-11-05)
+
+fal's GPT Image 2.6 GIF output (`generate_gif.mjs`, Flare, `/edit` with the
+turnaround and portrait attached in `gif-prompt`'s order, 512² frames,
+`--background transparent`) on a scratch copy of the Lumi seed, plus three
+earlier probe GIFs from the same endpoint. Scripted runs on the development
+machine.
+
+**Why a GIF is not cut as a clip.** The probe lantern attack: 12 frames at
+90 ms, 1.08 s. `ffprobe` reported `r_frame_rate` 89/4 (22.25 fps, a guess:
+the GIF has delays, not a rate). `from-video --frames 12` sampled `[0, 0.098,
+0.196, 0.295, 0.393, 0.472 × 7]` — the last seekable time read as 0.472 s,
+so seven samples landed on one drawing, `inspect` named six near-duplicate
+pairs (05→06 … 10→11), and the second half of the attack never reached the
+frames; `--at 0.495` was refused as past the clip. `from-gif` on the same
+file: 12 frames, each once, at 11.111 fps (the GIF's 90 ms). Every clip
+command now refuses a GIF by its signature.
+
+**The live run** — three motions generated, landed with `set-gif --report`,
+cut with `from-gif`, registered with `register-run`. `show` lists each
+motion `ready`, and `show --motion attack-gif` prints `GIF attack-gif-gif-raw
+(motions/attack-gif/gif-raw.gif) — ready, 12 frames × 100 ms, 512x512,
+openai/gpt-image-2.6-flare, request 01a1aa29-…` and the prompt's builder and
+guards.
+
+| Motion | Asked | Wall (`generate_gif`) | Frames | Cell | headDrift (source) | maxJump | Warnings |
+|---|---|---|---|---|---|---|---|
+| idle, looping | 8 × 300 ms | 21 s | 8, alpha {0, 255} | 512×492 (`cell`) | 0.28 (0.24) | 0.5 | near-duplicate 06→07 (a held breath) |
+| attack, once | 12 × 100 ms | 22 s | 12, alpha {0, 255} | 512×506 (`cell`) | 7.16 (6.31) | 19.5 | none |
+| walk in place, looping | 8 × 100 ms | 18 s | 8, alpha {0, 255} | 356×496 (`trend`) | 1.30 (0.60) | 9 | none |
+
+`from-gif` itself took ≈ 5 s each. Every frame came back as asked — no
+count mismatch, no damaged file. The frames are large: the character stands
+473–489 px in a 512 frame, against 215–244 px in the seed's sheet cells, so
+`--scale 0.5` packs them at the sheet's size. The 1-bit alpha has no haze to
+trim. What did fail: **the lantern is missing from attack frames 06 and 09**
+(2 of 12; idle and walk hold it in every frame) — the prop-dropout a sheet
+also shows, which is why B-gif step 6 looks at the props.
+
+**Alignment, per `--x-from`** (`inspect`'s `headDrift`, the source's in
+parentheses, then `maxJump`):
+
+| GIF | `feet` | `cell` | `trend` |
+|---|---|---|---|
+| probe attack, 12 frames (1.83) | **14.36** / 40 | 1.87 / 26 | 4.27 / 25 |
+| probe walk in place, 8 (0.45) | **10.87** / 22.5 | 0.45 / 1 | 0.45 / 1 |
+| probe idle, 16 (0.44) | 0.44 / 3.5 | 0.44 / 3.5 | 0.44 / 3.5 |
+| live attack, 12 (6.31) | **20.03** / 79.5 | 7.16 / 19.5 | 7.00 / 21.5 |
+| live walk in place, 8 (0.60) | **7.16** / 19.5 | 0.62 / 9 | 1.30 / 9 |
+| live idle, 8 (0.24) | 0.28 / 0.5 | 0.28 / 0.5 | 0.28 / 0.5 |
+
+`feet` pins a stepping foot and adds 7–20 px of head sway; `cell` stays at
+the source's drift; `trend` matches it or is a little worse unless the
+figure slides across the canvas (none of these did). Hence the default,
+`cell`. Its one cost: `cell` keeps the full 512 px canvas width, where
+`feet` and `trend` crop to the frames' union (336–448 px), so its atlas is
+wider.
+
+**The prompt** (`gif-prompt/1`) is the sheet's sentences said of frames:
+the style sentence verbatim, then *one animated GIF of N frames on one fixed
+canvas*, the identity and reference lines, the facing lock and anchor, the
+fixed camera, the asymmetry sentence, *The motion (N frames, looping |
+played once): <action>*, the state's guards, a loop's closing frame (*the pose
+just before frame 1, not a copy of it*) or a one-shot's last pose, the
+no-effects line, and *A fully transparent background in every frame*. The
+words cell, sheet and grid never reach the model; frame counts are 2–16
+(fal accepts 64; nothing above 16 was measured).
+
+**Cost: not measured per request.** fal returns no token counts for GPT Image
+2.6, its pricing API lists the endpoint as "1 unit", and its usage API
+answered 403. The account balance is shared with other work and lags: the
+idle's window moved $0.145 with another agent on the same key, the next two
+moved $0.00. List prices per 1M tokens: image output $30, image input $8,
+text input $5. The ≈ $0.05–0.10 a GIF in SKILL.md is an estimate from those
+windows and from OpenRouter's billed $0.055 for a 2048×1024 Flare sheet
+(1,182 output tokens) — 8–12 frames of 512² are 2–3 MP of output. The script
+prints `cost: unknown (…)` with that reason and the list price.
+
+## Measured: transparent sheets vs the white plate (2026-11-05)
+
+One Lumi idle sheet each way (4 × 2, 2048×1024, OpenRouter Flare, turnaround
+and portrait attached, the same `sheet-prompt` action): **white** — the
+built prompt, `--background opaque`, then `remove-background.mjs --model
+heavy` ($0.00028); **clear** — the same prompt with the two background
+sentences asking for transparency, `--background transparent`, its alpha
+used as returned. $0.054974 and $0.054949. Both ran through `run`,
+`register-run` and every export (MP4, WebM, APNG, Aseprite, `.riv`) without
+an error. n = 1 per arm.
+
+| | white plate + matte | transparent |
+|---|---|---|
+| boundary pixels that are light (luma > 0.75) | 1.38 % | **0 %** |
+| mean outer-band luma over `#0A0A0D` | 0.082 | **0.053** |
+| pixels with alpha 255 | 514,792 | **0** (max 254; the interior sits at 252–254) |
+| pixels with alpha 1–15 (8 frames) | 11,805 | **75,357** |
+| area with alpha > 0 ÷ area with alpha ≥ 128 (8 frames) | 1.039 | **1.141** |
+| alpha > 0 more than 4 px from any alpha ≥ 128 pixel (8 frames) | 1 | **25,957** |
+| `inspect` (headDrift / maxJump / warnings) | 0.44 / 4.5 / none | 0.62 / 3 / none |
+
+The transparent edge is a little cleaner — no light rim left by a white
+plate — but nothing in it is fully opaque, and a faint haze plus scattered
+specks surround the body. Anything that reads alpha above zero (an engine's
+trim rectangle, a hit mask, an outline shader) sees a silhouette 14 % larger
+than the body against the matte's 4 %. **Decision: keep the white plate.**
+Revisit with a second character and an alpha clean-up step (snap ≥ 250 to
+255, drop < 16) that would have to be measured on its own.
