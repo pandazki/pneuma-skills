@@ -221,12 +221,12 @@ describe("handleControlResponse", () => {
  * `haiku` carries none of the optional capability fields.
  */
 const LIVE_INITIALIZE_MODELS = [
-  { value: "default", resolvedModel: "claude-opus-5[1m]", displayName: "Default (recommended)", supportsEffort: true },
-  { value: "opus[1m]", resolvedModel: "claude-opus-5[1m]", displayName: "Opus (1M context)" },
+  { value: "default", resolvedModel: "claude-opus-5-5[1m]", displayName: "Default (recommended)", supportsEffort: true },
+  { value: "opus[1m]", resolvedModel: "claude-opus-5-5[1m]", displayName: "Opus (1M context)" },
   { value: "claude-fable-5[1m]", resolvedModel: "claude-fable-5", displayName: "Fable" },
-  { value: "sonnet", resolvedModel: "claude-sonnet-5", displayName: "Sonnet" },
-  { value: "haiku", resolvedModel: "claude-haiku-4-5-20251001", displayName: "Haiku" },
-  { value: "opus", resolvedModel: "claude-opus-5", displayName: "Opus" },
+  { value: "sonnet", resolvedModel: "claude-sonnet-5-5", displayName: "Sonnet" },
+  { value: "haiku", resolvedModel: "claude-haiku-5-5", displayName: "Haiku" },
+  { value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus" },
 ];
 
 describe("parseSupportedModels", () => {
@@ -234,12 +234,12 @@ describe("parseSupportedModels", () => {
     const models = parseSupportedModels({ models: LIVE_INITIALIZE_MODELS });
 
     expect(models).toEqual([
-      { id: "default", name: "Default (recommended)", resolvedId: "claude-opus-5[1m]" },
-      { id: "opus[1m]", name: "Opus (1M context)", resolvedId: "claude-opus-5[1m]" },
+      { id: "default", name: "Default (recommended)", resolvedId: "claude-opus-5-5[1m]" },
+      { id: "opus[1m]", name: "Opus (1M context)", resolvedId: "claude-opus-5-5[1m]" },
       { id: "claude-fable-5[1m]", name: "Fable", resolvedId: "claude-fable-5" },
-      { id: "sonnet", name: "Sonnet", resolvedId: "claude-sonnet-5" },
-      { id: "haiku", name: "Haiku", resolvedId: "claude-haiku-4-5-20251001" },
-      { id: "opus", name: "Opus", resolvedId: "claude-opus-5" },
+      { id: "sonnet", name: "Sonnet", resolvedId: "claude-sonnet-5-5" },
+      { id: "haiku", name: "Haiku", resolvedId: "claude-haiku-5-5" },
+      { id: "opus", name: "Opus", resolvedId: "claude-opus-5-5" },
     ]);
   });
 

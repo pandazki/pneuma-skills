@@ -110,7 +110,7 @@ function parseContextOutput(content: string): ContextUsageData | null {
 describe("parseContextOutput", () => {
   it("parses markdown format (from screenshot)", () => {
     const content = `## Context Usage
-**Model:** claude-opus-4-6
+**Model:** claude-opus-5-5
 **Tokens:** 55.7k / 200k (28%)
 
 ## Estimated usage by category
@@ -128,7 +128,7 @@ describe("parseContextOutput", () => {
 
     const result = parseContextOutput(content);
     expect(result).not.toBeNull();
-    expect(result!.model).toBe("claude-opus-4-6");
+    expect(result!.model).toBe("claude-opus-5-5");
     expect(result!.usedTokens).toBe("55.7k");
     expect(result!.totalTokens).toBe("200k");
     expect(result!.overallPercent).toBe(28);
@@ -147,7 +147,7 @@ describe("parseContextOutput", () => {
 
   it("parses plain text format with tokens after fraction", () => {
     const content = `Context Usage
-claude-opus-4-6
+claude-opus-5-5
 143,210 / 200,000 tokens (71%)
 ● System prompt     3,412   1.7%
 ● System tools     21,000  10.5%
@@ -175,7 +175,7 @@ claude-opus-4-6
   });
 
   it("handles content with no categories gracefully", () => {
-    const content = `**Model:** claude-opus-4-6
+    const content = `**Model:** claude-opus-5-5
 **Tokens:** 10k / 200k (5%)`;
     const result = parseContextOutput(content);
     expect(result).not.toBeNull();

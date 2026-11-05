@@ -59,7 +59,7 @@ function assistantFrame(
       id: opts.id ?? "msg_root",
       type: "message",
       role: "assistant",
-      model: "claude-opus-5",
+      model: "claude-opus-5-5",
       content: [block],
       stop_reason: null,
       usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
@@ -475,7 +475,7 @@ describe("loadMessageHistory rebuilds the roster", () => {
       {
         type: "assistant",
         message: {
-          id: "msg_root", type: "message", role: "assistant", model: "claude-opus-5",
+          id: "msg_root", type: "message", role: "assistant", model: "claude-opus-5-5",
           content: [spawnBlock("toolu_judge", "Judge round 3", "general-purpose")],
           stop_reason: null,
           usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },

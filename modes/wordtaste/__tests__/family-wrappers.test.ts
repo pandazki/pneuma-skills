@@ -263,12 +263,12 @@ describe("isolated family wrappers", () => {
 
       const overridden = await runRouter(["writer", harness.prompt], harness.root, {
         ...harness.env,
-        WORDTASTE_CLAUDE_MODEL: "claude-opus-4-5",
+        WORDTASTE_CLAUDE_MODEL: "claude-opus-5-5",
       });
       expect(overridden.status).toBe(0);
       const overriddenArgv = readFileSync(harness.claudeArgv, "utf8").split("\n");
       expect(overriddenArgv[overriddenArgv.indexOf("--model") + 1]).toBe(
-        "claude-opus-4-5",
+        "claude-opus-5-5",
       );
     } finally {
       rmSync(harness.root, { recursive: true, force: true });
@@ -441,11 +441,11 @@ describe("isolated family wrappers", () => {
       // The environment still wins over the stored parameter.
       const overridden = await runRouter(["writer", harness.prompt], harness.root, {
         ...env,
-        WORDTASTE_WRITER_MODEL: "anthropic/claude-opus-4-5",
+        WORDTASTE_WRITER_MODEL: "anthropic/claude-opus-5.5",
       });
       expect(overridden.status).toBe(0);
       const overriddenBody = JSON.parse(hosted.requests[1]!.body) as Record<string, unknown>;
-      expect(overriddenBody.model).toBe("anthropic/claude-opus-4-5");
+      expect(overriddenBody.model).toBe("anthropic/claude-opus-5.5");
       expect(overriddenBody.reasoning).toBeUndefined();
     } finally {
       hosted.stop();

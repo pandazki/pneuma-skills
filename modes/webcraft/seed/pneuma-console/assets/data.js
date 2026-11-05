@@ -22,10 +22,10 @@
 
   // USD per 1M tokens: input, output, cache read. Illustrative only.
   var models = {
-    "claude-opus-5-5":  { label: "Opus 5.5",   backend: "claude-code", input: 5,   output: 25, cache: 0.5 },
-    "claude-sonnet-5":  { label: "Sonnet 5",   backend: "claude-code", input: 3,   output: 15, cache: 0.3 },
-    "claude-haiku-4-5": { label: "Haiku 4.5",  backend: "claude-code", input: 1,   output: 5,  cache: 0.1 },
-    "gpt-5.4":          { label: "GPT-5.4",    backend: "codex",       input: 2.5, output: 15, cache: 0.25 }
+    "claude-opus-5-5":   { label: "Opus 5.5",    backend: "claude-code", input: 4,   output: 20,  cache: 0.2 },
+    "claude-sonnet-5-5": { label: "Sonnet 5.5",  backend: "claude-code", input: 2,   output: 10,  cache: 0.1 },
+    "claude-haiku-5-5":  { label: "Haiku 5.5",   backend: "claude-code", input: 0.1, output: 0.5, cache: 0.01 },
+    "gpt-6.1-sol":       { label: "GPT-6.1 Sol", backend: "codex",       input: 2,   output: 10,  cache: 0.1 }
   };
 
   var modes = {
@@ -50,48 +50,48 @@
 
   // title, mode, owner, preferred models
   var pool = [
-    ["Pricing page refresh", "webcraft", "tom", ["claude-sonnet-5", "claude-haiku-4-5"]],
+    ["Pricing page refresh", "webcraft", "tom", ["claude-sonnet-5-5", "claude-haiku-5-5"]],
     ["Trail map landing page", "webcraft", "maya", ["claude-opus-5-5"]],
-    ["Docs site navigation rebuild", "webcraft", "jonah", ["claude-sonnet-5", "gpt-5.4"]],
-    ["Careers page with open roles", "webcraft", "tom", ["claude-sonnet-5"]],
-    ["Status page redesign", "webcraft", "jonah", ["claude-opus-5-5", "gpt-5.4"]],
-    ["Changelog template", "webcraft", "jonah", ["gpt-5.4", "claude-sonnet-5"]],
-    ["Partner program microsite", "webcraft", "tom", ["claude-sonnet-5"]],
-    ["Checkout error states", "webcraft", "maya", ["claude-opus-5-5", "claude-sonnet-5"]],
-    ["Meetup registration page", "webcraft", "tom", ["claude-haiku-4-5"]],
-    ["Accessibility fixes on signup form", "webcraft", "jonah", ["claude-sonnet-5"]],
-    ["Q4 planning deck", "slide", "priya", ["claude-opus-5-5", "claude-sonnet-5"]],
+    ["Docs site navigation rebuild", "webcraft", "jonah", ["claude-sonnet-5-5", "gpt-6.1-sol"]],
+    ["Careers page with open roles", "webcraft", "tom", ["claude-sonnet-5-5"]],
+    ["Status page redesign", "webcraft", "jonah", ["claude-opus-5-5", "gpt-6.1-sol"]],
+    ["Changelog template", "webcraft", "jonah", ["gpt-6.1-sol", "claude-sonnet-5-5"]],
+    ["Partner program microsite", "webcraft", "tom", ["claude-sonnet-5-5"]],
+    ["Checkout error states", "webcraft", "maya", ["claude-opus-5-5", "claude-sonnet-5-5"]],
+    ["Meetup registration page", "webcraft", "tom", ["claude-haiku-5-5"]],
+    ["Accessibility fixes on signup form", "webcraft", "jonah", ["claude-sonnet-5-5"]],
+    ["Q4 planning deck", "slide", "priya", ["claude-opus-5-5", "claude-sonnet-5-5"]],
     ["Board update, September", "slide", "priya", ["claude-opus-5-5"]],
-    ["Customer research readout", "slide", "lena", ["claude-sonnet-5"]],
-    ["Sales enablement: Team tier", "slide", "tom", ["claude-sonnet-5", "claude-haiku-4-5"]],
-    ["All-hands: platform roadmap", "slide", "priya", ["claude-sonnet-5"]],
-    ["Onboarding interview findings", "slide", "lena", ["claude-sonnet-5", "claude-opus-5-5"]],
-    ["Pipeline cost review", "slide", "sam", ["gpt-5.4"]],
-    ["RFC: session retention policy", "doc", "sam", ["gpt-5.4", "claude-opus-5-5"]],
+    ["Customer research readout", "slide", "lena", ["claude-sonnet-5-5"]],
+    ["Sales enablement: Team tier", "slide", "tom", ["claude-sonnet-5-5", "claude-haiku-5-5"]],
+    ["All-hands: platform roadmap", "slide", "priya", ["claude-sonnet-5-5"]],
+    ["Onboarding interview findings", "slide", "lena", ["claude-sonnet-5-5", "claude-opus-5-5"]],
+    ["Pipeline cost review", "slide", "sam", ["gpt-6.1-sol"]],
+    ["RFC: session retention policy", "doc", "sam", ["gpt-6.1-sol", "claude-opus-5-5"]],
     ["Incident review INC-2291", "doc", "sam", ["claude-opus-5-5"]],
-    ["Research plan: admin workflows", "doc", "lena", ["claude-sonnet-5"]],
-    ["PRD: usage alerts", "doc", "priya", ["claude-haiku-4-5", "claude-sonnet-5"]],
+    ["Research plan: admin workflows", "doc", "lena", ["claude-sonnet-5-5"]],
+    ["PRD: usage alerts", "doc", "priya", ["claude-haiku-5-5", "claude-sonnet-5-5"]],
     ["Style guide v3 draft", "doc", "maya", ["claude-opus-5-5"]],
-    ["API migration guide", "doc", "jonah", ["gpt-5.4"]],
-    ["Interview guide, power users", "doc", "lena", ["claude-haiku-4-5"]],
-    ["Ingest pipeline architecture", "diagram", "sam", ["gpt-5.4", "claude-opus-5-5"]],
-    ["Auth flow sequence", "diagram", "jonah", ["claude-sonnet-5"]],
-    ["Billing data model", "diagram", "sam", ["gpt-5.4"]],
-    ["Onboarding journey map", "diagram", "lena", ["claude-sonnet-5"]],
-    ["Team ownership map", "diagram", "priya", ["claude-haiku-4-5"]],
-    ["Launch teaser, 30s cut", "clipcraft", "tom", ["claude-sonnet-5"]],
-    ["Feature walkthrough: usage page", "clipcraft", "tom", ["claude-sonnet-5"]],
+    ["API migration guide", "doc", "jonah", ["gpt-6.1-sol"]],
+    ["Interview guide, power users", "doc", "lena", ["claude-haiku-5-5"]],
+    ["Ingest pipeline architecture", "diagram", "sam", ["gpt-6.1-sol", "claude-opus-5-5"]],
+    ["Auth flow sequence", "diagram", "jonah", ["claude-sonnet-5-5"]],
+    ["Billing data model", "diagram", "sam", ["gpt-6.1-sol"]],
+    ["Onboarding journey map", "diagram", "lena", ["claude-sonnet-5-5"]],
+    ["Team ownership map", "diagram", "priya", ["claude-haiku-5-5"]],
+    ["Launch teaser, 30s cut", "clipcraft", "tom", ["claude-sonnet-5-5"]],
+    ["Feature walkthrough: usage page", "clipcraft", "tom", ["claude-sonnet-5-5"]],
     ["Customer story rough cut", "clipcraft", "tom", ["claude-opus-5-5"]],
-    ["Animated metrics recap, August", "remotion", "sam", ["gpt-5.4"]],
+    ["Animated metrics recap, August", "remotion", "sam", ["gpt-6.1-sol"]],
     ["Product intro motion graphic", "remotion", "maya", ["claude-opus-5-5"]],
     ["Blog header illustrations, set of 4", "illustrate", "maya", ["claude-opus-5-5"]],
-    ["Empty state illustrations", "illustrate", "maya", ["claude-sonnet-5"]],
-    ["Conference booth poster", "illustrate", "tom", ["claude-sonnet-5"]],
-    ["Ops dashboard prototype", "gridboard", "sam", ["gpt-5.4", "claude-sonnet-5"]],
-    ["Research synthesis board", "gridboard", "lena", ["claude-sonnet-5"]],
-    ["Launch checklist board", "gridboard", "priya", ["claude-haiku-4-5"]],
-    ["Wireframes: settings IA", "draw", "maya", ["claude-sonnet-5"]],
-    ["Sketch: mobile nav options", "draw", "jonah", ["claude-haiku-4-5"]]
+    ["Empty state illustrations", "illustrate", "maya", ["claude-sonnet-5-5"]],
+    ["Conference booth poster", "illustrate", "tom", ["claude-sonnet-5-5"]],
+    ["Ops dashboard prototype", "gridboard", "sam", ["gpt-6.1-sol", "claude-sonnet-5-5"]],
+    ["Research synthesis board", "gridboard", "lena", ["claude-sonnet-5-5"]],
+    ["Launch checklist board", "gridboard", "priya", ["claude-haiku-5-5"]],
+    ["Wireframes: settings IA", "draw", "maya", ["claude-sonnet-5-5"]],
+    ["Sketch: mobile nav options", "draw", "jonah", ["claude-haiku-5-5"]]
   ];
 
   // Tokens per runtime minute, by mode (includes cache reads).
@@ -219,16 +219,16 @@
   function at(h, m) { return today0 + (h * 60 + m) * MIN; }
 
   // Today, hand-placed so the active states are all represented.
-  add(find("Accessibility fixes on signup form"), at(9, 12), 47, "completed", "claude-sonnet-5", "Published to Vercel preview");
+  add(find("Accessibility fixes on signup form"), at(9, 12), 47, "completed", "claude-sonnet-5-5", "Published to Vercel preview");
   add(find("Incident review INC-2291"), at(10, 30), 22, "failed", "claude-opus-5-5", "Context window exceeded while loading attached logs");
   add(find("Blog header illustrations, set of 4"), at(11, 5), 38, "completed", "claude-opus-5-5", "Final revision saved");
-  add(find("PRD: usage alerts"), at(13, 40), 0, "waiting", "claude-haiku-4-5", "Asked for the default alert threshold", at(16, 44));
-  add(find("Launch teaser, 30s cut"), at(14, 20), 0, "running", "claude-sonnet-5", "Encoding 1080p preview");
-  add(find("Customer research readout"), at(15, 5), 0, "waiting", "claude-sonnet-5", "Asked which participant quotes can appear on slide 6", at(16, 52));
+  add(find("PRD: usage alerts"), at(13, 40), 0, "waiting", "claude-haiku-5-5", "Asked for the default alert threshold", at(16, 44));
+  add(find("Launch teaser, 30s cut"), at(14, 20), 0, "running", "claude-sonnet-5-5", "Encoding 1080p preview");
+  add(find("Customer research readout"), at(15, 5), 0, "waiting", "claude-sonnet-5-5", "Asked which participant quotes can appear on slide 6", at(16, 52));
   add(find("Q4 planning deck"), at(15, 52), 0, "running", "claude-opus-5-5", "Rendering slide 14 of 22");
   add(find("Status page redesign"), at(16, 10), 0, "waiting", "claude-opus-5-5", "Needs approval to deploy to Cloudflare Pages", at(17, 1));
-  add(find("Pricing page refresh"), at(16, 38), 0, "running", "claude-sonnet-5", "Editing pricing/plans.css");
-  add(find("Ingest pipeline architecture"), at(16, 55), 0, "running", "gpt-5.4", "Laying out 18 nodes");
+  add(find("Pricing page refresh"), at(16, 38), 0, "running", "claude-sonnet-5-5", "Editing pricing/plans.css");
+  add(find("Ingest pipeline architecture"), at(16, 55), 0, "running", "gpt-6.1-sol", "Laying out 18 nodes");
 
   // Active sessions: tokens reflect elapsed time at the reference clock.
   sessions.forEach(function (s) {
@@ -246,7 +246,7 @@
 
   var DEFAULTS = {
     workspace: { name: "Carbon Park", slug: "carbon-park" },
-    defaults: { backend: "claude-code", model: "claude-sonnet-5", idleMinutes: 60, deployApproval: true },
+    defaults: { backend: "claude-code", model: "claude-sonnet-5-5", idleMinutes: 60, deployApproval: true },
     budget: { monthly: 500, alertAt: 80, emailAlerts: true, recipients: "maya.chen@carbonpark.dev, priya.n@carbonpark.dev" },
     members: owners.map(function (o) { return { id: o.id, name: o.name, email: o.email, role: o.role, title: o.title }; }),
     keys: [

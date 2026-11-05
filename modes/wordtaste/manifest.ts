@@ -47,7 +47,7 @@ function parseCrossFamily(raw: string): CrossFamily {
 
 const wordtasteManifest: ModeManifest = {
   name: "wordtaste",
-  version: "0.17.1",
+  version: "0.17.2",
   displayName: {
     en: "WordTaste",
     "zh-CN": "文字品味",
@@ -59,6 +59,7 @@ const wordtasteManifest: ModeManifest = {
     "zh-TW": "人機協作的中文長文寫作：先定論點與落筆重點，再逐段寫作、換雙眼睛複查，留下真正順耳的版本",
   },
   changelog: {
+    "0.17.2": ["The hosted writer defaults to Claude Sonnet 5.5 through OpenRouter (was Sonnet 5)"],
     "0.17.1": ["Between gates the orchestrator gives short stage updates without internal state; Claude Code route uses the sonnet alias; references in present tense"],
     "0.17.0": [
       "Give a long piece parts: the plan marks where a section opens and the writer names it, so an essay can have sections without turning back into an outline",
@@ -377,7 +378,7 @@ The user opened WordTaste with a concrete Chinese writing goal. Run the bundled 
         type: "string",
         description:
           "the model that writes and repairs the prose, used only when an OpenRouter key is available",
-        defaultValue: "anthropic/claude-sonnet-5",
+        defaultValue: "anthropic/claude-sonnet-5.5",
       },
     ],
     seedFiles: {

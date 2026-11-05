@@ -18,7 +18,7 @@ describe("CodexAdapter", () => {
     const messages: BrowserIncomingMessage[] = [];
 
     const adapter = new CodexAdapter(transport, "test-session", {
-      model: "gpt-5.3-codex",
+      model: "gpt-6.1-terra",
       cwd: "/tmp/test",
     });
     adapter.onBrowserMessage((msg) => messages.push(msg));
@@ -36,8 +36,8 @@ describe("CodexAdapter", () => {
     expect(initMsg).toBeDefined();
     if (initMsg?.type === "session_init") {
       expect(initMsg.session.backend_type).toBe("codex");
-      // Model comes from thread/start response ("o3-pro"), not the option
-      expect(initMsg.session.model).toBe("o3-pro");
+      // Model comes from thread/start response ("gpt-6.1-sol"), not the option
+      expect(initMsg.session.model).toBe("gpt-6.1-sol");
     }
   });
 
@@ -55,7 +55,7 @@ describe("CodexAdapter", () => {
     expect(initMsg).toBeDefined();
     if (initMsg?.type === "session_init") {
       // Model should come from thread/start response, not the empty option
-      expect(initMsg.session.model).toBe("o3-pro");
+      expect(initMsg.session.model).toBe("gpt-6.1-sol");
     }
   });
 
@@ -64,7 +64,7 @@ describe("CodexAdapter", () => {
     let reportedMeta: { cliSessionId?: string } | null = null;
 
     const adapter = new CodexAdapter(transport, "test-session", {
-      model: "gpt-5.3-codex",
+      model: "gpt-6.1-terra",
       cwd: "/tmp/test",
     });
     adapter.onSessionMeta((meta) => { reportedMeta = meta; });
@@ -78,7 +78,7 @@ describe("CodexAdapter", () => {
   test("sends user message as turn/start with typed input", async () => {
     const transport = createMockTransport();
     const adapter = new CodexAdapter(transport, "test-session", {
-      model: "gpt-5.3-codex",
+      model: "gpt-6.1-terra",
       cwd: "/tmp/test",
     });
 
@@ -126,7 +126,7 @@ describe("CodexAdapter", () => {
   test("steers an active turn with turn/steer without starting or interrupting a turn", async () => {
     const transport = createMockTransport();
     const adapter = new CodexAdapter(transport, "test-session", {
-      model: "gpt-5.3-codex",
+      model: "gpt-6.1-terra",
       cwd: "/tmp/test",
     });
 
@@ -426,7 +426,7 @@ describe("CodexAdapter", () => {
       outputTokens: 1000,
       modelContextWindow: 200000,
       costUsd: 0.035,
-      model: "o3-pro",
+      model: "gpt-6.1-sol",
     });
 
     const updates = messages.filter((m) => m.type === "session_update");
@@ -436,7 +436,7 @@ describe("CodexAdapter", () => {
     expect(tokenUpdate).toBeDefined();
     if (tokenUpdate?.type === "session_update") {
       expect(tokenUpdate.session.total_cost_usd).toBe(0.035);
-      expect(tokenUpdate.session.model).toBe("o3-pro");
+      expect(tokenUpdate.session.model).toBe("gpt-6.1-sol");
       expect(tokenUpdate.session.context_used_percent).toBe(3); // (5000+1000)/200000 = 3%
     }
   });

@@ -328,7 +328,7 @@ describe("cross_family_probe.ts — the hosted writer route", () => {
     try {
       const run = await runProbe({}, { OPENROUTER_API_KEY: KEY }, {}, byDefault);
       const body = JSON.parse(run.requests[0]!.body) as { model: string; max_tokens: number };
-      expect(body.model).toBe("anthropic/claude-sonnet-5");
+      expect(body.model).toBe("anthropic/claude-sonnet-5.5");
       // One token of budget: this is a liveness call, not a generation.
       expect(body.max_tokens).toBe(1);
     } finally {

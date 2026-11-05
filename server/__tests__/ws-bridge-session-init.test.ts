@@ -14,7 +14,7 @@ describe("WsBridge session init", () => {
       session_id: "agent-1",
       tools: ["Read"],
       mcp_servers: [],
-      model: "claude-sonnet-4",
+      model: "claude-sonnet-5-5",
       permissionMode: "default",
       apiKeySource: "user",
       claude_code_version: "2.1.99",
@@ -29,6 +29,6 @@ describe("WsBridge session init", () => {
 
     expect(session.state.agent_version).toBe("2.1.99");
     expect(session.state.claude_code_version).toBe("2.1.99");
-    expect(session.state.model).toBe("claude-sonnet-4");
+    expect(session.state.model).toBe("claude-sonnet-5-5");
   });
 });

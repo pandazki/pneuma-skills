@@ -582,7 +582,7 @@ export interface SessionState {
    * model/list). `id` is what gets sent back on `set_model`; `resolvedId` is
    * the concrete model the backend resolves that id to, when the two differ
    * (Claude Code lists aliases like `opus` / `default` that resolve to
-   * `claude-opus-5`). The switcher uses it to highlight the active entry.
+   * `claude-opus-5-5`). The switcher uses it to highlight the active entry.
    */
   available_models?: { id: string; name?: string; resolvedId?: string }[];
   /**

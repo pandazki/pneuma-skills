@@ -46,7 +46,7 @@ Codex is JSON-RPC over stdio. Each line is one of:
 
 // 3. Start a thread (or thread/resume with `threadId`).
 { "method": "thread/start", "id": 2, "params": {
-    "model": "gpt-5",
+    "model": "gpt-6.1-sol",
     "cwd": "/path/to/workspace",
     "approvalPolicy": "on-request",
     "sandbox": "workspace-write"
@@ -65,7 +65,7 @@ the same shape Claude Code's native `system.init` produces:
   "session": {
     "session_id": "<pneuma session>",
     "backend_type": "codex",
-    "model": "gpt-5",
+    "model": "gpt-6.1-sol",
     "cwd": "/path/to/workspace",
     "agent_version": "codex 0.128.0",
     "tools": [], "mcp_servers": [], "agents": [], "slash_commands": [], "skills": [],
@@ -83,7 +83,7 @@ RPC (`fetchAvailableModels`); skills come from `skills/list`.
 { "method": "turn/start", "id": 7, "params": {
     "threadId": "thr_…",
     "input": [{ "type": "text", "text": "Reply with the single word: hi" }],
-    "cwd": "…", "model": "gpt-5",
+    "cwd": "…", "model": "gpt-6.1-sol",
     "approvalPolicy": "on-request",
     "sandboxPolicy": { "type": "workspaceWrite" }
 } }

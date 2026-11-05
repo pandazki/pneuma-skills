@@ -182,7 +182,7 @@ describe("the hosted route — request shape", () => {
     await withHarness("wordtaste-openrouter-default-", async (harness, hosted) => {
       expect((await dispatch(harness, { OPENROUTER_API_KEY: KEY })).status).toBe(0);
       const body = JSON.parse(hosted.requests[0]!.body) as Record<string, unknown>;
-      expect(body.model).toBe("anthropic/claude-sonnet-5");
+      expect(body.model).toBe("anthropic/claude-sonnet-5.5");
       expect(body.max_tokens).toBe(30000);
       // No `system.en.md` beside the prompt: the legacy single-message shape,
       // byte for byte.

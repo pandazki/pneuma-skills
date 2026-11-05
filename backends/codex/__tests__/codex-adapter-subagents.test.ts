@@ -861,11 +861,11 @@ describe("CodexAdapter subagent threads", () => {
 
     transport.simulateNotification("model/rerouted", {
       threadId: CHILD,
-      fromModel: "o3-pro",
-      toModel: "gpt-5-mini",
+      fromModel: "gpt-6.1-sol",
+      toModel: "gpt-6-luna",
     });
-    expect(messages.some((m) => m.type === "session_update" && m.session.model === "gpt-5-mini")).toBe(false);
-    expect(roster(messages).get(`thread:${CHILD}`)?.model).toBe("gpt-5-mini");
+    expect(messages.some((m) => m.type === "session_update" && m.session.model === "gpt-6-luna")).toBe(false);
+    expect(roster(messages).get(`thread:${CHILD}`)?.model).toBe("gpt-6-luna");
 
     // The root's later words still carry the session's own model.
     transport.simulateNotification("item/started", {
@@ -881,7 +881,7 @@ describe("CodexAdapter subagent threads", () => {
       threadId: MAIN_THREAD_ID,
       item: { type: "agentMessage", id: "root-msg" },
     });
-    expect(assistantMessages(messages).find((m) => m.message.id === "root-msg")?.message.model).toBe("o3-pro");
+    expect(assistantMessages(messages).find((m) => m.message.id === "root-msg")?.message.model).toBe("gpt-6.1-sol");
 
     // The root's own reroute still moves the session.
     transport.simulateNotification("model/rerouted", { threadId: MAIN_THREAD_ID, toModel: "gpt-6-astra" });

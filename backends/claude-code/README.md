@@ -34,7 +34,7 @@ Inbound (CLI → server, one JSON object per `\n`-delimited line):
   "type": "system",
   "subtype": "init",
   "session_id": "9c…",          // CC's internal session id; this is what `--resume` accepts
-  "model": "claude-opus-5",
+  "model": "claude-opus-5-5",
   "cwd": "/path/to/workspace",
   "tools": ["Read", "Edit", …],
   "claude_code_version": "2.1.118",
@@ -54,7 +54,7 @@ Inbound (CLI → server, one JSON object per `\n`-delimited line):
       { "type": "text", "text": "Sure — running it now." },
       { "type": "tool_use", "id": "toolu_01…", "name": "Bash", "input": { "command": "ls" } }
     ],
-    "model": "claude-opus-5",
+    "model": "claude-opus-5-5",
     "usage": { "input_tokens": 42, "output_tokens": 12, … }
   },
   "parent_tool_use_id": null,
@@ -284,7 +284,7 @@ from `model/list` and kimi from ACP. Each entry looks like:
 
 ```jsonc
 { "value": "opus",                    // id to send back on set_model
-  "resolvedModel": "claude-opus-5",   // the concrete model it resolves to
+  "resolvedModel": "claude-opus-5-5",   // the concrete model it resolves to
   "displayName": "Opus",
   "supportsEffort": true, "supportedEffortLevels": ["low","medium","high","xhigh","max"],
   "supportsAdaptiveThinking": true, "supportsFastMode": true, "supportsAutoMode": true }
@@ -297,7 +297,7 @@ Two traps:
   `initialize` response is the only route (it's what the Agent SDK's
   `query.supportedModels()` reads).
 - **`value` and `resolvedModel` are many-to-one.** `default` and `opus[1m]`
-  both resolve to `claude-opus-5[1m]`, so "which entry is active?" must pick a
+  both resolve to `claude-opus-5-5[1m]`, so "which entry is active?" must pick a
   single winner (exact `value`, then `resolvedModel`, then a loose guess)
   rather than run a predicate per row. `available_models` carries `resolvedId`
   for exactly this.

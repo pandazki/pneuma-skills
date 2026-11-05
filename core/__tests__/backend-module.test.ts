@@ -34,7 +34,7 @@ describe("BackendModule type", () => {
         scheduling: true,
         costTracking: true,
       },
-      defaultModels: [{ id: "claude-opus-4-7", label: "Opus", icon: "O" }],
+      defaultModels: [{ id: "claude-opus-5-5", label: "Opus", icon: "O" }],
       createBackend: () => ({ /* type-only */ } as any),
       createBridgeBackend: () => null,
       checkRequirements: () => ({ ok: true }),

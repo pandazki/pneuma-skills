@@ -3,7 +3,7 @@ import wordtasteManifest from "../manifest.js";
 
 describe("wordtaste v0.9 manifest", () => {
   it("declares the upstream method alignment and calibrated scope", () => {
-    expect(wordtasteManifest.version).toBe("0.17.1");
+    expect(wordtasteManifest.version).toBe("0.17.2");
     expect(wordtasteManifest.changelog?.["0.3.0"]).toBeDefined();
     expect(wordtasteManifest.changelog?.["0.4.0"]).toBeDefined();
     expect(wordtasteManifest.changelog?.["0.5.0"]).toHaveLength(3);
@@ -142,7 +142,7 @@ describe("wordtaste v0.9 manifest", () => {
     const model = params.find((param) => param.name === "writerModel");
     expect(model).toBeDefined();
     expect(model!.type).toBe("string");
-    expect(model!.defaultValue).toBe("anthropic/claude-sonnet-5");
+    expect(model!.defaultValue).toBe("anthropic/claude-sonnet-5.5");
     expect(model!.description).toContain("only when an OpenRouter key is available");
     expect(model!.sensitive).toBeUndefined();
   });

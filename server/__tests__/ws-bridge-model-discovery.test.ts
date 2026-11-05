@@ -65,9 +65,9 @@ function initializeResponse(requestId: string, response: Record<string, unknown>
 }
 
 const LIVE_MODELS = [
-  { value: "default", resolvedModel: "claude-opus-5[1m]", displayName: "Default (recommended)" },
+  { value: "default", resolvedModel: "claude-opus-5-5[1m]", displayName: "Default (recommended)" },
   { value: "claude-fable-5[1m]", resolvedModel: "claude-fable-5", displayName: "Fable" },
-  { value: "opus", resolvedModel: "claude-opus-5", displayName: "Opus" },
+  { value: "opus", resolvedModel: "claude-opus-5-5", displayName: "Opus" },
 ];
 
 describe("model discovery via the initialize control request", () => {
@@ -95,9 +95,9 @@ describe("model discovery via the initialize control request", () => {
     }));
 
     expect(session.state.available_models).toEqual([
-      { id: "default", name: "Default (recommended)", resolvedId: "claude-opus-5[1m]" },
+      { id: "default", name: "Default (recommended)", resolvedId: "claude-opus-5-5[1m]" },
       { id: "claude-fable-5[1m]", name: "Fable", resolvedId: "claude-fable-5" },
-      { id: "opus", name: "Opus", resolvedId: "claude-opus-5" },
+      { id: "opus", name: "Opus", resolvedId: "claude-opus-5-5" },
     ]);
   });
 
@@ -168,7 +168,7 @@ describe("set_model", () => {
     const sid = "session-switch";
     const session = bridge.getOrCreateSession(sid);
     attachRecordingCli(bridge, sid);
-    session.state.model = "claude-opus-5";
+    session.state.model = "claude-opus-5-5";
 
     bridge.handleBrowserMessage(browserWs(sid), JSON.stringify({ type: "set_model", model: "haiku" }));
 
@@ -180,7 +180,7 @@ describe("set_model", () => {
     const sid = "session-switch";
     const session = bridge.getOrCreateSession(sid);
     const sent = attachRecordingCli(bridge, sid);
-    session.state.model = "claude-opus-5";
+    session.state.model = "claude-opus-5-5";
     sent.length = 0;
 
     bridge.handleBrowserMessage(browserWs(sid), JSON.stringify({ type: "set_model", model: "bogus" }));
@@ -192,6 +192,6 @@ describe("set_model", () => {
       response: { subtype: "error", request_id: reqId, error: "unknown model" },
     }));
 
-    expect(session.state.model).toBe("claude-opus-5");
+    expect(session.state.model).toBe("claude-opus-5-5");
   });
 });

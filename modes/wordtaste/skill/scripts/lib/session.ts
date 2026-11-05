@@ -17,7 +17,7 @@ import { join } from "node:path";
 export const scriptsDir = join(import.meta.dir, "..");
 
 /** The model the hosted writer route runs on when nobody names another one. */
-export const WRITER_MODEL_DEFAULT = "anthropic/claude-sonnet-5";
+export const WRITER_MODEL_DEFAULT = "anthropic/claude-sonnet-5.5";
 
 /** Byte-order comparison, the `LC_ALL=C sort` the bash scripts relied on. */
 export function byteCompare(a: string, b: string): number {

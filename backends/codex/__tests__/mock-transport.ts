@@ -41,10 +41,10 @@ export function createMockTransport(): MockCodexTransport {
         return { serverInfo: { name: "codex-test", version: "1.0.0" } };
       }
       if (method === "thread/start") {
-        return { thread: { id: MAIN_THREAD_ID }, model: "o3-pro", model_provider: "openai" };
+        return { thread: { id: MAIN_THREAD_ID }, model: "gpt-6.1-sol", model_provider: "openai" };
       }
       if (method === "thread/resume") {
-        return { thread: { id: params.threadId || "thr_resumed" }, model: "o3-pro", model_provider: "openai" };
+        return { thread: { id: params.threadId || "thr_resumed" }, model: "gpt-6.1-sol", model_provider: "openai" };
       }
       if (method === "turn/start") {
         return { turn: { id: "turn_1" } };

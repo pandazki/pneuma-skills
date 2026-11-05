@@ -1271,7 +1271,7 @@ function parseContextOutput(content: string): ContextUsageData | null {
 
   if (!usedTokens) return null;
 
-  // Extract model — handles "**Model:** claude-opus-4-6" or "Model: claude-opus-4-6"
+  // Extract model — handles "**Model:** claude-opus-5-5" or "Model: claude-opus-5-5"
   for (const line of lines) {
     const m = line.match(/\*{0,2}Model\*{0,2}[:\s]+\*{0,2}\s*([a-z][\w.-]+)/i);
     if (m) {
