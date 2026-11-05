@@ -917,31 +917,38 @@ call, so the stage shows it working.
    the sides, the state's guards, a transparent background) and prints on
    stderr the `generate_gif.mjs` flags — `--frame-count`, the motion's rate
    as `--frame-duration-ms`, `--image-size 512x512`, `--background
-   transparent`, `--output` — and the references to attach, in order.
+   transparent`, `--output motions/<id>/gif-raw-<n>.gif` — and the references
+   to attach, in order. `<n>` is the next take: every GIF keeps its own file
+   and its own record, so a retake never replaces one that was paid for.
 4. **Reserve, generate, land** — record it before the paid call, then land
-   it or fail it:
+   it or fail it, with the printed `--output` path as `--file`:
 
    ```bash
    node {SKILL_PATH}/scripts/sprite-project.mjs set-gif --dir <character> --motion <id> --status generating \
-     --file motions/<id>/gif-raw.gif --from <ref asset ids, in the printed order> \
+     --file motions/<id>/gif-raw-<n>.gif --from <ref asset ids, in the printed order> \
      --model openai/gpt-image-2.6-flare --prompt "$(cat <character>/motions/<id>/gif-prompt.txt)"
    node {SKILL_PATH}/scripts/generate_gif.mjs "$(cat <character>/motions/<id>/gif-prompt.txt)" \
      --image-urls <each printed reference, in order> <the printed flags> --json > <character>/motions/<id>/gif.json
    node {SKILL_PATH}/scripts/sprite-project.mjs set-gif --dir <character> --motion <id> --report <character>/motions/<id>/gif.json
    ```
 
-   A failed call exits 1 with its `ERROR:` (and `fal request <id>` when the
-   job ran): `set-gif --motion <id> --status failed --notes "<why>"
-   --request-id <id>`, then tell the user — never a second take without
-   asking. A GIF holding another number of frames than asked is a failure
-   too. `--model sunburst` on both calls is the upgrade (`--model
+   A failed call exits 1 with its `ERROR:` — `fal request <id>` when the
+   job ran, and the result's URL (or where its bytes were kept) when it
+   finished: `set-gif --motion <id> --status failed --notes "<why, with the
+   URL>" --request-id <id>`, then tell the user — never a second take
+   without asking. A GIF holding another number of frames than asked is a
+   failure too. A new take is refused while the last one is still
+   `generating`: land or fail it first; `--supersede "<why>"` exists for a
+   call whose outcome you cannot know (it was killed before printing
+   anything) and records that take as failed, billing unknown.
+   `--model sunburst` on both calls is the upgrade (`--model
    openai/gpt-image-2.6-sunburst` on the reservation); landing records the
    model that ran.
 5. **Cut every frame** — the GIF's own frames, alpha and rate, through the
    same chain as a sheet:
 
    ```bash
-   node {SKILL_PATH}/scripts/sprite-sheet.mjs from-gif <character>/motions/<id>/gif-raw.gif \
+   node {SKILL_PATH}/scripts/sprite-sheet.mjs from-gif <character>/motions/<id>/gif-raw-<n>.gif \
      --out <character>/motions/<id> --name <id> --loop --cols 4 --json > <character>/motions/<id>/run.json
    ```
 
@@ -1283,8 +1290,8 @@ character.
   same id: `register-run` replaces the old frames, never duplicates them. Say
   the price first when it is paid. **A GIF** is a new take: `gif-prompt` with
   the note folded into the action, then the B-gif steps from the
-  reservation on (`set-gif --status generating` reserves the same asset
-  again). **A breathe** is free: the same pipe with
+  reservation on, at the new `--output` it prints (the earlier take, its
+  file and its request stay on record). **A breathe** is free: the same pipe with
   the parameter the note asks for, the rest from `show --motion <id>`. **A
   mirror**'s drawing lives in its source: regenerate that and mirror again
   (say so). **A pixel motion** keeps `--pixel`, then rebakes its colourways.

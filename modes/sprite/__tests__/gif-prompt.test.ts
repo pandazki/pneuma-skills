@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -138,11 +138,20 @@ describe("sprite-project.mjs gif-prompt", () => {
     expect(motion.prompt).toBe(GOLDEN_IDLE);
     expect(motion.promptParts).toEqual({ builder: "gif-prompt/1", action: ACTION, guards: ["frames:8", "state:idle", "loop-close"] });
     // 8 fps is 125 ms a frame, on fal's 10 ms grid.
-    expect(r.err).toContain(`gif: --frame-count 8 --frame-duration-ms 130 --image-size 512x512 --background transparent --output ${join(dir, "motions/idle/gif-raw.gif")}`);
+    expect(r.err).toContain(`gif: --frame-count 8 --frame-duration-ms 130 --image-size 512x512 --background transparent --output ${join(dir, "motions/idle/gif-raw-1.gif")}`);
     expect(r.err).toContain("no references are registered");
 
     const json = JSON.parse(run(["gif-prompt", "--dir", dir, "--motion", "idle", "--action", ACTION, "--frames", "8", "--json"]).out);
-    expect(json).toMatchObject({ frameCount: 8, frameDurationMs: 130, imageSize: "512x512", background: "transparent", attach: [] });
+    expect(json).toMatchObject({ frameCount: 8, frameDurationMs: 130, imageSize: "512x512", background: "transparent", attach: [], output: join(dir, "motions/idle/gif-raw-1.gif") });
+  });
+
+  test("the printed --output never names a file that is already there: every take gets its own", () => {
+    const dir = character(["--id", "idle", "--label", "Idle", "--source", "gif", "--fps", "8", "--loop"]);
+    // An earlier take's GIF — paid for, whether or not it was ever recorded.
+    mkdirSync(join(dir, "motions", "idle"), { recursive: true });
+    writeFileSync(join(dir, "motions", "idle", "gif-raw-1.gif"), "GIF89a an earlier take");
+    const json = JSON.parse(run(["gif-prompt", "--dir", dir, "--motion", "idle", "--action", ACTION, "--frames", "8", "--json"]).out);
+    expect(json.output).toBe(join(dir, "motions/idle/gif-raw-2.gif"));
   });
 
   test("refused on a breathe, a loop and a pixel-art character, with project.json untouched", () => {

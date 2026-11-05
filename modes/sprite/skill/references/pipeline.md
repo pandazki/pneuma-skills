@@ -1140,7 +1140,7 @@ and then the chain `run` drives: clean → align → pack → gif (+webp) →
 inspect. `register-run` consumes the JSON unchanged.
 
 ```bash
-node {SKILL_PATH}/scripts/sprite-sheet.mjs from-gif <character>/motions/<id>/gif-raw.gif \
+node {SKILL_PATH}/scripts/sprite-sheet.mjs from-gif <character>/motions/<id>/gif-raw-<n>.gif \
   --out <character>/motions/<id> --name <id> --loop --cols 4 --json
 ```
 
@@ -1168,10 +1168,10 @@ The extra keys on top of `run`'s JSON:
 ```
 
 `gif` stays the preview this run wrote, as in every run summary;
-`sourceGif` is the input. `register-run` requires the motion's GIF asset
-(`set-gif`) to be landed and to be this file, hangs every frame's `derive`
-edge off it with `params.frameIndex`, and sets `motion.source = "gif"`. The
-GIF is only read, never copied or rewritten.
+`sourceGif` is the input. `register-run` requires the motion's current GIF
+take (`motion.gifRaw`, `set-gif`) to be landed and to be this file, hangs
+every frame's `derive` edge off it with `params.frameIndex`, and sets
+`motion.source = "gif"`. The GIF is only read, never copied or rewritten.
 
 **Every clip command refuses a GIF, by its signature and not its name** —
 `contact`, `from-video`, `retime`, `loop`, `transition` and `pack-split`
@@ -2448,11 +2448,11 @@ come from `Date.now()` unless `--at <ms>` is passed.
 | `add-motion --id idle --label Idle --rows 4 --cols 4 --fps 8 [--loop] [--anchor bottom] [--prompt] [--status planned] [--direction front\|back\|left\|right]` | Adds the motion. Call it before you generate, so the stage shows a placeholder. `--direction` is the way it faces; name it `<state>-<direction>` (`walk-left`) so every atlas key, Aseprite tag and Rive input carries it. |
 | `set-motion --motion idle [--label] [--fps] [--loop\|--no-loop] [--anchor] [--prompt [--prompt-parts '<json>']] [--direction] [--source sheet\|gif\|video\|breathe\|mirror] [--status] [--notes]` | Edits motion metadata. `--source` says again how a motion with no frames yet will get them — the way out when a planned mirror is refused on an asymmetric character: `--source sheet`, then `sheet-prompt`; a motion with frames keeps the source that made them. `--notes` is where a failure reason belongs. `--prompt` alone is a hand-written prompt and drops any recorded parts; `--prompt-parts` records how code built the `--prompt` given with it (what `sheet-prompt` writes; `project-json.md`, *Recorded prompt parts*). A mirror's `--direction` must stay the opposite of its source's. |
 | `sheet-prompt --motion idle --action "<phase plan>" [--frames N] [--state …] [--guide\|--no-guide]` | Builds the sheet prompt in code from the character, the motion and your action, records `prompt` + `promptParts`, and prints the prompt (stdout alone without `--json`; `imageSize`, `attach`, `rhythm`, `guide` and `sides` with it — `sides[d]` is where the character's own right and left fall in view `d`). `--frames` redraws the motion's grid. Refused on loop, transition, breathe and mirror motions, a planned mirror included. Grammar, guards and the frames table: `prompting.md`, *Building the prompt*. |
-| `gif-prompt --motion idle --action "<phase plan, by frame>" --frames 2–16 [--state …]` | The GIF's `sheet-prompt`: builds the prompt in code (`gif-prompt/1`), records `prompt` + `promptParts`, prints the prompt (stdout alone without `--json`) and on stderr the `generate_gif.mjs` flags — `--frame-count`, `--frame-duration-ms` (1000 / the motion's fps, on fal's 10 ms grid, 20–2000), `--image-size 512x512`, `--background transparent`, `--output <character>/motions/<id>/gif-raw.gif` — and the references to attach, in order (the direction's anchor first). The state guards are the sheet's own sentences said of frames, and a word for cell, sheet or grid left in one is refused rather than sent. Refused on a loop, cutscene, breathe or mirror motion and on a pixel-art character (its lattice needs a sheet). |
-| `set-gif --motion idle --status generating --file motions/idle/gif-raw.gif --from ref-…[,…] --model openai/gpt-image-2.6-flare --prompt "<the prompt>"` | Reserves `<motion>-gif-raw` (`status: "generating"`) with its `generate` edge — model, prompt, `params.inputs` when two or more references — and sets the motion `generating`. **Before** the paid call. `--from` is required. |
-| `set-gif --motion idle --report <generate_gif.json \| ->` | Lands the reserved GIF from `generate_gif.mjs --json`: the report's file must be the reserved uri (workspace-relative, as the script printed it); the file is measured (`width`, `height`, `frames`, `frameDurationMs`, `duration`) and must hold the frames the recorded `frames:N` guard asked for; the edge gains `provider: "fal"`, `endpoint`, `requestId` and `finishedAt`, and the model the report names. The motion goes to `processing`. A report without a reservation is refused (reserve it before the paid call). |
-| `set-gif --motion idle --status failed --notes "<why>" [--request-id <id>]` | Fails the reserved GIF: `params.failure = { reason, at, billing: "unknown" }` (plus the request id when the job ran), the motion `failed` with the notes. A new reservation replaces it. |
-| `set-gif --motion idle --uploaded --file motions/idle/gif-raw.gif` | A GIF the user brought: an `upload` edge with `actor: "human"`, measured on the spot; refuses `--model`, `--prompt` and `--from`. |
+| `gif-prompt --motion idle --action "<phase plan, by frame>" --frames 2–16 [--state …]` | The GIF's `sheet-prompt`: builds the prompt in code (`gif-prompt/1`), records `prompt` + `promptParts`, prints the prompt (stdout alone without `--json`) and on stderr the `generate_gif.mjs` flags — `--frame-count`, `--frame-duration-ms` (1000 / the motion's fps, on fal's 10 ms grid, 20–2000), `--image-size 512x512`, `--background transparent`, `--output <character>/motions/<id>/gif-raw-<n>.gif` (the next take: a file no asset holds and nothing occupies) — and the references to attach, in order (the direction's anchor first). The state guards are the sheet's own sentences said of frames, and a word for cell, sheet or grid left in one is refused rather than sent. Refused on a loop, cutscene, breathe or mirror motion and on a pixel-art character (its lattice needs a sheet). |
+| `set-gif --motion idle --status generating --file motions/idle/gif-raw-<n>.gif --from ref-…[,…] --model openai/gpt-image-2.6-flare --prompt "<the prompt>" [--supersede "<why>"]` | Reserves a new take, `<motion>-gif-raw-<n>` (`status: "generating"`), with its `generate` edge — model, prompt, `params.inputs` when two or more references — points `motion.gifRaw` at it and sets the motion `generating`. **Before** the paid call. `--from` is required; `--file` must be free (no asset's uri, no file on disk). Earlier takes are kept. Refused while the current take is still `generating` — its outcome is not on record — unless `--supersede "<why>"`, which records that take `failed`, outcome and billing unknown. |
+| `set-gif --motion idle --report <generate_gif.json \| ->` | Lands the current take from `generate_gif.mjs --json`: the report's file must be its reserved uri (workspace-relative, as the script printed it); the file is measured (`width`, `height`, `frames`, `frameDurationMs`, `duration`) and must hold the frames the recorded `frames:N` guard asked for; the edge gains `provider: "fal"`, `endpoint`, `requestId` and `finishedAt`, and the model the report names. The motion goes to `processing`. A report without a reservation is refused (reserve it before the paid call). |
+| `set-gif --motion idle --status failed --notes "<why>" [--request-id <id>]` | Fails the current take: `params.failure = { reason, at, billing: "unknown" }` (plus the request id when the job ran), the motion `failed` with the notes. The failed take stays on record when the next one is reserved. |
+| `set-gif --motion idle --uploaded --file motions/idle/upload.gif [--supersede "<why>"]` | A GIF the user brought, as a new take: an `upload` edge with `actor: "human"`, measured on the spot; refuses `--model`, `--prompt` and `--from`, and a file another asset already holds. |
 | `set-sheet --motion idle --file motions/idle/sheet-raw.png --from ref-turnaround[,…] [--model] [--prompt] [--background opaque] [--status generating\|processing]` | Registers `<motion>-sheet-raw` with a `generate` edge. `--from` becomes the edge's `fromAssetId`; `params.inputs` lists the whole set **only when you attach two or more references** — with one, `fromAssetId` already says everything. Re-running replaces the previous raw sheet and its edges, keeping the id stable. Call it twice per sheet (see below). |
 | `add-motion … [--source sheet\|gif\|video\|breathe\|mirror]` | Records how the frames will be obtained, before anything is generated. Absent means `sheet`; `register-run` corrects it from the run that lands. `--source gif` needs no `--rows/--cols` (the run brings the grid); give `--fps` and `--loop` anyway, because `gif-prompt` turns the rate into the GIF's frame delay and the loop flag into its ending. `--source breathe` needs no `--rows/--cols` and no `--fps` (1×1 at 8 fps until the run lands: a breathe is drawn on no grid and timed by its run). `--source mirror` needs none of them either: a mirror plays on its source's grid, fps and loop, which `register-run` takes from the run. |
 | `add-motion … [--kind loop]` | Declares a **loop motion** (workflow E). `--rows/--cols` become optional (1×1 is recorded), `source` defaults to `video`, and `set-keyframe` is accepted only here. A sprite motion is unchanged. |
@@ -3124,7 +3124,8 @@ cut with `from-gif`, registered with `register-run`. `show` lists each
 motion `ready`, and `show --motion attack-gif` prints `GIF attack-gif-gif-raw
 (motions/attack-gif/gif-raw.gif) — ready, 12 frames × 100 ms, 512x512,
 openai/gpt-image-2.6-flare, request 01a1aa29-…` and the prompt's builder and
-guards.
+guards. (Recorded before takes were numbered: today that take is
+`attack-gif-gif-raw-1` at `gif-raw-1.gif`.)
 
 | Motion | Asked | Wall (`generate_gif`) | Frames | Cell | headDrift (source) | maxJump | Warnings |
 |---|---|---|---|---|---|---|---|

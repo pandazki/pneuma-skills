@@ -339,19 +339,28 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       (or --json) adds the generate_gif.mjs flags — --frame-count, the
       motion's fps as --frame-duration-ms (10 ms steps), --image-size
       ${GIF_FRAME_SIZE}, --background transparent, --output
-      motions/<id>/gif-raw.gif — and the references to attach, in order
+      motions/<id>/gif-raw-<n>.gif (the next take, a file nothing holds
+      yet) — and the references to attach, in order
       (the direction's anchor first, then the others). Refused on a loop,
       a transition, a breathe or a mirror, and on a pixel-art character
       (its frames belong on the pixel lattice: draw them as sheets).
 
-  set-gif --motion <motionId> --status generating --file <path> --from <assetId,…> --model <id> --prompt <text>
+  set-gif --motion <motionId> --status generating --file <path> --from <assetId,…> --model <id> --prompt <text> [--supersede "<why>"]
   set-gif --motion <motionId> --report <generate_gif.json|->
   set-gif --motion <motionId> --status failed --notes "<why>" [--request-id <id>]
-  set-gif --motion <motionId> --uploaded --file <path>
-      The GIF a motion's frames are cut from, as <motion>-gif-raw
-      (motion.gifRaw). Recorded BEFORE the paid call: '--status generating'
+  set-gif --motion <motionId> --uploaded --file <path> [--supersede "<why>"]
+      The GIF a motion's frames are cut from. Every take is its own asset,
+      <motion>-gif-raw-<n>, at its own file; motion.gifRaw is the current
+      one, and earlier takes stay on record (show lists them) — a retake
+      never replaces a GIF that may have been paid for, and frames keep
+      naming the take they were cut from. A new take (a reservation or an
+      upload) is refused while the current one is still generating: its
+      outcome is not on record. Land or fail it first, or pass --supersede
+      "<why>" to record it as failed with its outcome and billing unknown.
+      Recorded BEFORE the paid call: '--status generating'
       reserves it with its model, prompt and references (--from, required:
-      every generation carries the character). Then exactly one of: landed
+      every generation carries the character), at a --file no asset holds
+      and nothing occupies (gif-prompt prints one). Then exactly one of: landed
       from generate_gif.mjs's --json report — the file must be the reserved
       one and hold the frames the recorded prompt asked for; it is measured
       (width, height, frames, frameDurationMs, duration) and its edge gains
@@ -782,6 +791,54 @@ function gifMetadata(path) {
   };
 }
 
+/**
+ * A motion's GIF takes. Every GIF a motion is given — generated or uploaded
+ * — is its own asset, `<motion>-gif-raw-<n>` with n from 1 (numbered like
+ * the motion's videos), at its own file. A retake therefore never replaces
+ * an earlier GIF that may have been paid for, a failed take keeps its
+ * request and failure, and frames cut from a take keep naming that take: its
+ * record is never rewritten to describe another. `motion.gifRaw` names the
+ * current take — the one `--report` lands and `register-run` cuts from.
+ */
+function gifTakeNumber(motionId, assetId) {
+  const prefix = `${motionId}-gif-raw-`;
+  if (typeof assetId !== "string" || !assetId.startsWith(prefix)) return null;
+  const rest = assetId.slice(prefix.length);
+  return /^[1-9]\d*$/.test(rest) ? Number(rest) : null;
+}
+
+function gifTakes(doc, motionId) {
+  return doc.assets
+    .filter((a) => gifTakeNumber(motionId, a.id) !== null)
+    .sort((a, b) => gifTakeNumber(motionId, a.id) - gifTakeNumber(motionId, b.id));
+}
+
+/** The next take's id and file: past every take on record and every file on disk. */
+function nextGifTake(doc, dir, motionId) {
+  const uriOf = (n) => `motions/${motionId}/gif-raw-${n}.gif`;
+  let n = gifTakes(doc, motionId).reduce((max, a) => Math.max(max, gifTakeNumber(motionId, a.id)), 0) + 1;
+  while (existsSync(join(dir, uriOf(n))) || doc.assets.some((a) => a.uri === uriOf(n))) n += 1;
+  return { id: `${motionId}-gif-raw-${n}`, uri: uriOf(n) };
+}
+
+/**
+ * Record a GIF take as failed: `params.failure` with billing unknown (fal
+ * reports no usage, and a job that ran may have been charged), the request
+ * id when there is one, and everything the reservation recorded kept.
+ */
+function failGifTake(doc, asset, { reason, requestId, now, owner }) {
+  const previous = doc.provenance.find((e) => e.toAssetId === asset.id);
+  const params = previous?.operation?.params ?? {};
+  const inputs = Array.isArray(params.inputs) ? params.inputs : previous?.fromAssetId ? [previous.fromAssetId] : [];
+  upsertAsset(doc, { ...asset, metadata: {}, status: "failed" }, owner);
+  setEdge(doc, edge(asset.id, inputs, operation(previous?.operation?.type ?? "generate", previous?.operation?.timestamp ?? now, {
+    ...params,
+    inputs: undefined,
+    requestId: requestId ?? params.requestId,
+    failure: { reason, at: now, billing: "unknown" },
+  }, inputs)));
+}
+
 // ---------------------------------------------------------------------------
 // Document helpers
 // ---------------------------------------------------------------------------
@@ -805,6 +862,7 @@ function assetOwner(doc, id) {
     if (slots.includes(id)
       || (motion.frames ?? []).includes(id)
       || (motion.videos ?? []).some((v) => v.asset === id)
+      || gifTakeNumber(motion.id, id) !== null
       || motion.transfer?.video === id
       || (motion.storyboard?.beats ?? []).some((b) => b.keyframe === id)) {
       return `motion '${motion.id}'`;
@@ -2312,6 +2370,12 @@ function motionLines(motion, doc) {
       const facts = asset?.status === "ready" && m.frames ? `, ${m.frames} frames × ${m.frameDurationMs} ms, ${m.width}x${m.height}` : "";
       lines.push(`  GIF ${motion.gifRaw}${asset ? ` (${asset.uri}) — ${asset.status}${facts}` : " — missing"}${params.model ? `, ${params.model}` : ""}${params.requestId ? `, request ${params.requestId}` : ""}${params.failure ? `: ${params.failure.reason}` : ""}`);
     }
+    // Earlier takes stay on record — a failed one with the request a paid
+    // job is reconciled by, a ready one with the file frames may come from.
+    for (const take of doc ? gifTakes(doc, motion.id).filter((a) => a.id !== motion.gifRaw) : []) {
+      const p = doc.provenance.find((e) => e.toAssetId === take.id)?.operation?.params ?? {};
+      lines.push(`  earlier GIF ${take.id} (${take.uri}) — ${take.status}${p.requestId ? `, request ${p.requestId}` : ""}${p.failure ? `: ${p.failure.reason}` : ""}`);
+    }
     if (motion.slice) lines.push(`  ${sliceText(motion.slice)}`);
     const lift = motion.inspect?.lift;
     if (Array.isArray(lift)) lines.push(`  lift above the ground (y from cell): ${lift.map((v) => v ?? "-").join(", ")} px`);
@@ -2454,7 +2518,7 @@ const OPTIONS = {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
     model: { type: "string" }, prompt: { type: "string" }, status: { type: "string" },
     report: { type: "string" }, uploaded: { type: "boolean", default: false },
-    notes: { type: "string" }, "request-id": { type: "string" },
+    notes: { type: "string" }, "request-id": { type: "string" }, supersede: { type: "string" },
   },
   "set-keyframe": {
     motion: { type: "string" }, file: { type: "string" }, alpha: { type: "string" },
@@ -3522,7 +3586,10 @@ function main() {
       // grid and inside its 20–2000 ms range. from-gif reads the rate back
       // off the file, so what lands is what plays.
       const frameDurationMs = Math.min(2000, Math.max(20, Math.round(1000 / motion.fps / 10) * 10));
-      const output = onDisk(`motions/${motion.id}/gif-raw.gif`);
+      // A path no take holds and no file occupies: a retake never names the
+      // file of an earlier, possibly paid-for GIF (generate_gif.mjs refuses
+      // an existing --output too).
+      const output = onDisk(nextGifTake(doc, dir, motion.id).uri);
       const payload = {
         motion: motion.id,
         state: built.state,
@@ -3558,9 +3625,9 @@ function main() {
       if (motion.source === "breathe" || motion.source === "mirror") {
         fail(`set-gif: '${motion.id}' is a ${motion.source} motion — set-motion --motion ${motion.id} --source gif first (only before it has frames)`);
       }
-      const assetId = `${motion.id}-gif-raw`;
       const owner = `motion '${motion.id}'`;
-      const existing = doc.assets.find((a) => a.id === assetId) ?? null;
+      // The current take: what --report lands and --status failed fails.
+      const current = motion.gifRaw ? doc.assets.find((a) => a.id === motion.gifRaw) ?? null : null;
       const leg = values.uploaded ? "upload"
         : values.status === "generating" ? "reserve"
           : values.status === "failed" ? "fail"
@@ -3573,15 +3640,50 @@ function main() {
         for (const [flag, key] of flags) if (values[key] !== undefined && values[key] !== false) fail(`set-gif ${flag}: ${why}`);
       };
       if (leg !== "fail" && values.notes !== undefined) fail("set-gif --notes: only a failed GIF carries a reason (--status failed)");
+      if ((leg === "land" || leg === "fail") && values.supersede !== undefined) {
+        fail("set-gif --supersede: only a new take (--status generating or --uploaded) supersedes one that is still generating");
+      }
+
+      // A new take — a reservation or an upload — is its own asset at its own
+      // file (see gifTakes). The take in flight, if any, is a call whose
+      // outcome is not on record: it may have run and been billed, so it is
+      // never dropped by accident. Without --supersede the new take is
+      // refused; with it, that take is recorded as failed with its outcome
+      // and billing unknown — craft's rule for a call replaced while still
+      // generating (docs/reference/craft-project-file.md, params.earlier).
+      let superseded = null;
+      const newTake = (uri) => {
+        const next = nextGifTake(doc, dir, motion.id);
+        const holder = doc.assets.find((a) => a.uri === uri);
+        if (holder) {
+          fail(`set-gif --file: ${uri} is already ${holder.id}'s file — every take gets its own, so an earlier GIF (possibly paid for) is never replaced; use ${next.uri}, the path gif-prompt prints`);
+        }
+        if (leg === "reserve" && existsSync(join(dir, uri))) {
+          fail(`set-gif --file: ${uri} already exists — a new take must not name a file that is there (generate_gif.mjs would refuse it, and it may be an earlier paid GIF); use ${next.uri}, the path gif-prompt prints`);
+        }
+        if (current?.status === "generating") {
+          const why = String(values.supersede ?? "").trim();
+          if (!why) {
+            fail(`set-gif: ${current.id} (${current.uri}) is still generating — its fal job may have run and been billed, and whether it finished is not on record. If its GIF arrived, land it (--report <generate_gif.mjs --json output>); if the call failed, record that (--status failed --notes "<why>" --request-id <id>). To start another take anyway, add --supersede "<why>": ${current.id} is then recorded as failed, its outcome and billing unknown.`);
+          }
+          failGifTake(doc, current, { reason: `superseded while generating — its outcome was never recorded (${why})`, now, owner });
+          superseded = current.id;
+        } else if (values.supersede !== undefined) {
+          fail(`set-gif --supersede: ${current ? `${current.id} is ${current.status}` : "no GIF take is registered"} — only a take still generating is superseded`);
+        }
+        return next.id;
+      };
 
       if (leg === "upload") {
         refuse([["--model", "model"], ["--prompt", "prompt"], ["--from", "from"], ["--report", "report"], ["--request-id", "request-id"], ["--status", "status"]],
           "a GIF the user brought was not generated here — --uploaded takes --file only");
         const uri = toUri(dir, requireFlag(values.file, "--file"), "--file");
         const file = requireFile(dir, uri, "--file");
+        const metadata = gifMetadata(file);
+        const assetId = newTake(uri);
         upsertAsset(doc, {
           id: assetId, type: "image", uri, name: `${motion.id} GIF (uploaded)`,
-          metadata: gifMetadata(file), createdAt: now, status: "ready",
+          metadata, createdAt: now, status: "ready",
         }, owner);
         setEdge(doc, edge(assetId, [], operation("upload", now, {}, [], "human")));
         motion.gifRaw = assetId;
@@ -3595,6 +3697,7 @@ function main() {
         if (!inputs.length) {
           fail("set-gif --from: name the references the GIF is generated from, in the order gif-prompt printed (ref-<refId>,…) — every generation carries the character references");
         }
+        const assetId = newTake(uri);
         upsertAsset(doc, {
           id: assetId, type: "image", uri, name: `${motion.id} GIF (generated)`,
           metadata: {}, createdAt: now, status: "generating",
@@ -3605,8 +3708,8 @@ function main() {
       } else if (leg === "land") {
         refuse([["--file", "file"], ["--from", "from"], ["--prompt", "prompt"], ["--status", "status"], ["--request-id", "request-id"], ["--model", "model"]],
           "landing takes everything from --report, the generate_gif.mjs --json output — the request, the model and the file");
-        if (!existing || existing.status !== "generating") {
-          fail(`set-gif --report: ${assetId} is ${existing ? existing.status : "not registered"} — reserve it BEFORE the paid call (set-gif --status generating --file … --from … --model … --prompt …), then land it`);
+        if (!current || current.status !== "generating") {
+          fail(`set-gif --report: ${current ? `${current.id} is ${current.status}` : `motion '${motion.id}' has no GIF take reserved`} — reserve it BEFORE the paid call (set-gif --status generating --file … --from … --model … --prompt …), then land it`);
         }
         const report = readJsonReport(values.report, "--report");
         const path = Array.isArray(report.files) ? report.files[0] : undefined;
@@ -3614,7 +3717,7 @@ function main() {
         // The report names the file as generate_gif.mjs was given it: from
         // the workspace, where both commands run — not from --dir.
         const uri = toUri(dir, resolve(path), "--report files[0]");
-        if (uri !== existing.uri) fail(`--report: the GIF landed at ${uri}, but ${assetId} was reserved for ${existing.uri}`);
+        if (uri !== current.uri) fail(`--report: the GIF landed at ${uri}, but ${current.id} was reserved for ${current.uri}`);
         const file = requireFile(dir, uri, "--report files[0]");
         const metadata = gifMetadata(file);
         if (report.frameCount !== undefined && report.frameCount !== metadata.frames) {
@@ -3624,14 +3727,14 @@ function main() {
         if (Number.isInteger(planned) && planned !== metadata.frames) {
           fail(`--report: ${uri} holds ${metadata.frames} frames but the recorded GIF prompt asked for ${planned} — record it as failed (set-gif --status failed --notes …)`);
         }
-        const previous = doc.provenance.find((e) => e.toAssetId === assetId);
+        const previous = doc.provenance.find((e) => e.toAssetId === current.id);
         const params = previous?.operation?.params ?? {};
         const inputs = Array.isArray(params.inputs) ? params.inputs : previous?.fromAssetId ? [previous.fromAssetId] : [];
         upsertAsset(doc, {
-          id: assetId, type: "image", uri, name: existing.name,
+          id: current.id, type: "image", uri, name: current.name,
           metadata, createdAt: now, status: "ready",
         }, owner);
-        setEdge(doc, edge(assetId, inputs, operation("generate", previous?.operation?.timestamp ?? now, {
+        setEdge(doc, edge(current.id, inputs, operation("generate", previous?.operation?.timestamp ?? now, {
           model: typeof report.model === "string" && report.model ? report.model : params.model,
           prompt: params.prompt,
           provider: "fal",
@@ -3639,37 +3742,26 @@ function main() {
           requestId: typeof report.requestId === "string" ? report.requestId : undefined,
           finishedAt: now,
         }, inputs)));
-        motion.gifRaw = assetId;
         motion.status = "processing";
       } else {
         refuse([["--file", "file"], ["--from", "from"], ["--prompt", "prompt"], ["--report", "report"], ["--model", "model"]],
           "recording a failure changes nothing about the request");
         const reason = String(requireFlag(values.notes, "--notes")).trim();
         if (!reason) fail("set-gif --notes: the reason is required — the user reads it on the stage");
-        if (!existing || existing.status === "ready") {
-          fail(`set-gif --status failed: ${assetId} is ${existing ? "ready" : "not registered"} — only a reserved GIF can fail`);
+        if (!current || current.status === "ready") {
+          fail(`set-gif --status failed: ${current ? `${current.id} is ready` : `motion '${motion.id}' has no GIF take reserved`} — only a reserved GIF can fail`);
         }
-        const previous = doc.provenance.find((e) => e.toAssetId === assetId);
-        const params = previous?.operation?.params ?? {};
-        const inputs = Array.isArray(params.inputs) ? params.inputs : previous?.fromAssetId ? [previous.fromAssetId] : [];
-        upsertAsset(doc, { ...existing, metadata: {}, status: "failed" }, owner);
-        setEdge(doc, edge(assetId, inputs, operation(previous?.operation?.type ?? "generate", previous?.operation?.timestamp ?? now, {
-          ...params,
-          inputs: undefined,
-          requestId: values["request-id"] ?? params.requestId,
-          // Whether a failed job was billed is not knowable from here: fal
-          // reports no usage, and a job that ran may have been charged.
-          failure: { reason, at: now, billing: "unknown" },
-        }, inputs)));
+        failGifTake(doc, current, { reason, requestId: values["request-id"], now, owner });
         motion.status = "failed";
         motion.notes = reason;
       }
       saveProject(dir, doc);
-      const asset = doc.assets.find((a) => a.id === assetId);
+      const asset = doc.assets.find((a) => a.id === motion.gifRaw);
       emit(values, motion, [
-        leg === "reserve" ? `${motion.id}: reserved ${assetId} for ${asset.uri} (generating — land it with --report once the GIF is on disk)`
-          : leg === "fail" ? `${motion.id}: ${assetId} failed — ${motion.notes}`
-            : `${motion.id}: ${assetId} ${leg === "upload" ? "uploaded" : "landed"} — ${asset.metadata.frames} frames of ${asset.metadata.width}x${asset.metadata.height}${asset.metadata.frameDurationMs ? ` at ${asset.metadata.frameDurationMs} ms` : ""}; next: sprite-sheet.mjs from-gif ${values.dir === undefined ? asset.uri : join(values.dir, asset.uri)} --out ${values.dir === undefined ? `motions/${motion.id}` : join(values.dir, "motions", motion.id)} --name ${motion.id} … | register-run`,
+        ...(superseded ? [`${motion.id}: ${superseded} superseded while generating — recorded as failed, its outcome and billing unknown`] : []),
+        leg === "reserve" ? `${motion.id}: reserved ${asset.id} for ${asset.uri} (generating — land it with --report once the GIF is on disk)`
+          : leg === "fail" ? `${motion.id}: ${asset.id} failed — ${motion.notes}`
+            : `${motion.id}: ${asset.id} ${leg === "upload" ? "uploaded" : "landed"} — ${asset.metadata.frames} frames of ${asset.metadata.width}x${asset.metadata.height}${asset.metadata.frameDurationMs ? ` at ${asset.metadata.frameDurationMs} ms` : ""}; next: sprite-sheet.mjs from-gif ${values.dir === undefined ? asset.uri : join(values.dir, asset.uri)} --out ${values.dir === undefined ? `motions/${motion.id}` : join(values.dir, "motions", motion.id)} --name ${motion.id} … | register-run`,
       ]);
       break;
     }
@@ -3887,7 +3979,7 @@ function main() {
       if (gifRun) {
         const asset = motion.gifRaw ? doc.assets.find((a) => a.id === motion.gifRaw) : null;
         if (!asset) {
-          fail(`--run says these frames are a GIF's, but motion '${motion.id}' has no GIF registered. Register it first: set-gif --dir <character> --motion ${motion.id} (it becomes ${motion.id}-gif-raw)`);
+          fail(`--run says these frames are a GIF's, but motion '${motion.id}' has no GIF registered. Register it first: set-gif --dir <character> --motion ${motion.id} (it becomes ${motion.id}-gif-raw-<n>)`);
         }
         if (asset.status !== "ready") {
           fail(`--run: ${asset.id} is ${asset.status} — land it first (set-gif --motion ${motion.id} --report <generate_gif.mjs --json output>)${asset.status === "failed" ? "; a failed GIF has no frames to register" : ""}`);
@@ -4430,7 +4522,8 @@ function main() {
       }
       const staleWhole = characterExportsHolding(doc, motion.id);
       const owned = new Set([
-        `${motion.id}-sheet-raw`, `${motion.id}-gif-raw`,
+        `${motion.id}-sheet-raw`, ...(motion.gifRaw ? [motion.gifRaw] : []),
+        ...gifTakes(doc, motion.id).map((a) => a.id),
         `${motion.id}-keyframe`, `${motion.id}-keyframe-alpha`,
         ...runOwnedIds(doc, motion.id),
         ...(motion.videos ?? []).map((v) => v.asset),

@@ -17,7 +17,7 @@
 import { announceMediaTierSkip, mediaTierEnabled } from "../../../core/__tests__/test-tier.js";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -176,68 +176,76 @@ describe.skipIf(!HAS_FFMPEG)("set-gif → from-gif → register-run", () => {
     cpSync(join(root, "src", "00.png"), join(dir, "refs", "turnaround.png"));
     ok(run(PROJECT, ["add-ref", "--dir", dir, "--id", "turnaround", "--file", "refs/turnaround.png", "--role", "turnaround", "--model", "openai/gpt-image-2.6-flare", "--prompt", "a red box"]));
     ok(run(PROJECT, ["add-motion", "--dir", dir, "--id", "walk", "--label", "Walk", "--source", "gif", "--fps", "11", "--loop"]));
-    ok(run(PROJECT, ["gif-prompt", "--dir", dir, "--motion", "walk", "--action", "The box steps right.", "--frames", String(FRAMES)]));
     return { ws, dir };
   }
   const read = (dir: string) => JSON.parse(readFileSync(join(dir, "project.json"), "utf-8"));
-  const reserve = (ws: string) => run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "generating",
-    "--file", "motions/walk/gif-raw.gif", "--from", "ref-turnaround", "--model", "openai/gpt-image-2.6-flare", "--prompt", "the recorded prompt"], undefined, ws);
-  /** What generate_gif.mjs prints with --json, for the GIF it wrote. */
-  const report = (frames = FRAMES) => JSON.stringify({
-    backend: "fal", model: "openai/gpt-image-2.6-flare", endpoint: "https://fal.run/openai/gpt-image-2.6/flare/edit",
-    requestId: "req-gif-7", files: ["blob/motions/walk/gif-raw.gif"], frameCount: frames, frameDurationMs: 90,
-  });
-  const land = (ws: string, frames = FRAMES) => {
-    mkdirSync(join(ws, "blob", "motions", "walk"), { recursive: true });
-    copyFileSync(gif, join(ws, "blob", "motions", "walk", "gif-raw.gif"));
-    return run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--report", "-"], report(frames), ws);
+  const assetOf = (dir: string, id: string) => read(dir).assets.find((a: { id: string }) => a.id === id);
+  const edgeOf = (dir: string, id: string) => read(dir).provenance.find((e: { toAssetId: string }) => e.toAssetId === id);
+  /** What gif-prompt prints as --output, from the workspace (where both commands run). */
+  const nextOutput = (ws: string) => {
+    const r = run(PROJECT, ["gif-prompt", "--dir", "blob", "--motion", "walk", "--action", "The box steps right.", "--frames", String(FRAMES), "--json"], undefined, ws);
+    if (r.code !== 0) throw new Error(r.err);
+    return JSON.parse(r.out).output as string;
   };
+  /** The character-relative uri of a workspace path `blob/…`. */
+  const uriOf = (path: string) => path.replace(/^blob\//, "");
+  const reserve = (ws: string, file = "motions/walk/gif-raw-1.gif", extra: string[] = []) => run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "generating",
+    "--file", file, "--from", "ref-turnaround", "--model", "openai/gpt-image-2.6-flare", "--prompt", "the recorded prompt", ...extra], undefined, ws);
+  /** What generate_gif.mjs prints with --json, for the GIF it wrote. */
+  const report = (frames = FRAMES, file = "motions/walk/gif-raw-1.gif", requestId = "req-gif-7") => JSON.stringify({
+    backend: "fal", model: "openai/gpt-image-2.6-flare", endpoint: "https://fal.run/openai/gpt-image-2.6/flare/edit",
+    requestId, files: [`blob/${file}`], frameCount: frames, frameDurationMs: 90,
+  });
+  const land = (ws: string, frames = FRAMES, file = "motions/walk/gif-raw-1.gif", requestId = "req-gif-7") => {
+    mkdirSync(join(ws, "blob", "motions", "walk"), { recursive: true });
+    copyFileSync(gif, join(ws, "blob", file));
+    return run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--report", "-"], report(frames, file, requestId), ws);
+  };
+  const cutAndRegister = (ws: string, file: string) => {
+    const cut = run(SHEET, ["from-gif", `blob/${file}`, "--out", "blob/motions/walk", "--name", "walk", "--loop", "--json"], undefined, ws);
+    if (cut.code !== 0) throw new Error(cut.err);
+    return run(PROJECT, ["register-run", "--dir", "blob", "--motion", "walk", "--run", "-"], cut.out, ws);
+  };
+  const frameParents = (dir: string) => Array.from({ length: FRAMES }, (_, i) => edgeOf(dir, `walk-frame-${String(i).padStart(2, "0")}`)?.fromAssetId);
 
   test("the GIF is recorded before the call, landed with its request, and every frame hangs off it", () => {
     const { ws, dir } = workspace();
+    expect(nextOutput(ws)).toBe("blob/motions/walk/gif-raw-1.gif");
     expect(reserve(ws).code).toBe(0);
     let doc = read(dir);
-    expect(doc.assets.find((a: { id: string }) => a.id === "walk-gif-raw")).toMatchObject({ status: "generating", uri: "motions/walk/gif-raw.gif", metadata: {} });
-    expect(doc.sprite.motions[0]).toMatchObject({ status: "generating", gifRaw: "walk-gif-raw" });
+    expect(assetOf(dir, "walk-gif-raw-1")).toMatchObject({ status: "generating", uri: "motions/walk/gif-raw-1.gif", metadata: {} });
+    expect(doc.sprite.motions[0]).toMatchObject({ status: "generating", gifRaw: "walk-gif-raw-1" });
 
     // Frames cut before the GIF landed have nothing on record to come from.
     mkdirSync(join(dir, "motions", "walk"), { recursive: true });
-    copyFileSync(gif, join(dir, "motions", "walk", "gif-raw.gif"));
-    const early = run(SHEET, ["from-gif", "blob/motions/walk/gif-raw.gif", "--out", "blob/motions/walk", "--name", "walk", "--loop", "--json"], undefined, ws);
+    copyFileSync(gif, join(dir, "motions", "walk", "gif-raw-1.gif"));
+    const early = run(SHEET, ["from-gif", "blob/motions/walk/gif-raw-1.gif", "--out", "blob/motions/walk", "--name", "walk", "--loop", "--json"], undefined, ws);
     expect(run(PROJECT, ["register-run", "--dir", "blob", "--motion", "walk", "--run", "-"], early.out, ws).err).toContain("land it first");
 
     const landed = land(ws);
     expect(landed.code).toBe(0);
     doc = read(dir);
-    const asset = doc.assets.find((a: { id: string }) => a.id === "walk-gif-raw");
-    expect(asset).toMatchObject({ status: "ready", metadata: { width: W, height: H, frames: FRAMES, frameDurationMs: 90, duration: 1.08 } });
-    const gifEdge = doc.provenance.find((e: { toAssetId: string }) => e.toAssetId === "walk-gif-raw");
+    expect(assetOf(dir, "walk-gif-raw-1")).toMatchObject({ status: "ready", metadata: { width: W, height: H, frames: FRAMES, frameDurationMs: 90, duration: 1.08 } });
+    const gifEdge = edgeOf(dir, "walk-gif-raw-1");
     expect(gifEdge.fromAssetId).toBe("ref-turnaround");
     expect(gifEdge.operation).toMatchObject({ type: "generate", params: { model: "openai/gpt-image-2.6-flare", prompt: "the recorded prompt", provider: "fal", requestId: "req-gif-7" } });
     expect(doc.sprite.motions[0].status).toBe("processing");
 
-    const cut = run(SHEET, ["from-gif", "blob/motions/walk/gif-raw.gif", "--out", "blob/motions/walk", "--name", "walk", "--loop", "--json"], undefined, ws);
-    expect(cut.code).toBe(0);
-    const registered = run(PROJECT, ["register-run", "--dir", "blob", "--motion", "walk", "--run", "-"], cut.out, ws);
+    const registered = cutAndRegister(ws, "motions/walk/gif-raw-1.gif");
     expect(registered.code).toBe(0);
     doc = read(dir);
     const motion = doc.sprite.motions[0];
-    expect(motion).toMatchObject({ source: "gif", status: "ready", fps: 11.111, grid: { rows: 3, cols: 4 }, gifRaw: "walk-gif-raw" });
+    expect(motion).toMatchObject({ source: "gif", status: "ready", fps: 11.111, grid: { rows: 3, cols: 4 }, gifRaw: "walk-gif-raw-1" });
     expect(motion.frames).toHaveLength(FRAMES);
-    expect(motion.promptParts.builder).toBe("gif-prompt/1");
     for (let i = 0; i < FRAMES; i++) {
-      const frameEdge = doc.provenance.find((e: { toAssetId: string }) => e.toAssetId === `walk-frame-${String(i).padStart(2, "0")}`);
-      expect(frameEdge.fromAssetId).toBe("walk-gif-raw");
+      const frameEdge = edgeOf(dir, `walk-frame-${String(i).padStart(2, "0")}`);
+      expect(frameEdge.fromAssetId).toBe("walk-gif-raw-1");
       expect(frameEdge.operation.params).toEqual({ tool: "sprite-sheet.mjs", step: "from-gif", frameIndex: i });
     }
     const shown = run(PROJECT, ["show", "--dir", "blob", "--motion", "walk"], undefined, ws).out;
-    expect(shown).toContain("GIF walk-gif-raw (motions/walk/gif-raw.gif) — ready, 12 frames × 90 ms");
+    expect(shown).toContain("GIF walk-gif-raw-1 (motions/walk/gif-raw-1.gif) — ready, 12 frames × 90 ms");
     expect(shown).toContain("request req-gif-7");
     expect(JSON.parse(run(PROJECT, ["show", "--dir", "blob", "--json"], undefined, ws).out).motions[0].source).toBe("gif");
-
-    // remove-motion takes the GIF with it.
-    const removed = JSON.parse(run(PROJECT, ["remove-motion", "--dir", "blob", "--motion", "walk", "--json"], undefined, ws).out);
-    expect(removed.removedAssets).toContain("walk-gif-raw");
   });
 
   test("landing is refused without a reservation, for another file, or for another frame count", () => {
@@ -245,14 +253,15 @@ describe.skipIf(!HAS_FFMPEG)("set-gif → from-gif → register-run", () => {
     const before = readFileSync(join(dir, "project.json"), "utf-8");
     expect(land(ws).err).toContain("reserve it BEFORE the paid call");
     expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    rmSync(join(dir, "motions", "walk", "gif-raw-1.gif"));
 
     expect(reserve(ws).code).toBe(0);
     const short = land(ws, 9);
     expect(short.code).toBe(1);
-    expect(short.err).toContain("--report says 9 frames but motions/walk/gif-raw.gif holds 12");
+    expect(short.err).toContain("--report says 9 frames but motions/walk/gif-raw-1.gif holds 12");
     const elsewhere = run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--report", "-"],
-      report().replace("blob/motions/walk/gif-raw.gif", "blob/other.gif"), ws);
-    expect(elsewhere.err).toContain("was reserved for motions/walk/gif-raw.gif");
+      report().replace("blob/motions/walk/gif-raw-1.gif", "blob/other.gif"), ws);
+    expect(elsewhere.err).toContain("was reserved for motions/walk/gif-raw-1.gif");
   });
 
   test("a failed call is recorded with its reason and request, and has no frames to register", () => {
@@ -262,15 +271,87 @@ describe.skipIf(!HAS_FFMPEG)("set-gif → from-gif → register-run", () => {
       "--notes", "fal downstream_service_error", "--request-id", "req-500"], undefined, ws);
     expect(failed.code).toBe(0);
     const doc = read(dir);
-    expect(doc.assets.find((a: { id: string }) => a.id === "walk-gif-raw").status).toBe("failed");
-    const params = doc.provenance.find((e: { toAssetId: string }) => e.toAssetId === "walk-gif-raw").operation.params;
+    expect(assetOf(dir, "walk-gif-raw-1").status).toBe("failed");
+    const params = edgeOf(dir, "walk-gif-raw-1").operation.params;
     expect(params).toMatchObject({ model: "openai/gpt-image-2.6-flare", prompt: "the recorded prompt", requestId: "req-500" });
     expect(params.failure).toMatchObject({ reason: "fal downstream_service_error", billing: "unknown" });
     expect(doc.sprite.motions[0]).toMatchObject({ status: "failed", notes: "fal downstream_service_error" });
+  });
 
-    // A new take reserves the same asset again.
+  test("a retake is a new take: the earlier GIF, its request and the frames cut from it stay exactly as they were", () => {
+    const { ws, dir } = workspace();
+    // Take 1 lands and its frames are cut.
+    expect(reserve(ws, uriOf(nextOutput(ws))).code).toBe(0);
+    expect(land(ws).code).toBe(0);
+    expect(cutAndRegister(ws, "motions/walk/gif-raw-1.gif").code).toBe(0);
+    const take1 = { asset: assetOf(dir, "walk-gif-raw-1"), edge: edgeOf(dir, "walk-gif-raw-1") };
+
+    // A retake names a new file: the printed path is free, the paid one stays.
+    const second = uriOf(nextOutput(ws));
+    expect(second).toBe("motions/walk/gif-raw-2.gif");
+    const reuse = reserve(ws, "motions/walk/gif-raw-1.gif");
+    expect(reuse.code).toBe(1);
+    expect(reuse.err).toContain("motions/walk/gif-raw-2.gif");
+    expect(reserve(ws, second).code).toBe(0);
+    expect(read(dir).sprite.motions[0].gifRaw).toBe("walk-gif-raw-2");
+    expect(assetOf(dir, "walk-gif-raw-2")).toMatchObject({ status: "generating", uri: second });
+    // Take 1's record is untouched, and the frames still name it — not a
+    // record that now describes take 2.
+    expect(assetOf(dir, "walk-gif-raw-1")).toEqual(take1.asset);
+    expect(edgeOf(dir, "walk-gif-raw-1")).toEqual(take1.edge);
+    expect(frameParents(dir)).toEqual(Array(FRAMES).fill("walk-gif-raw-1"));
+
+    // Take 2 fails; take 3 is reserved; take 2 keeps its request and failure.
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "failed",
+      "--notes", "fal downstream_service_error", "--request-id", "req-500"], undefined, ws).code).toBe(0);
+    const third = uriOf(nextOutput(ws));
+    expect(third).toBe("motions/walk/gif-raw-3.gif");
+    expect(reserve(ws, third).code).toBe(0);
+    expect(assetOf(dir, "walk-gif-raw-2").status).toBe("failed");
+    expect(edgeOf(dir, "walk-gif-raw-2").operation.params).toMatchObject({ requestId: "req-500", failure: { reason: "fal downstream_service_error", billing: "unknown" } });
+    expect(frameParents(dir)).toEqual(Array(FRAMES).fill("walk-gif-raw-1"));
+
+    // Take 3 lands and is cut: now the frames name take 3.
+    expect(land(ws, FRAMES, third, "req-gif-9").code).toBe(0);
+    expect(cutAndRegister(ws, third).code).toBe(0);
+    expect(frameParents(dir)).toEqual(Array(FRAMES).fill("walk-gif-raw-3"));
+    const shown = run(PROJECT, ["show", "--dir", "blob", "--motion", "walk"], undefined, ws).out;
+    expect(shown).toContain("GIF walk-gif-raw-3 (motions/walk/gif-raw-3.gif) — ready");
+    expect(shown).toContain("earlier GIF walk-gif-raw-1 (motions/walk/gif-raw-1.gif) — ready");
+    expect(shown).toContain("earlier GIF walk-gif-raw-2 (motions/walk/gif-raw-2.gif) — failed, request req-500: fal downstream_service_error");
+
+    // remove-motion takes every take with it (the files stay).
+    const removed = JSON.parse(run(PROJECT, ["remove-motion", "--dir", "blob", "--motion", "walk", "--json"], undefined, ws).out);
+    expect(removed.removedAssets).toEqual(expect.arrayContaining(["walk-gif-raw-1", "walk-gif-raw-2", "walk-gif-raw-3"]));
+    expect(read(dir).assets.filter((a: { id: string }) => a.id.startsWith("walk-"))).toEqual([]);
+  });
+
+  test("a take still generating is not abandoned silently: a new one needs --supersede, which records it as unknown", () => {
+    const { ws, dir } = workspace();
     expect(reserve(ws).code).toBe(0);
-    expect(read(dir).assets.find((a: { id: string }) => a.id === "walk-gif-raw").status).toBe("generating");
+    const before = readFileSync(join(dir, "project.json"), "utf-8");
+    const refused = reserve(ws, "motions/walk/gif-raw-2.gif");
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("walk-gif-raw-1");
+    expect(refused.err).toContain("still generating");
+    expect(refused.err).toContain("billed");
+    expect(refused.err).toContain("--supersede");
+    expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    // --supersede is for a take in flight only.
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "failed", "--notes", "x", "--supersede", "y"], undefined, ws).code).toBe(1);
+
+    const superseded = reserve(ws, "motions/walk/gif-raw-2.gif", ["--supersede", "the generate call was killed before it printed a request id"]);
+    expect(superseded.code).toBe(0);
+    expect(assetOf(dir, "walk-gif-raw-1").status).toBe("failed");
+    const failure = edgeOf(dir, "walk-gif-raw-1").operation.params.failure;
+    expect(failure.billing).toBe("unknown");
+    expect(failure.reason).toContain("outcome was never recorded");
+    expect(failure.reason).toContain("the generate call was killed before it printed a request id");
+    expect(assetOf(dir, "walk-gif-raw-2").status).toBe("generating");
+    expect(read(dir).sprite.motions[0].gifRaw).toBe("walk-gif-raw-2");
+    // With nothing in flight, --supersede is refused rather than ignored.
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "failed", "--notes", "x"], undefined, ws).code).toBe(0);
+    expect(reserve(ws, "motions/walk/gif-raw-3.gif", ["--supersede", "nothing to supersede"]).err).toContain("--supersede");
   });
 
   test("a GIF the user brought is an upload by the human", () => {
@@ -280,7 +361,9 @@ describe.skipIf(!HAS_FFMPEG)("set-gif → from-gif → register-run", () => {
     expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--uploaded", "--file", "motions/walk/upload.gif", "--model", "x"], undefined, ws).err)
       .toContain("was not generated here");
     expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--uploaded", "--file", "motions/walk/upload.gif"], undefined, ws).code).toBe(0);
-    const edge = read(dir).provenance.find((e: { toAssetId: string }) => e.toAssetId === "walk-gif-raw");
-    expect(edge).toMatchObject({ fromAssetId: null, operation: { type: "upload", actor: "human" } });
+    expect(read(dir).sprite.motions[0].gifRaw).toBe("walk-gif-raw-1");
+    expect(edgeOf(dir, "walk-gif-raw-1")).toMatchObject({ fromAssetId: null, operation: { type: "upload", actor: "human" } });
+    // The same file is not registered as a second take.
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--uploaded", "--file", "motions/walk/upload.gif"], undefined, ws).code).toBe(1);
   });
 });

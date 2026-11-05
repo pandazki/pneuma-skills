@@ -166,9 +166,12 @@ function describeMotion(
         : "Source: mirror (its frames flipped left↔right)",
     );
   } else if (motion.source === "gif") {
+    // gifRaw is the CURRENT take; while a retake is in flight, or after one
+    // failed, the frames are still an earlier take's (each frame's edge
+    // names it), so the line does not claim they are this one's.
     lines.push(
       motion.gifRaw
-        ? `Source: GIF (every frame of ${motion.gifRaw})`
+        ? `Source: GIF (every frame of one animated GIF; current take ${motion.gifRaw})`
         : "Source: GIF (every frame of one animated GIF)",
     );
   }

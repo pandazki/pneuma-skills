@@ -773,7 +773,11 @@ export interface Motion {
   keyframe?: string;
   /** Loop motions: the same keyframe with its background removed. */
   keyframeAlpha?: string;
-  /** `source: "gif"`: the animated GIF the frames were cut from (`set-gif`). */
+  /**
+   * `source: "gif"`: the current GIF take, `<motion>-gif-raw-<n>` (`set-gif`).
+   * Earlier takes stay as assets; each frame's provenance edge names the take
+   * it was cut from, which is not this one while a retake is in flight.
+   */
   gifRaw?: string;
   sheetRaw?: string;
   sheetAlpha?: string;
