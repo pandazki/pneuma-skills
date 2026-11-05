@@ -32,6 +32,14 @@ describe("estimateTokens", () => {
     expect(estimateTokens(usage, "some-model")).toBeNull();
     expect(estimateTokens(null, "gpt-6-astra")).toBeNull();
   });
+
+  test("a session on a GPT-6 model is priced, and an older session on GPT 5.6 still is", () => {
+    const usage = { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 1_000_000 };
+    expect(estimateTokens(usage, "gpt-6.1-sol")).toBe(12);
+    expect(estimateTokens(usage, "gpt-6.1-terra")).toBe(6);
+    expect(estimateTokens(usage, "gpt-6-luna")).toBe(0.6);
+    expect(estimateTokens(usage, "gpt-5.6-luna")).toBe(1.4);
+  });
 });
 
 describe("summarizeCosts", () => {

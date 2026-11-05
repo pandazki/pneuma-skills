@@ -16,7 +16,7 @@
  * `screenplay-lib.mjs` so every course goes through the same one.
  *
  * Usage (from the session cwd; paths inside course.json are set-relative):
- *   node write-screenplay.mjs --set plexus [--model openai/gpt-5.6-luna] [--json]
+ *   node write-screenplay.mjs --set plexus [--model openai/gpt-6-luna] [--json]
  *
  * Output (--json): { scenes, clips, cuts, problems, mode }
  *   mode is "single" when one call covered the whole spine, "fallback"

@@ -15,8 +15,9 @@ import { loadLoops, saveLoops } from "./domain.js";
 
 const lucidManifest: ModeManifest = {
   name: "lucid",
-  version: "0.1.2",
+  version: "0.1.3",
   changelog: {
+    "0.1.3": ["The cost panel prices sessions run on GPT-6 Sol, Terra and Luna; earlier models stay priced for older sessions"],
     "0.1.2": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.1.1": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.1.0": [

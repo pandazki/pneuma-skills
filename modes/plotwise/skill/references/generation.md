@@ -183,7 +183,7 @@ order (`clipRefs` in the manager decides who rides via `planRefs`;
 Two programs, no agent between the steps.
 
 **The screenplay** (once, before play): `write-screenplay.mjs --set <dir>
-[--model] [--json]`. GPT 5.6 Luna writes the whole spine in one
+[--model] [--json]`. GPT-6 Luna writes the whole spine in one
 structured call — one scene per outline beat, 1-3 clips of 8-15 s, each
 clip a montage of 3-9 timed cuts with its own camera, the narration timed
 across the clip, a visual device per beat, one detour brief per scene —

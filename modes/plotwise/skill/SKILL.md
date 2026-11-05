@@ -247,7 +247,7 @@ does nothing — there is never a reason to start two. Its pid is
 `<set>/state/manager.pid`, its log `<set>/state/manager.log`, its crash
 output `<set>/state/manager.out`.
 
-**The screenplay** is one designed call to GPT 5.6 Luna, written as a
+**The screenplay** is one designed call to GPT-6 Luna, written as a
 director's brief: the whole spine at once — one scene per beat, 1–3
 montage clips each, and per clip a time-coded shot list of 3–9 cuts
 (subject + action + setting + a camera move each), the narration

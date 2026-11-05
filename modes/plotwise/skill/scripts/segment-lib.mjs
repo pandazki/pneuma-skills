@@ -631,7 +631,7 @@ export function readEnvValue(content, name) {
 // ── Designed LLM calls (OpenRouter) ─────────────────────────────────────────
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-export const DEFAULT_MODEL = "openai/gpt-5.6-luna";
+export const DEFAULT_MODEL = "openai/gpt-6-luna";
 
 /** One chat completion that must answer with a JSON object. */
 export async function chatJson({ key, model = DEFAULT_MODEL, system, user, temperature = 0 }) {

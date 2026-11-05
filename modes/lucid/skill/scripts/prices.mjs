@@ -32,6 +32,11 @@ export const PRICES = {
   },
   tokensPer1M: {
     "gpt-6-astra": { input: 10, cachedInput: 1, output: 50 },
+    // GPT-6 sol / terra / luna: OpenAI list prices as OpenRouter lists them (2026-11-05).
+    "gpt-6.1-sol": { input: 2, cachedInput: 0.1, output: 10 },
+    "gpt-6.1-terra": { input: 1, cachedInput: 0.05, output: 5 },
+    "gpt-6-sol": { input: 2, cachedInput: 0.2, output: 10 },
+    "gpt-6-luna": { input: 0.1, cachedInput: 0.01, output: 0.5 },
     "gpt-5.6-sol": { input: 4, cachedInput: 0.4, output: 20 },
     "gpt-5.6-terra": { input: 2, cachedInput: 0.2, output: 12 },
     "gpt-5.6-luna": { input: 0.2, cachedInput: 0.02, output: 1.2 },
