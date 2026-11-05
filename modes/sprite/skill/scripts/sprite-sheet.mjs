@@ -41,10 +41,13 @@
 import { spawnSync } from "node:child_process";
 import {
   closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, statfsSync,
-  renameSync, rmSync, statSync, unlinkSync, writeFileSync,
+  renameSync, rmSync, statSync, unlinkSync, writeFileSync, lstatSync, realpathSync, rmdirSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
+import { cleanAlphaHaze } from "./alpha-clean.mjs";
+import { diagnoseAnimation } from "./animation-diagnostics.mjs";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 
 import {
@@ -353,7 +356,7 @@ const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 
 const SUBCOMMANDS = [
   "guide",
-  "probe", "key", "flatten", "slice", "clean", "align", "pack", "gif",
+  "probe", "alpha-clean", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "from-gif", "retime", "loop", "transition", "lineup", "sizes", "export", "rive",
   "fit", "breathe", "pixel",
   "mirror", "recolor", "recolor-palette",
@@ -375,6 +378,11 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       a blue box on its safe area (inset --margin of the cell, floored) and
       a centre line. --cell is the GENERATION cell ('sheet-prompt --json'
       reports it with the call). A working file, not an asset.
+
+  alpha-clean <png|framesDir> --out <newDirectory> [--max-alpha 15] [--keep-edge 2]
+      Opt-in faint-alpha cleanup. Preserve original stronger support and its
+      edge band byte for byte. May remove intentional glow; inspect the copy.
+      Never overwrites input or output. Report is <newDirectory>/alpha-clean.json.
 
   probe <image> [--threshold 16]
       Report { width, height, hasAlpha, alphaCoverage, cornerColor }.
@@ -490,14 +498,17 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       [--webp <preview.webp>] [--width W]
       Palette GIF with a reserved transparent entry; optional animated WebP.
 
-  inspect <motionDir> [--anchor bottom|center] [--cells <dir>] [--key #rrggbb] [--threshold ${DEFAULT_THRESHOLD}]
-      Frame count, cell, per-frame bboxes, anchor drift, body drift (the feet),
-      head drift (the head-and-torso band registered against frame 00 — what
-      a feet-pinned walk lurches with), max jump, scale drift, empty frames,
+  inspect <motionDir|gif> [--anchor bottom|center] [--cells <dir>] [--key #rrggbb] [--threshold ${DEFAULT_THRESHOLD}]
+      Frame count, cell, per-frame bboxes, anchor drift, legacy bodyDrift
+      (lower alpha band), headDrift (upper region registered against frame 00),
+      max jump, silhouette-height variation, empty frames,
       near-duplicate neighbours (step under ${DUPLICATE_STEP}: the mean RGBA difference
       at 64x64), row-boundary jumps (a grid's boundary step over ${BOUNDARY_STEP_RATIO}x its
       in-row median — the grid comes from <cells>/${SLICE_RECORD}, which slice
-      writes), keyResidue and human warnings. Writes <motionDir>/inspect.json.
+      writes), keyResidue and animation measurements. Holds, change spikes
+      and alpha changes do not prove defects or anatomical applicability.
+      Writes <motionDir>/inspect.json. For a GIF, prints its own frames and
+      packet delays only, without writing beside the source.
       keyResidue is the share of visible pixels still carrying the plate —
       its hue, or an opaque edge pixel that is the colour beside it blended
       with the plate — for a motion keyed off a hued plate: --key names the
@@ -3185,10 +3196,90 @@ function readAtlasLoop(motionDir) {
   return typeof doc?.meta?.loop === "boolean" ? doc.meta.loop : null;
 }
 
-/**
- * Read a finished motion and say what is wrong with it in sentences a human
- * (and the agent talking to one) can act on.
- */
+function frameAlphaMass(image) {
+  let total = 0;
+  for (let i = 3; i < image.data.length; i += 4) total += image.data[i] / 255;
+  return total / (image.width * image.height);
+}
+
+function inspectTiming(dir, count) {
+  const path = join(dir, "atlas.json");
+  if (!existsSync(path)) return {};
+  const atlas = JSON.parse(readFileSync(path, "utf-8"));
+  const order = Object.values(atlas.animations ?? {})[0];
+  if (!Array.isArray(order) || order.length !== count) return {};
+  const durationsMs = order.map((key) => atlas.frames?.[key]?.duration);
+  if (durationsMs.some((ms) => !Number.isFinite(ms) || ms <= 0)) return {};
+  return { durationsMs, timingSource: "atlas-frame-durations" };
+}
+
+function diagnosticFrame(image) {
+  return { thumb: stepThumb(image), alphaMass: frameAlphaMass(image) };
+}
+
+function clipDiagnostics(framesDir, fps, loop) {
+  const entries = listFrames(framesDir);
+  return diagnoseAnimation(entries.map((entry) => diagnosticFrame(readRgba(entry.path))), {
+    durationsMs: entries.map(() => 1000 / fps), timingSource: loop ? "loop-frame-rate" : "transition-frame-rate", loop,
+  });
+}
+
+function canonicalFuturePath(path) {
+  const absolute = resolve(path);
+  if (existsSync(absolute)) return realpathSync(absolute);
+  return join(realpathSync(dirname(absolute)), basename(absolute));
+}
+
+function stepAlphaClean(inputPath, outPath, options) {
+  const input = realpathSync(resolve(inputPath));
+  const out = canonicalFuturePath(outPath);
+  if (existsSync(out) || lstatExists(out)) fail("alpha-clean: output must not exist");
+  const contains = (a, b) => {
+    const path = relative(a, b);
+    return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+  };
+  if (contains(input, out) || contains(out, input)) fail("alpha-clean: input and output must not overlap");
+  const entries = statSync(input).isDirectory() ? listFrames(input) : [{ path: input }];
+  for (const entry of entries) {
+    if (lstatSync(entry.path).isSymbolicLink() || extname(entry.path).toLowerCase() !== ".png") fail("alpha-clean: only regular PNG files are supported; symlink frames are refused");
+    if (!statSync(entry.path).isFile()) fail("alpha-clean: input must be a regular PNG file");
+    const bytes = readFileSync(entry.path);
+    if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) fail("alpha-clean: input must have a PNG signature");
+    for (let offset = 8; offset + 12 <= bytes.length;) {
+      if (bytes.toString("ascii", offset + 4, offset + 8) === "acTL") fail("alpha-clean: animated PNG is unsupported; provide its decoded frames directory");
+      offset += bytes.readUInt32BE(offset) + 12;
+    }
+  }
+  const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+  const hashes = entries.map((entry) => hash(entry.path));
+  const stage = mkdtempSync(join(dirname(out), ".alpha-clean-"));
+  let reserved = false;
+  try {
+    const frames = entries.map((entry, i) => {
+      const result = cleanAlphaHaze(readRgba(entry.path), options);
+      const target = join(stage, basename(entry.path));
+      writeRgbaPng(target, result.image, "alpha-clean");
+      return { file: basename(entry.path), inputSha256: hashes[i], outputSha256: hash(target), ...result.report };
+    });
+    if (entries.some((entry, i) => hash(entry.path) !== hashes[i])) fail("alpha-clean: input changed during cleanup");
+    const report = { input, out, ...options, frames, removedPixels: frames.reduce((sum, frame) => sum + frame.removedPixels, 0), artisticQuality: "unknown" };
+    writeJsonFile(join(stage, "alpha-clean.json"), report);
+    mkdirSync(out);
+    reserved = true;
+    renameSync(stage, out);
+    reserved = false;
+    return report;
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+    if (reserved) rmdirSync(out);
+  }
+}
+
+function lstatExists(path) {
+  try { lstatSync(path); return true; } catch (error) { if (error.code === "ENOENT") return false; throw error; }
+}
+
+/** Measure a motion while leaving intent and applicability to its author. */
 function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write = true, keyColor, extraWarnings = [] }) {
   const dir = resolve(motionDir);
   const framesDir = existsSync(join(dir, "frames")) ? join(dir, "frames") : dir;
@@ -3228,6 +3319,7 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
       // Read off the decode already in hand, so the frame is never decoded
       // twice: the 64² thumbnail the step between frames is measured on.
       thumb: stepThumb(image),
+      alphaMass: frameAlphaMass(image),
       ...(pixel ? { lattice: latticeCheck(image, pixel.scale, paletteColors) } : {}),
     };
   });
@@ -3352,7 +3444,7 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   const keepsFootLine = record && (record.xFrom === "trend" || record.xFrom === "body");
   const headMoves = headDrift !== null && headDrift > STEADY_HEAD_FRACTION * cellW;
   if (!keepsFootLine && headMoves && bodyDrift > MAX_BODY_DRIFT_FRACTION * cellW) {
-    warnings.push("body drifts sideways between frames — re-run align with --x-from feet/cell");
+    warnings.push("body drifts sideways between frames (lower-band and upper-region measurements); check intended motion before changing alignment");
   }
   // The bar is at least one block for pixel art: a lattice moves in whole
   // blocks, so anything under one is the snap, not sway (a 44 px pixel cell
@@ -3367,10 +3459,10 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     const advice = others.length === 2
       ? "--x-from trend (or cell, the placement as drawn)"
       : others[0] === "cell" ? "--x-from cell (the placement as drawn)" : "--x-from trend";
-    warnings.push(`head sways ${headDrift} px across the frames but ${sourceHeadDrift} px in the source once its slow drift is removed — the alignment${record?.xFrom ? ` (--x-from ${record.xFrom})` : ""} added sway (a pinned stepping foot) or kept the drift; re-align from ${alignFrom} with ${advice}`);
+    warnings.push(`head sways ${headDrift} px across the frames but ${sourceHeadDrift} px in the source once its slow drift is removed — the alignment${record?.xFrom ? ` (--x-from ${record.xFrom})` : ""} added sway; compare intended placement against ${alignFrom} before considering ${advice}`);
   }
   if (scaleDrift > MAX_SCALE_DRIFT) {
-    warnings.push("character scale varies across frames — regenerate with a fixed-scale instruction");
+    warnings.push("silhouette height varies across frames; this may be intended deformation or an effect");
   }
   // An auto slice pads its cells, so its record names the poses clipped
   // anyway; a fixed cell says it by touching its own edge.
@@ -3394,10 +3486,10 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
   const breatheRecord = readBreatheRecord([cells, framesDir]);
   const breathed = Boolean(breatheRecord);
   if (judged.nearDuplicates.length && !breathed) {
-    warnings.push(`near-duplicate frames ${pairsText(judged.nearDuplicates)} (step under ${DUPLICATE_STEP}) — the animation holds there; fine for a held idle, a hitch in a stroke or a step`);
+    warnings.push(`near-duplicate frames ${pairsText(judged.nearDuplicates)} (step under ${DUPLICATE_STEP}) — a measured hold; whether the cadence is intended requires viewing the motion`);
   }
   if (judged.rowJumps.length) {
-    warnings.push(`row boundaries jump: ${pairsText(judged.rowJumps)} (step ${judged.rowJumps.map((p) => round(p.step, 3)).join(", ")} against an in-row median of ${round(judged.inRowMedian, 3)}) — the sheet's rows were drawn as separate sequences`);
+    warnings.push(`row boundaries jump: ${pairsText(judged.rowJumps)} (step ${judged.rowJumps.map((p) => round(p.step, 3)).join(", ")} against an in-row median of ${round(judged.inRowMedian, 3)}) — suspected change spike; intent and cause are unknown`);
   }
   const residueNote = residueWarning(residue, key);
   if (residueNote) warnings.push(residueNote);
@@ -3457,7 +3549,9 @@ function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write 
     ? measured.map((f) => (f.bbox ? round(measuredAnchor.y - (f.bbox.y + f.bbox.h), 2) : null))
     : null;
 
+  const animation = diagnoseAnimation(measured, { ...inspectTiming(dir, measured.length), loop });
   const summary = {
+    animation,
     frameCount: measured.length,
     cell: { width: cellW, height: cellH },
     ...(measuredAnchor ? { anchorPoint: measuredAnchor } : {}),
@@ -6692,6 +6786,7 @@ function stepLoop(clip, options) {
     // on them, and a number nobody judges is noise in the agent's context.
     const inspect = {
       kind: "loop",
+      animation: clipDiagnostics(framesDir, fps, true),
       frameCount: count,
       cell,
       crop,
@@ -6834,6 +6929,7 @@ function stepTransition(clip, options) {
 
     const inspect = {
       kind: "transition",
+      animation: clipDiagnostics(framesDir, fps, false),
       from: ends.from.id,
       to: ends.to.id,
       frameCount: count,
@@ -6922,6 +7018,7 @@ function stepReverseTransition(options) {
     const crop = source.inspect?.crop;
     const inspect = {
       kind: "transition",
+      animation: clipDiagnostics(framesDir, fps, false),
       from: ends.from.id,
       to: ends.to.id,
       reverseOf: source.id,
@@ -9650,6 +9747,7 @@ const OPTIONS = {
   },
   guide: { rows: { type: "string" }, cols: { type: "string" }, cell: { type: "string" }, out: { type: "string" }, margin: { type: "string" } },
   fit: { out: { type: "string" }, max: { type: "string" }, pad: { type: "string" }, threshold: { type: "string" } },
+  "alpha-clean": { out: { type: "string" }, "max-alpha": { type: "string" }, "keep-edge": { type: "string" } },
   probe: { threshold: { type: "string" } },
   key: {
     out: { type: "string" }, color: { type: "string" }, similarity: { type: "string" },
@@ -9875,11 +9973,11 @@ function pickSeamFill(value) {
   return num(value, "--seam-fill", { integer: true, min: 0 });
 }
 
-function num(value, flag, { integer = false, min = -Infinity, fallback } = {}) {
+function num(value, flag, { integer = false, min = -Infinity, max = Infinity, fallback } = {}) {
   if (value === undefined) return fallback;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || (integer && !Number.isInteger(parsed)) || parsed < min) {
-    fail(`${flag}: expected ${integer ? "an integer" : "a number"} >= ${min}, got '${value}'`);
+  if (!Number.isFinite(parsed) || (integer && !Number.isInteger(parsed)) || parsed < min || parsed > max) {
+    fail(`${flag}: expected ${integer ? "an integer" : "a number"} ${max === Infinity ? `>= ${min}` : `between ${min} and ${max}`}, got '${value}'`);
   }
   return parsed;
 }
@@ -10243,8 +10341,29 @@ function main() {
       emit(values, out, [`wrote ${out.gif}${out.webp ? ` and ${out.webp}` : ""}`, ...out.warnings]);
       break;
     }
+    case "alpha-clean": {
+      const out = stepAlphaClean(requirePositional(positionals, "<png|framesDir>"), requireFlag(values.out, "--out"), {
+        maxAlpha: num(values["max-alpha"] ?? "15", "--max-alpha", { integer: true, min: 0, max: 254 }),
+        keepEdge: num(values["keep-edge"] ?? "2", "--keep-edge", { integer: true, min: 0, max: 64 }),
+      });
+      emit(values, out, [`wrote isolated cleanup to ${out.out}; cleared ${out.removedPixels} faint pixels; artistic quality unknown`]);
+      break;
+    }
     case "inspect": {
-      const { report } = stepInspect(requirePositional(positionals, "<motionDir>"), {
+      const input = requirePositional(positionals, "<motionDir|gif>");
+      if (isGif(input)) {
+        const work = mkdtempSync(join(tmpdir(), "sprite-inspect-gif-"));
+        try {
+          const decoded = decodeGifFrames(resolve(input), join(work, "frames"), "inspect");
+          const frames = listFrames(join(work, "frames")).map((entry) => diagnosticFrame(readRgba(entry.path)));
+          const report = { input: resolve(input), kind: "gif", animation: diagnoseAnimation(frames, {
+            durationsMs: decoded.delaysMs, timingSource: decoded.warnings.length ? "gif-delays-with-reported-fallback" : "gif-delays",
+          }), warnings: decoded.warnings };
+          emit(values, report, [`${frames.length} GIF drawings, ${report.animation.timing.totalMs} ms; holds and change spikes require interpretation`, ...report.warnings]);
+        } finally { rmSync(work, { recursive: true, force: true }); }
+        break;
+      }
+      const { report } = stepInspect(input, {
         anchor: pickAnchor(values.anchor),
         threshold,
         cellsDir: values.cells ?? null,

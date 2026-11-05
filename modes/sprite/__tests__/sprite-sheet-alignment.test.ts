@@ -189,7 +189,7 @@ describe.skipIf(!HAS_FFMPEG)("alignment and framing", () => {
     // Frames 03 and 04 are the same drawing.
     expect(out.inspect.nearDuplicates).toEqual([[3, 4]]);
     expect(out.inspect.warnings).toContain(
-      "near-duplicate frames 03→04 (step under 0.01) — the animation holds there; fine for a held idle, a hitch in a stroke or a step",
+      "near-duplicate frames 03→04 (step under 0.01) — a measured hold; whether the cadence is intended requires viewing the motion",
     );
     expect(out.inspect.warnings.some((w: string) => w.startsWith("row boundaries jump: 02→03, 05→00"))).toBe(true);
 

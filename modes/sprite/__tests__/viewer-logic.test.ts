@@ -1190,7 +1190,7 @@ describe("inspect thresholds", () => {
     // The script's own sentences, word for word.
     const script = readFileSync(join(import.meta.dir, "..", "skill", "scripts", "sprite-sheet.mjs"), "utf-8");
     expect(script).toContain(`\`${JUMP_WARNING} \${pad(jumpPair[0])}`);
-    expect(script).toContain(`"${BODY_DRIFT_WARNING} — re-run align`);
+    expect(script).toContain(`"${BODY_DRIFT_WARNING} (lower-band and upper-region measurements); check intended motion`);
   });
 
   test("no measured cell means no bar at all — never a bar of zero", () => {

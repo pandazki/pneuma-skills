@@ -273,10 +273,10 @@ describe.skipIf(!HAS_FFMPEG)("pose geometry", () => {
       const pixel = runJson("inspect", swayMotion(join(ws, "p"), [0, 3, 0, 3], { xFrom: "trend", pixel: true }));
       const said = pixel.warnings.find((w: string) => w.startsWith("head sways"));
       expect(said).toContain("the alignment (--x-from trend)");
-      expect(said).toContain("re-align from pixel/ with --x-from cell (the placement as drawn)");
+      expect(said).toContain("compare intended placement against pixel/ before considering --x-from cell (the placement as drawn)");
       expect(said).not.toContain("--x-from trend (");
       const cell = runJson("inspect", swayMotion(join(ws, "c"), [0, 3, 0, 3], { xFrom: "cell", pixel: false }));
-      expect(cell.warnings.find((w: string) => w.startsWith("head sways"))).toMatch(/re-align from cells\/ with --x-from trend$/);
+      expect(cell.warnings.find((w: string) => w.startsWith("head sways"))).toMatch(/compare intended placement against cells\/ before considering --x-from trend$/);
     }, SLOW);
 
     test("align refuses to drop a lattice by aligning un-snapped frames over it, unless --force", () => {

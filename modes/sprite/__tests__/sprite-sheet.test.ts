@@ -934,7 +934,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       runJson("align", cells, "--out", join(feet, "frames"), "--pad", "8");
       runJson("align", cells, "--out", join(bbox, "frames"), "--pad", "8", "--x-from", "bbox");
 
-      const drift = "body drifts sideways between frames — re-run align with --x-from feet/cell";
+      const drift = "body drifts sideways between frames (lower-band and upper-region measurements); check intended motion before changing alignment";
 
       const good = runJson("inspect", feet);
       expect(good.bodyDrift).toBe(0);
@@ -997,7 +997,12 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(out.sheetAlpha).toBeUndefined();
       expect(out.cell).toEqual({ width: 64, height: 64 });
       expect(out.frames).toHaveLength(4);
-      expect(out.inspect).toEqual({
+      const { animation, ...legacyInspect } = out.inspect;
+      expect(animation.frameCount).toBe(4);
+      expect(animation.adjacentPairs).toBe(3);
+      expect(animation.timing).toEqual({ source: "atlas-frame-durations", durationsMs: [125, 125, 125, 125], totalMs: 500 });
+      expect(animation.artisticQuality).toBe("unknown");
+      expect(legacyInspect).toEqual({
         frameCount: 4,
         cell: { width: 64, height: 64 },
         // The summary — not just the fat report — carries the measured anchor
@@ -2059,6 +2064,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(onDisk).toEqual(json.inspect);
 
       expect(json.inspect.kind).toBe("loop");
+      expect(json.inspect.animation.frameCount).toBe(24);
+      expect(json.inspect.animation.timing.source).toBe("loop-frame-rate");
+      expect(json.inspect.animation.timing.durationsMs).toEqual(Array(24).fill(1000 / 24));
+      expect(json.inspect.animation.interpretation.applicability).toBe("unknown");
       expect(json.inspect.frameCount).toBe(24);
       expect(json.inspect.cell).toEqual(json.cell);
       expect(json.inspect.fps).toBe(24);
@@ -2728,6 +2737,10 @@ describe.skipIf(!HAS_FFMPEG)("sprite-sheet.mjs", () => {
       expect(json.crop).toEqual({ x: 40, y: 64, w: 76, h: 112 });
       expect(json.scale).toBe(1.0526);
       expect(json.inspect).toMatchObject({ kind: "transition", frameCount: 25, crop: json.crop, scale: json.scale });
+      expect(json.inspect.animation.frameCount).toBe(25);
+      expect(json.inspect.animation.timing.source).toBe("transition-frame-rate");
+      expect(json.inspect.animation.timing.durationsMs).toEqual(Array(25).fill(1000 / json.fps));
+      expect(json.inspect.animation.wrapStep).toBeNull();
       const onDisk = JSON.parse(readFileSync(join(json.motionDir, "inspect.json"), "utf-8"));
       expect(onDisk.startGap).toBe(json.inspect.startGap);
 
