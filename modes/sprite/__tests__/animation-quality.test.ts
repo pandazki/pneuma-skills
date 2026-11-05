@@ -72,3 +72,22 @@ test("a sparse flash is a suspected change spike with measured alpha changes, ne
   expect(report.interpretation.reason).toContain("may be intentional");
   expect(report.artisticQuality).toBe("unknown");
 });
+
+test("diagnostics compare rendered premultiplied colour rather than hidden or faint straight RGB", () => {
+  const red = (alpha: number) => ({ width: 1, height: 1, data: Uint8Array.from([255, 0, 0, alpha]) });
+  const blue = (alpha: number) => ({ width: 1, height: 1, data: Uint8Array.from([0, 0, 255, alpha]) });
+  expect(diagnoseAnimation([red(0), blue(0)]).steps[0]).toBe(0);
+  expect(diagnoseAnimation([red(1), blue(1)]).steps[0]).toBeLessThan(1 / 255);
+  expect(diagnoseAnimation([red(1), blue(1)]).drawingCount).toBe(1);
+  expect(diagnoseAnimation([red(255), blue(255)]).steps[0]).toBeCloseTo(0.5, 6);
+  expect(diagnoseAnimation([red(255), blue(255)]).drawingCount).toBe(2);
+});
+
+test("GIF fallback estimates never become measured hold timing", () => {
+  const frame = image([255]);
+  const report = diagnoseAnimation([frame, frame], { durationsMs: [90, 90], timingSource: "gif-delays-with-reported-fallback" });
+  expect(report.timing.source).toBe("unknown");
+  expect(report.timing.totalMs).toBeNull();
+  expect(report.heldMs).toBeNull();
+  expect(report.holds[0]?.durationMs).toBeNull();
+});

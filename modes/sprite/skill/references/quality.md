@@ -20,11 +20,16 @@ props and abstract animations can legitimately change alpha and silhouette.
 Applicability to the intended action and artistic quality remain unknown.
 
 `inspect animation.gif --json` decodes each GIF drawing once and reports its
-packet delays without writing beside the source. Unreadable delays use the
-existing decoder's median fallback, explicitly named in timing and warnings.
+packet delays without writing beside the source. The decoder's median fallback
+for unreadable delays is reported in warnings; exact timing and held milliseconds
+then remain unknown. Estimated delays never become measured hold durations.
 
 Timing belongs to the measured artifact. `inspect` reads atlas frame durations
-when the atlas order matches the frame count. Missing usable timing remains
+only for a Pneuma atlas with one animation whose unique `_NN` frame keys are
+in the same contiguous index order as the numbered frames. Reordered, unnamed
+or ambiguous animations retain unknown timing even when counts match. This
+binds duration declarations by frame index; final atlas pixels are verified by
+the separate final-artifact comparison command. Missing usable timing remains
 `unknown`. Loop and transition reports use their exported frame rate. A GIF's
 raw delays describe that GIF only. A derived atlas can play differently, so its
 report must never call source GIF delays its playback durations. Legacy fields
@@ -74,4 +79,7 @@ The alpha mask algorithm adapts `sprite_gen/frames/alpha_floor.py` from
 aldegad/sprite-gen at `4f5ccd55c7cf06685a41f954acc1e476b7772ece` (Apache-2.0).
 Its floor is this command's `maxAlpha + 1`. This version additionally skips
 images without stronger support. Adjacent change measurement reuses the existing
-premultiplied area-thumbnail helper; no new codec or dependency is introduced.
+area-thumbnail helper followed by `cycle.mjs` premultiplication and frame
+distance. New diagnostics weight colour by alpha, so faint RGB changes cannot
+masquerade as opaque changes. Legacy frame-step fields keep their existing
+semantics. No new codec or dependency is introduced.

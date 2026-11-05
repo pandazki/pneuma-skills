@@ -3211,8 +3211,13 @@ function inspectTiming(dir, count) {
   const path = join(dir, "atlas.json");
   if (!existsSync(path)) return {};
   const atlas = JSON.parse(readFileSync(path, "utf-8"));
-  const order = Object.values(atlas.animations ?? {})[0];
-  if (!Array.isArray(order) || order.length !== count) return {};
+  const animations = Object.values(atlas.animations ?? {});
+  const order = animations[0];
+  if (atlas.meta?.app !== "pneuma-sprite" || animations.length !== 1 || !Array.isArray(order) || order.length !== count) return {};
+  if (new Set(order).size !== count || order.some((key, index) => {
+    const match = typeof key === "string" ? /_(\d{2,3})$/.exec(key) : null;
+    return !match || Number(match[1]) !== index;
+  })) return {};
   const durationsMs = order.map((key) => atlas.frames?.[key]?.duration);
   if (durationsMs.some((ms) => !Number.isFinite(ms) || ms <= 0)) return {};
   return { durationsMs, timingSource: "atlas-frame-durations" };
@@ -10369,9 +10374,9 @@ function main() {
           const decoded = decodeGifFrames(resolve(input), join(work, "frames"), "inspect");
           const frames = listFrames(join(work, "frames")).map((entry) => diagnosticFrame(readRgba(entry.path)));
           const report = { input: resolve(input), kind: "gif", animation: diagnoseAnimation(frames, {
-            durationsMs: decoded.delaysMs, timingSource: decoded.warnings.length ? "gif-delays-with-reported-fallback" : "gif-delays",
+            durationsMs: decoded.delaysMs, timingSource: decoded.warnings.length ? "unknown" : "gif-delays",
           }), warnings: decoded.warnings };
-          emit(values, report, [`${frames.length} GIF drawings, ${report.animation.timing.totalMs} ms; holds and change spikes require interpretation`, ...report.warnings]);
+          emit(values, report, [`${frames.length} GIF drawings, ${report.animation.timing.totalMs === null ? "timing unknown" : `${report.animation.timing.totalMs} ms`}; holds and change spikes require interpretation`, ...report.warnings]);
         } finally { rmSync(work, { recursive: true, force: true }); }
         break;
       }

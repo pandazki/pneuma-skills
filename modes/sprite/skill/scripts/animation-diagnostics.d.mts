@@ -2,7 +2,7 @@ import type { AlphaImage } from "./alpha-clean.mjs";
 export interface AnimationDiagnosticsOptions { durationsMs?: number[] | null; timingSource?: string; loop?: boolean | null; duplicateStep?: number }
 export interface AnimationDiagnostics {
   frameCount: number; adjacentPairs: number; adjacentDistinctDrawings: number; drawingCount: number; drawingCountDefinition: string;
-  duplicateStep: number; steps: number[]; heldMs: number | null; heldFrameCount: number;
+  differenceMethod: string; duplicateStep: number; steps: number[]; heldMs: number | null; heldFrameCount: number;
   holds: { from: number; to: number; frames: number; durationMs: number | null; certainty: string }[];
   timing: { source: string; durationsMs: number[] | null; totalMs: number | null };
   wrapStep: number | null;
