@@ -111,7 +111,7 @@ media("a direction pack, end to end", () => {
     expect(planned[0].pack.cells[4]).toBeNull();
     expect(planned[1]).toMatchObject({ packOf: "walk-pack", direction: "back-left", status: "planned", source: "video" });
     const prompt = ok(project(dir, "pack-prompt", "--motion", "walk-pack"), "pack-prompt");
-    expect(prompt).toContain("All 8 copies walk in place");
+    expect(prompt).toContain("All 8 copies perform a steady locomotion cycle in place in sync");
     expect(prompt).toContain("Isometric game camera");
 
     // The plate, every drawing re-placed at one scale with room around it.

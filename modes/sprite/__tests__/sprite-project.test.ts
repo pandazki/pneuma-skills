@@ -3310,7 +3310,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         //    finished right side's sheet last, for rhythm only.
         const built = projectJson(dir, "sheet-prompt", "--motion", "walk-left", "--action", "Contact, down, pass, up.", "--frames", "4");
         expect(built.promptParts.guards).toEqual(["direction:left", "asymmetric", "rhythm:right", "state:walk", "row-continuity", "loop-close"]);
-        expect(built.prompt).toContain("The basket hangs on her right arm. Facing left, toward the left of the picture, the character's own right side is the far side");
+        expect(built.prompt).toContain("The basket hangs on her right arm. Facing left, toward the left of the picture, the subject's own right side is the far side");
         expect(built.prompt).toContain("The last attached image is the finished right-facing sheet of this same motion, for rhythm only");
         expect(built.rhythm).toEqual({ motion: "walk-right", direction: "right", file: join(dir, "motions/walk-right/sheet-raw.png") });
         expect(built.attach).toEqual([join(dir, "refs/portrait.png"), join(dir, "motions/walk-right/sheet-raw.png")]);
@@ -3321,7 +3321,7 @@ describe.skipIf(!HAS_FFMPEG)("sprite-project.mjs", () => {
         // The human form says which file is the rhythm and where the sides fall.
         const human = project(dir, "sheet-prompt", "--motion", "walk-left", "--action", "Contact, down, pass, up.");
         expect(human.err).toMatch(/rhythm: .*walk-right\/sheet-raw\.png is walk-right's finished sheet, attached for its timing only/);
-        expect(human.err).toMatch(/sides: Facing left, toward the left of the picture, the character's own right side is the far side/);
+        expect(human.err).toMatch(/sides: Facing left, toward the left of the picture, the subject's own right side is the far side/);
         // A motion with frames keeps the source that made them.
         expect(project(dir, "set-motion", "--motion", "walk-right", "--source", "video").err)
           .toMatch(/--source: 'walk-right' has 4 frames made by sheet — .*remove-motion --motion walk-right/);
