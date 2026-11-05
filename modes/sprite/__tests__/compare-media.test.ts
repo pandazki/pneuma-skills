@@ -15,14 +15,22 @@ import {
 } from "../skill/scripts/compare.mjs";
 const enabled = mediaTierEnabled("sprite");
 announceMediaTierSkip("sprite", "final artifact decoder integration");
+const hasFfmpeg = enabled &&
+  spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
+  spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
+if (enabled && !hasFfmpeg) {
+  console.warn("(skip) modes/sprite final artifact decoder integration: ffmpeg/ffprobe not on PATH");
+}
 function ffmpeg(args: string[]) {
   const result = spawnSync("ffmpeg", ["-v", "error", "-y", ...args], {
     maxBuffer: 16 * 1024 * 1024,
   });
-  if (result.status !== 0) throw Error(result.stderr.toString());
+  if (result.status !== 0) {
+    throw Error(`ffmpeg failed: ${result.error?.message ?? result.stderr?.toString() ?? "unknown error"}`);
+  }
   return result.stdout;
 }
-test.skipIf(!enabled)(
+test.skipIf(!hasFfmpeg)(
   "real PNG and GIF decode bind pixels and exact GIF timing",
   () => {
     const root = mkdtempSync(join(tmpdir(), "sprite-compare-media-"));
