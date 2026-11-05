@@ -256,16 +256,24 @@ there on Grok clips. Each reads after "The character …":
 
 | State | Sentence | What the wording is for |
 |---|---|---|
-| walk | moves in place on a treadmill: a steady locomotion cycle for this body type with clear repeating ground contacts and an even left-right or front-back rhythm the body already has. | Names no limbs: "this body type" fits a biped, a quadruped or a plush with stubs. "Treadmill" keeps it in place |
-| run | moves in place on a treadmill: a fast locomotion cycle for this body type with a bounding rhythm and clear repeating ground contacts. | Same |
-| idle | stands still in a relaxed idle pose with both feet planted flat on the ground for the whole clip: slow, gentle breathing that softly rises and falls in the chest and shoulders, a slight settle of the arms, hair and loose cloth, and one natural blink if the face has eyes. The feet never lift, step, shuffle or slide — no walking, no marching in place, no turning. | Upstream found a full body asked for "a subtle weight sway" steps in place more often than not, so the feet are held and walking is named |
-| attack | performs one melee attack with what it is already holding (bare hands only if it holds nothing), keeping every piece of its gear and outfit exactly as drawn: a windup (about 0.5 s), one clean strike in front (about 0.25 s), a held impact pose (about 0.3 s), then a recovery to the exact starting stance (about 0.5 s). Every grip stays exactly as shown in the image: one hand stays one hand, both hands stay both hands, and nothing is let go or switched to the other hand. A hand the motion does not use stays where it is drawn, with anything it holds, and the body keeps facing the same direction without turning. | Timed phases, and grips that survive the swing |
-| jump | performs one clean vertical jump in place: a short crouch, springs straight up about half its body height, lands softly on the same spot, returns to the exact starting stance, and then stands still. | Ours — upstream asks for hops "over and over" at an even rhythm; this asks for one (see E4: it did not get one) |
+| walk | performs a steady locomotion cycle in place, with distinct phases appropriate to the described subject structure. | Use the description's actual support or propulsion; a serpent has no invented feet |
+| run | performs a fast locomotion cycle in place, with distinct phases appropriate to the described subject structure. | Describe the intended faster rhythm in the action |
+| idle | performs a quiet idle cycle using subtle motion appropriate to the described subject. | Add planted contacts and breathing only for a subject that has them; smoke may expand and fade |
+| attack | performs one attack: anticipation, strike in the chosen facing, follow-through, recovery, using the subject's described features and effects. | State actual grips, claws, projectiles or emission in the action |
+| jump | performs one vertical jump in place: anticipation, lift, peak, descent and settle on the same spot. | Keep the entire path inside the frame; anatomy comes from the description |
+
+These are generic templates, not anatomical instructions. Carry the existing
+`character.description` into a hand-written video prompt along with the action.
+Preserve intentional translucency, smoke, fire, glow and particles as subject
+content; only the background is the flat key plate. The human lantern examples
+below are scoped examples. Do not copy their grips, planted feet or opaque
+costume assumptions onto other subjects. See `prompting.md` → "Subject
+applicability" for seven description/action pairs.
 
 For attack-like actions add "Crisp, clean frames with no motion blur, no
 smears and no afterimages." — a fast strike is where a video model smears.
 
-**Pin the first frame for idle and attack** (upstream's
+**Pin the first frame for an idle or attack that returns to its start** (upstream's
 `PIN_LAST_FRAME_STATES`): shoot first-last with the **same** image as
 `--image` and `--end-image`, and end the prompt with "The last frame returns
 to the exact pose of the first frame." The model then has to come back to the
@@ -273,10 +281,13 @@ still, which closes a one-shot attack on its ready stance instead of wherever
 the strike ended, and closes an idle without asking for a rhythm. It is the
 seamless-loop mechanism below, used for a sprite motion. The whole clip is one
 performance: sample the window `contact` reports, not a cycle inside it.
+A custom action may end elsewhere, such as a dissolve or deactivation. Do not
+attach the starting image as its end image. `pack-prompt --action` therefore
+disables the built-in automatic pin; its JSON reports `pinned: false`.
 
 ```bash
 node {SKILL_PATH}/scripts/seedance-video.mjs \
-  --prompt "2D game sprite animation. The character performs one melee attack with the paper lantern she is already holding, … then a recovery to the exact starting stance (about 0.5 s). Every grip stays exactly as shown in the image: … She keeps facing right without turning, stays at the same spot and does not move across the screen; the body, hair and lantern always stay fully inside the frame with margin. Camera completely locked: no pan, no tilt, no zoom, no parallax, no reframing, no cut. Keep the design, colors and proportions exactly as in the image. Crisp, clean frames with no motion blur, no smears and no afterimages. The background stays a flat solid pure chroma-key green fill for the whole clip, evenly lit, no gradient: no floor, no ground line, no shadows, no reflection, no particles, no lighting changes, no effects, and no green light spilling onto the character. The last frame returns to the exact pose of the first frame." \
+  --prompt "2D game sprite animation. The character performs one melee attack with the paper lantern she is already holding, … then a recovery to the exact starting stance (about 0.5 s). Every grip stays exactly as shown in the image: … She keeps facing right without turning, stays at the same spot and does not move across the screen; the body, hair and lantern always stay fully inside the frame with margin. Camera completely locked: no pan, no tilt, no zoom, no parallax, no reframing, no cut. Preserve the described identity and materials, allowing the changes requested by the action. Crisp, clean frames with no motion blur, no smears and no afterimages. The background stays a flat solid pure chroma-key green fill for the whole clip, evenly lit, no gradient: no floor, no ground line, no background shadows or reflection, and no green light spilling onto the subject; keep any requested subject effects fully inside the frame. The last frame returns to the exact pose of the first frame." \
   --image <character>/motions/<id>/first-green.png \
   --end-image <character>/motions/<id>/first-green.png \
   --duration 4 --resolution 480p --no-audio \

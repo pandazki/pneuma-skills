@@ -3,7 +3,7 @@
  */
 import type { SheetCharacter, SheetDirection } from "./sheet-prompt.mjs";
 
-export declare const PACK_PROMPT_BUILDER: "pack-prompt/1";
+export declare const PACK_PROMPT_BUILDER: "pack-prompt/2";
 
 export interface FacingLayout {
   rows: number;
@@ -30,6 +30,7 @@ export declare const PINNED_PACK_STATES: string[];
 export declare function packClipPrompt(input: {
   character: SheetCharacter;
   pack: PackRecord;
+  /** Replaces the state default and disables automatic first-last pinning. */
   action?: string | null;
 }): { prompt: string; builder: string; pinned: boolean };
 export declare function packCellMotionId(state: string, cell: { direction?: SheetDirection; item?: string }): string;

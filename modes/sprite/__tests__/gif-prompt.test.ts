@@ -2,8 +2,8 @@
  * The code-built GIF prompt (`sheet-prompt.mjs` `buildGifPrompt`,
  * `sprite-project.mjs gif-prompt`).
  *
- * The text is pinned word for word under `gif-prompt/1`, as the sheet text is
- * under `sheet-prompt/2`: a recorded `promptParts.builder` must keep meaning
+ * The text is pinned word for word under `gif-prompt/2`, as the sheet text is
+ * under `sheet-prompt/3`: a recorded `promptParts.builder` must keep meaning
  * the words it produced. The state guards are the sheet's own sentences said
  * of frames (`gifWording`); every state and facing is rendered here so a new
  * sheet sentence that names a cell fails in this file, not in a paid call.
@@ -41,16 +41,16 @@ const BLOB: SheetCharacter = {
 const IDLE: SheetMotion = { id: "idle", label: "Idle", grid: { rows: 1, cols: 1 }, loop: true };
 const ACTION = "Frames 1-4 the blob swells, frames 5-8 it settles back.";
 
-/** `gif-prompt/1` for BLOB's 8-frame idle, word for word. */
+/** `gif-prompt/2` for BLOB's 8-frame idle, word for word. */
 const GOLDEN_IDLE =
-  "Flat vector blob, thick outline. One animated GIF of 8 frames on one fixed canvas: the whole character exactly once in every frame, at the same size, with a clear margin of empty background on every side — anything the character holds or wears that moves included — and nothing cut off by the edge of the frame. The same character in every frame, matching the attached references exactly. A round test blob with one antenna. Keep white and pale details inside the character — highlights, eye whites, pale hair or clothing — fully opaque; only the background is transparent. The character faces right. Fixed camera: consistent body proportions, drawing scale and camera distance in every frame, and ground contacts share one baseline while the character stands on the ground. The references own the identity — face, hair shape, markings, palette, outline weight, proportions, outfit and props stay exactly as they show, and whatever is worn or held on one side stays on that side. This animation owns motion only: spend the variation on pose, limb contacts, body height, torso lean, head bob, and hair and cloth follow-through. Prefer a subtler animation over any change that alters the character's identity. The motion (8 frames, looping): Frames 1-4 the blob swells, frames 5-8 it settles back. This is an idle: the feet, or whatever the character rests on, stay planted on the same baseline in every frame and never lift, step, shuffle or slide — no walking, no marching in place, no turning, no change of facing. The eyes close in one frame at most. Frame 8 leads smoothly into frame 1 on the next beat, with compatible movement direction and without an extra hold: it is the pose just before frame 1, not a copy of it. Show it through pose, expression and silhouette, never through effects: nothing detached from the character — no floating sparkles, symbols, smoke, dust, motion arcs, speed lines, afterimages, smears, glows or impact bursts. A fully transparent background in every frame. No floor, no ground line, no drop shadow, no ground shadow, no scenery, no text, no motion blur.";
+  "Flat vector blob, thick outline. One animated GIF of 8 frames on one fixed canvas: the whole subject exactly once in every frame, at a consistent reference scale, allowing the size changes requested by the action, with a clear margin of empty background on every side — all requested motion and effects included — and nothing cut off by the edge of the frame. The same subject in every frame, matching the attached references exactly. A round test blob with one antenna. Preserve the described materials, including intentional translucency, emission and pale details; transparency outside the subject is the background. The subject faces right. Fixed camera: consistent reference scale and camera distance in every frame, and any ground contacts specified by the action share one baseline. The references and description own the subject's identity and structure. Preserve its defining details and side-specific features while allowing the changes of shape, colour, size and opacity requested by the action. Do not invent features absent from the subject. The motion (8 frames, looping): Frames 1-4 the blob swells, frames 5-8 it settles back. This is an idle motion: follow the explicit action and the described subject structure, using only features the subject actually has. The action determines the phases, deformation, materials and effects; do not add anatomy or movements from the state name. Frame 8 leads smoothly into frame 1 on the next beat, with compatible movement direction and without an extra hold: it is the pose just before frame 1, not a copy of it. Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration. A fully transparent background in every frame. No floor, no ground line, no drop shadow, no ground shadow, no scenery, no text, no motion blur.";
 
 describe("sheet-prompt.mjs — the GIF prompt", () => {
-  test("gif-prompt/1 text is pinned, and the recorded parts render the same text", () => {
+  test("gif-prompt/2 text is pinned, and the recorded parts render the same text", () => {
     const built = buildGifPrompt({ character: BLOB, motion: IDLE, action: ACTION, frames: 8 });
-    expect(GIF_PROMPT_BUILDER).toBe("gif-prompt/1");
+    expect(GIF_PROMPT_BUILDER).toBe("gif-prompt/2");
     expect(built.prompt).toBe(GOLDEN_IDLE);
-    expect(built.parts).toEqual({ builder: "gif-prompt/1", action: ACTION, guards: ["frames:8", "state:idle", "loop-close"] });
+    expect(built.parts).toEqual({ builder: "gif-prompt/2", action: ACTION, guards: ["frames:8", "state:idle", "loop-close"] });
     expect(renderGifPrompt({ character: BLOB, motion: IDLE }, JSON.parse(JSON.stringify(built.parts)))).toBe(GOLDEN_IDLE);
   });
 
@@ -66,9 +66,9 @@ describe("sheet-prompt.mjs — the GIF prompt", () => {
     // The guard is the sheet's sentence, not a second text that can drift.
     const attack = (build: typeof buildGifPrompt | typeof buildSheetPrompt) =>
       build({ character: BLOB, motion: { id: "attack", grid: { rows: 2, cols: 4 }, loop: false }, action: "Swing.", frames: 8 } as never).prompt;
-    const sheetGuard = attack(buildSheetPrompt).match(/This is an attack[^]*?trails\./)![0];
+    const sheetGuard = attack(buildSheetPrompt).match(/This is an attack[^]*?state name\./)![0];
     expect(attack(buildGifPrompt)).toContain(gifWording(sheetGuard));
-    expect(attack(buildGifPrompt)).toContain("The weapon or prop stays inside the frame with a clear margin in every phase.");
+    expect(attack(buildGifPrompt)).toContain("the whole subject exactly once in every frame");
   });
 
   test("a sentence the wording does not cover is refused rather than sent", () => {
@@ -103,7 +103,7 @@ describe("sheet-prompt.mjs — the GIF prompt", () => {
     expect(() => buildGifPrompt({ character: BLOB, motion: IDLE, action: ACTION, frames: 17 })).toThrow("2 to 16");
     expect(() => buildGifPrompt({ character: { ...BLOB, pixel: { logicalHeight: 32 } }, motion: IDLE, action: ACTION, frames: 8 })).toThrow("pixel lattice");
     expect(() => buildGifPrompt({ character: { ...BLOB, style: " " }, motion: IDLE, action: ACTION, frames: 8 })).toThrow("style sentence");
-    expect(() => renderGifPrompt({ character: BLOB, motion: IDLE }, { builder: "sheet-prompt/2", action: ACTION, guards: ["state:idle", "loop-close"] })).toThrow("gif-prompt/1");
+    expect(() => renderGifPrompt({ character: BLOB, motion: IDLE }, { builder: "sheet-prompt/3", action: ACTION, guards: ["state:idle", "loop-close"] })).toThrow("gif-prompt/2");
   });
 });
 
@@ -136,7 +136,7 @@ describe("sprite-project.mjs gif-prompt", () => {
     expect(r.out).toBe(`${GOLDEN_IDLE}\n`);
     const motion = readProject(dir).sprite.motions[0];
     expect(motion.prompt).toBe(GOLDEN_IDLE);
-    expect(motion.promptParts).toEqual({ builder: "gif-prompt/1", action: ACTION, guards: ["frames:8", "state:idle", "loop-close"] });
+    expect(motion.promptParts).toEqual({ builder: "gif-prompt/2", action: ACTION, guards: ["frames:8", "state:idle", "loop-close"] });
     // 8 fps is 125 ms a frame, on fal's 10 ms grid.
     expect(r.err).toContain(`gif: --frame-count 8 --frame-duration-ms 130 --image-size 512x512 --background transparent --output ${join(dir, "motions/idle/gif-raw-1.gif")}`);
     expect(r.err).toContain("no references are registered");

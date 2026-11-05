@@ -11,6 +11,48 @@ motion (the action), the code writes everything else and records how it did
 to know — it is what the builder encodes, and what you read when a sheet comes
 back wrong.
 
+## Subject applicability
+
+`character` is the existing project field for the subject, including animals,
+creatures, props, icons, effects and abstract animations. Record structure and
+materials in `character.description`; record phases and intentional changes in
+`--action`. No category or anatomy flag is needed. Do not infer two legs, arms,
+a face, opaque material or a fixed silhouette from a motion name.
+
+| Subject description | Example action |
+|---|---|
+| Human with two arms; lantern held in her own right hand | Left hand waves; the right hand keeps its grip on the lantern |
+| Bird with two wings and two clawed feet | Wings spread, flap and fold; claws stay on the perch |
+| Quadruped fox with four paws and one tail | Trot in place; diagonal pairs alternate support |
+| Legless serpent with no arms | Coil, uncoil and slither in place |
+| Glass potion-bottle icon with translucent liquid | Liquid changes colour and bubbles rise |
+| Translucent smoke, fire and glow effect | Smoke expands and fades; fire sheds glowing particles |
+| Abstract luminous ribbons | Ribbons change shape, hue and size, returning to the opening phase |
+
+The action wins over state-name assumptions. Sheet and GIF state clauses only
+name the state and defer to the explicit action. Pack built-ins use generic
+phases; `pack-prompt --action` replaces them and disables automatic first-last
+pinning. Choose the ending explicitly for that custom action. Camera, cell
+containment, selected facing and side-specific identity still apply. For a
+radially symmetric effect, omit direction and asymmetry rather than inventing
+an orientation. Material changes belong to the subject; keep the plate uniform.
+A white or green plate and its cut-out do not guarantee faithful translucency;
+inspect the final alpha on contrasting backgrounds.
+
+Builder versions are `sheet-prompt/3`, `gif-prompt/2` and `pack-prompt/2`.
+Old project records remain readable. Builder parts identify the text originally
+built, not an instruction to rewrite a paid request with the current builder.
+Retain and resend the recorded prompt, model, inputs and request parameters
+exactly for a replay. Running a prompt-building command explicitly creates new
+text for a new take; it does not upgrade earlier provenance. The current renderer
+refuses old builder parts rather than silently changing their meaning.
+
+The applicability problem is inspired by [sprite-gen body_plan.py at
+4f5ccd55](https://github.com/aldegad/sprite-gen/blob/4f5ccd55c7cf06685a41f954acc1e476b7772ece/sprite_gen/video/body_plan.py).
+Pneuma uses the existing description and action instead of importing its body-plan
+taxonomy. The earlier layout and prompt assembly borrowings remain at their
+recorded pin; this does not repin them.
+
 ## The five-part grammar
 
 Write every sheet prompt in this order. The order matters — the model weights
@@ -23,9 +65,10 @@ is the style.
 2. **Grid instruction.** "A single image laid out as a strict N×M grid of
    equal cells, read left to right, top to bottom." Say *strict* and *equal*;
    without it the model composes a poster.
-3. **Subject and continuity.** "The same character in all cells" plus the
-   identity facts that must not change: proportions, palette, costume and
-   distinguishing props. Specify the starting view and any intended turn.
+3. **Subject and continuity.** "The same subject in all cells" plus its defining
+   structure and materials from the description and references. Preserve identity
+   while allowing the deformation, colour and opacity changes the action requests.
+   Specify the starting view; a selected direction remains locked.
 4. **The motion, in related phases.** Map phases to cell ranges, with the
    contacts, trajectories and follow-through that connect them. Add individual
    pose details where needed; phase boundaries need not follow grid rows.
@@ -43,11 +86,10 @@ in order to work at all. Every sheet prompt carries all five.
 - **No floor, no cast shadow.** A shadow is opaque, so it lands in the alpha
   and the aligner treats it as part of the character — the silhouette grows a
   smear that moves with the pose, and the anchor moves with it.
-- **Preserve white and pale details inside the character.** Say it out loud
-  ("keep the white highlights, the cream cloak and the eye whites fully
-  opaque, only the background is white") — a colour key cannot tell the plate
-  from a white the character is wearing, and the fastest way to lose an eye is
-  to let the model paint it the same white as the backdrop.
+- **Preserve intended materials and pale details.** A white highlight on a
+  solid prop is not a hole; glass, smoke and glow may be translucent. Describe
+  that distinction rather than asking every subject to be fully opaque. A colour
+  key cannot separate identical foreground and plate colours reliably.
 - **Empty background on every side of every cell** — 9.4 % of the cell, 48 px
   on a 512 px cell — moving accessories included. A pose that touches its cell edge is a pose whose
   neighbour bleeds into it, and `inspect` will say so ("cell NN is clipped").
@@ -105,37 +147,27 @@ the same way every time.
 | 2 | the image and grid in pixels, C columns × R rows, read order | — |
 | 2 | each cell holds the whole character once, centred, with the safe margin (9.4 % of the cell), props included | — |
 | 2 | the layout guide is the last attached image: follow it, never draw it | `guide` |
-| 3 | the same character as the references, then `character.description`; pale details stay opaque | — |
+| 3 | the same subject as the references, then `character.description`; preserve intended materials | — |
 | 3 | the facing: the motion's direction locked for the whole sheet, else `character.facing` | `direction:<d>` |
 | 3 | the attached anchor for that direction owns the facing | `anchor:<d>` when an anchor ref faces that way |
-| 3 | fixed camera and scale; identity over motion ("This sheet owns motion only… Prefer a subtler animation over any change that alters the character's identity") | — |
+| 3 | fixed camera and reference scale; preserve identity while allowing requested deformation and material changes | — |
 | 3 | the asymmetry lock, with `character.asymmetric` verbatim | `asymmetric` |
 | 4 | your action, headed by the frame count and loop / once | — |
 | 4 | the state guard (below) | `state:<s>` |
 | 4 | the motion runs straight on across row ends | `row-continuity` when rows > 1 |
 | 4 | cell N leads into cell 1 / cell N is the final pose | `loop-close` / `one-shot-end` |
-| 4 | no detached effects (sparkles, arcs, speed lines, smears, glows) | — |
+| 4 | requested effects stay inside the safe area; no unrelated decoration | — |
 | 5 | the flat pure white plate and the negatives | — |
 
 **State guards.** The state is read off the motion's id, then its label, first
 matching word wins (`walk-right` → walk, `lantern-swing` → attack); anything
 else is `generic`, and `--state` overrides.
 
-| State | Words | The guard |
-|---|---|---|
-| idle | idle, breathe | feet planted on one baseline, never lift, step, shuffle or slide; no turning; the eyes close in one cell at most |
-| walk / run | walk, march; run, sprint, dash, jog | in place, on the spot; distinct gait poses with support passing between feet, not repeated standing or bobbing; no speed lines, dust or trails. Front or back: alternate legs, arms, shoulders and body height visibly |
-| jump | jump, hop, leap | one jump, not repeated hops; anticipation, lift, peak, descent, settle; the peak stays in the safe area; no shadows, landing marks or smears |
-| attack | attack, slash, strike, swing, punch, kick, stab | windup, strike, follow-through, recovery with what it already holds; every grip stays; the weapon stays in the safe area; no slash arcs, flashes or trails |
-| wave | wave, greet, hello | the arm alone; feet planted unless the action steps; no wave marks or sparkles |
-| generic | — | carry the action in the body, one readable phase after the next |
-
-Ported (text) from aldegad/sprite-gen `sprite_gen/gen/prepare.py`
-`STATE_REQUIREMENTS` (walk, run, frontwalk, jump, wave) and `video/batch.py`
-`HOLD_TEXT` (the attack grip lines); the idle and attack guards are ours, from
-the idle recipe below and upstream's default attack action. The identity lines
-are adapted from upstream's row prompt anchor lock, from a one-row strip to a
-grid.
+Every recognized state uses the same applicability guard: follow the explicit
+action and described structure, use only features the subject has, and let the
+action determine phases, deformation, materials and effects. `generic` does the
+same without naming a state. Grounded human recipes below are examples for
+those subjects, not defaults for birds, serpents, props or effects.
 
 **Frames and grid.** `--frames N` redraws the motion's grid (and `run` must
 then slice that grid); without it the motion's own grid is used.
@@ -166,7 +198,7 @@ cell — and cost 22 % more per sheet; reach for it when a sheet comes back with
 merged or misplaced cells.
 
 **Deterministic.** The same character, grid and parts give the same text byte
-for byte; `builder: "sheet-prompt/2"` names the wording. Changing a sentence
+for byte; `builder: "sheet-prompt/3"` names the wording. Changing a sentence
 means a new builder version, so a recorded prompt keeps meaning what it said.
 A prompt you write yourself goes in with `set-motion --prompt` and drops the
 parts.
@@ -281,7 +313,7 @@ tier a hand-off to an engine needs. The margin is 9.4 % of the cell (48 px
 here, 24 px on a 256 px cell). A 1024 px sheet is the cheaper iteration tier
 and a quarter of the bytes on disk; write that prompt by hand if you choose it.
 
-## The idle recipe
+## The grounded character idle recipe
 
 For a quiet grounded idle, keep the primary motion small — an idle that
 "does something" can read as a twitch. A starting recipe, as an **8-frame

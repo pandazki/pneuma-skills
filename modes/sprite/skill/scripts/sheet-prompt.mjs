@@ -15,21 +15,15 @@
  * clause order is `references/prompting.md`'s five-part grammar.
  *
  * Inspired by aldegad/sprite-gen (Apache-2.0) sprite_gen/gen/prepare.py@fbd1a08
- * `row_prompt` (:753-826): a code-built prompt where the caller owns the
- * action and code owns identity, layout and guards. The anchor-lock lines
- * ("This row owns motion only…", "Prefer a subtler animation over any change
- * that mutates the character identity") are adapted from a one-row strip on a
- * chroma key to our grid sheet on a white plate. Where the two disagree our
- * grammar wins: white plate, not chroma; one paragraph in grammar order, not
- * a sectioned spec; no "authoritative spec" preamble.
+ * `row_prompt` (:753-826): caller-owned action with code-owned layout and
+ * continuity. Subject applicability is inspired by `video/body_plan.py`
+ * @4f5ccd55c7cf06685a41f954acc1e476b7772ece; unlike its taxonomy, our
+ * description and action supply the structure and materials directly.
  */
 
-/** The version of the text below. Any change to a sentence bumps it: a
- *  recorded `promptParts.builder` has to keep meaning the words it produced.
- *  `/2` added the side geometry an asymmetric character's facing implies and
- *  the rhythm reference (`rhythm:<d>`); every prompt without them reads as
- *  `/1` did, word for word. */
-export const SHEET_PROMPT_BUILDER = "sheet-prompt/2";
+/** Text changes bump the builder; stored requests retain their original text.
+ * /3 makes state, identity and material clauses subject-neutral. */
+export const SHEET_PROMPT_BUILDER = "sheet-prompt/3";
 
 /**
  * Safe margin as a share of the cell, floored per axis.
@@ -50,7 +44,7 @@ export const GENERATION_CELL_MAX = 512;
  *  row longer than four cells. */
 export const SHEET_FRAME_COUNTS = [2, 3, 4, 6, 8, 9, 12, 16];
 
-/** The motion families with guards of their own; anything else is generic. */
+/** The motion families with guards of its own; anything else is generic. */
 export const SHEET_STATES = ["idle", "walk", "run", "jump", "attack", "wave", "hurt", "death", "cast", "guard", "victory"];
 
 /**
@@ -84,13 +78,13 @@ export const CHARACTER_VIEWS = ["side", "topdown", "isometric"];
 /** The sentence every built prompt states for a recorded camera. Absent
  *  view, no sentence — exactly the text a 0.5.x character gets. */
 export const VIEW_TEXT = {
-  side: "Side-on game camera at eye level, as in a 2D side-scroller.",
-  topdown: "Top-down RPG camera, looking down at the character from a high three-quarter angle, the way a classic top-down RPG shows its sprites.",
-  isometric: "Isometric game camera: the character is seen from an elevated three-quarter angle, looking down at about 30 degrees, as in a classic isometric RPG; the ground plane runs along the isometric diagonals.",
+  side: "Side-on game camera at the subject level, as in a 2D side-scroller.",
+  topdown: "Top-down RPG camera, looking down at the subject from a high three-quarter angle, the way a classic top-down RPG shows its sprites.",
+  isometric: "Isometric game camera: the subject is seen from an elevated three-quarter angle, looking down at about 30 degrees, as in a classic isometric RPG; the ground plane runs along the isometric diagonals.",
 };
 
 /**
- * Where the character's OWN right and left side are in a picture facing each
+ * Where the subject's OWN right and left side are in a picture facing each
  * way — the geometry a side-specific detail (a basket on the right arm, a
  * hairpin on the left) has to be placed by. Computed, not reasoned about:
  * the 2026-09-27 four-direction blind trial wrote "facing left, her right
@@ -104,21 +98,21 @@ export const VIEW_TEXT = {
  * direction anchors.
  */
 export const SIDE_GEOMETRY = {
-  front: "Seen from the front, the character's own right side is on the left of the picture and their own left side is on the right of the picture.",
-  back: "Seen from behind, the character's own right side is on the right of the picture and their own left side is on the left of the picture.",
-  left: "Facing left, toward the left of the picture, the character's own right side is the far side — turned away from the viewer and partly hidden behind the body — and their own left side is the near side, toward the viewer.",
-  right: "Facing right, toward the right of the picture, the character's own right side is the near side, toward the viewer, and their own left side is the far side — turned away from the viewer and partly hidden behind the body.",
-  "front-left": "Facing down and to the left, a front three-quarter view, the character's own left side is the near side, toward the viewer and on the right of the picture, and their own right side is the far side, on the left of the picture and partly hidden behind the body.",
-  "front-right": "Facing down and to the right, a front three-quarter view, the character's own right side is the near side, toward the viewer and on the left of the picture, and their own left side is the far side, on the right of the picture and partly hidden behind the body.",
-  "back-left": "Facing up and to the left, a back three-quarter view turned away from the viewer, the character's own left side is the near side, toward the viewer and on the left of the picture, and their own right side is the far side, on the right of the picture and partly hidden behind the body.",
-  "back-right": "Facing up and to the right, a back three-quarter view turned away from the viewer, the character's own right side is the near side, toward the viewer and on the right of the picture, and their own left side is the far side, on the left of the picture and partly hidden behind the body.",
+  front: "Seen from the front, the subject's own right side is on the left of the picture and its own left side is on the right of the picture.",
+  back: "Seen from behind, the subject's own right side is on the right of the picture and its own left side is on the left of the picture.",
+  left: "Facing left, toward the left of the picture, the subject's own right side is the far side — turned away from the viewer and partly hidden behind the subject — and its own left side is the near side, toward the viewer.",
+  right: "Facing right, toward the right of the picture, the subject's own right side is the near side, toward the viewer, and its own left side is the far side — turned away from the viewer and partly hidden behind the subject.",
+  "front-left": "Facing down and to the left, a front three-quarter view, the subject's own left side is the near side, toward the viewer and on the right of the picture, and its own right side is the far side, on the left of the picture and partly hidden behind the subject.",
+  "front-right": "Facing down and to the right, a front three-quarter view, the subject's own right side is the near side, toward the viewer and on the left of the picture, and its own left side is the far side, on the right of the picture and partly hidden behind the subject.",
+  "back-left": "Facing up and to the left, a back three-quarter view turned away from the viewer, the subject's own left side is the near side, toward the viewer and on the left of the picture, and its own right side is the far side, on the right of the picture and partly hidden behind the subject.",
+  "back-right": "Facing up and to the right, a back three-quarter view turned away from the viewer, the subject's own right side is the near side, toward the viewer and on the right of the picture, and its own left side is the far side, on the left of the picture and partly hidden behind the subject.",
 };
 
 /** The side-geometry sentence for a facing, and what it asks of every
  *  side-specific detail; null for a facing it has no sentence for. */
 export function sideClause(direction) {
   const geometry = SIDE_GEOMETRY[direction];
-  return geometry ? `${geometry} Place every side-specific detail by the character's own right and left, as they fall in this view.` : null;
+  return geometry ? `${geometry} Place every side-specific detail by the subject's own right and left, as they fall in this view.` : null;
 }
 
 /** Words in a motion's id or label that name its state. First token wins,
@@ -156,7 +150,7 @@ export function sheetGrid(frames) {
   return { rows: frames / 4, cols: 4 };
 }
 
-/** The cell the image model draws: the character's cell times the largest
+/** The cell the image model draws: the subject's cell times the largest
  *  whole factor that keeps its longer side at most GENERATION_CELL_MAX. A
  *  whole factor keeps pixel art on an integer scale. */
 export function generationCell(cell) {
@@ -338,7 +332,7 @@ const closed = (text) => {
 
 const FACING_LOCK = {
   front: "Every cell faces the viewer (front view); lock the whole sheet to that facing and do not drift into a three-quarter or side view.",
-  back: "Every cell faces away from the viewer (back view, no visible face); lock the whole sheet to that facing and do not drift into a three-quarter or side view.",
+  back: "Every cell faces away from the viewer (back view); lock the whole sheet to that facing and do not drift into a three-quarter or side view.",
   right: "Every cell is a pure side profile facing camera-right; lock the whole sheet to that facing and do not drift into a front or three-quarter view.",
   left: "Every cell is a pure side profile facing camera-left; lock the whole sheet to that facing and do not drift into a front or three-quarter view.",
   "front-left": "Every cell is a front three-quarter view facing down and to the camera-left; lock the whole sheet to that facing and do not drift into a front, side or back view.",
@@ -347,46 +341,9 @@ const FACING_LOCK = {
   "back-right": "Every cell is a back three-quarter view facing up and to the camera-right, turned away from the viewer; lock the whole sheet to that facing and do not drift into a back, side or front view.",
 };
 
-/**
- * One guard per state. Ported (text) from aldegad/sprite-gen (Apache-2.0)
- * sprite_gen/gen/prepare.py@fbd1a08 `STATE_REQUIREMENTS` (:71-136) — walk /
- * run / frontwalk / wave / jump — and `video/batch.py` `HOLD_TEXT` (the
- * attack grip lines) and `MOTION_TEXT` idle (the planted-feet line). Changes:
- * idle and attack have no upstream row requirement and are written from our
- * idle recipe and upstream's default attack action; "in place" is added to
- * walk and run because a sheet cell does not travel; jump says "one jump"
- * and asks for headroom inside the safe area.
- */
-function stateText(state, direction) {
-  const frontal = direction === "front" || direction === "back"
-    ? ` Seen from the ${direction}, the gait reads through alternating leg, arm, shoulder and body-height changes: make the contact and passing poses visibly different without changing the identity.`
-    : "";
-  switch (state) {
-    case "idle":
-      return "This is an idle: the feet, or whatever the character rests on, stay planted on the same baseline in every cell and never lift, step, shuffle or slide — no walking, no marching in place, no turning, no change of facing. The eyes close in one cell at most.";
-    case "walk":
-      return `This is a walk in place: the character walks on the spot and does not travel across the cell. Show it through body, arm, leg, hair and prop movement, with distinct gait poses — support passing from foot to foot and the feet trading forward reach — rather than repeated standing or bobbing. No speed lines, dust clouds, floor shadows or motion trails.${frontal}`;
-    case "run":
-      return `This is a run in place: the character runs on the spot with a bounding rhythm and does not travel across the cell. Show it through body, arm, leg, hair and prop movement, with distinct gait poses — clear repeating ground contacts and the feet trading forward reach — rather than repeated standing or bobbing. No speed lines, dust clouds, floor shadows or motion trails.${frontal}`;
-    case "jump":
-      return "This is one jump, not repeated hops, shown through pose and vertical body position only: anticipation, lift, airborne peak, descent, settle. Draw the character small enough that the airborne peak stays inside the safe area of its own cell. No ground shadows, contact shadows, landing marks, dust, smears or motion marks under the character.";
-    case "attack":
-      return "This is an attack made with the body and what it already holds: windup, strike, follow-through, recovery. Every grip stays as the references show — one hand stays one hand, both hands stay both hands, nothing is let go or switched to the other hand — and a hand the attack does not use keeps what it holds where it is. The weapon or prop stays inside the safe area of its own cell in every phase. No slash arcs, speed lines, impact flashes, sparks or trails.";
-    case "wave":
-      return "This is a gesture made with the arm alone — arm down, arm raised, hand tilted, arm returning; the feet stay planted unless the action asks for a step. No wave marks, motion arcs, lines, sparkles or symbols around the hand.";
-    case "hurt":
-      return "This is a hit reaction, played once: the impact jolts the body back and away from the blow, the head snaps and the arms fly up a little, then the character recovers to its stance. The feet stay on the ground line, the facing never changes, and everything held stays held. No blood, hit sparks, impact flashes, stars or symbols.";
-    case "death":
-      return "This is a defeat, played once: the character staggers, loses balance and collapses to the ground, ending lying still on the ground line inside its own cell. Draw the character small enough that the fallen pose stays inside the safe area. No blood, ghosts, souls, sparkles or symbols.";
-    case "cast":
-      return "This is a spell cast made with the body and what it already holds: gather (the hands or the focus draw in), build (the stance widens, the arms rise), release (the hands or the focus thrust forward), recovery. Show it through pose; no magic circles, glows, particles or effects detached from the character.";
-    case "guard":
-      return "This is a guard: the character raises its arms, its weapon or its shield to block and holds the defensive stance, braced, the feet planted on the ground line. Every grip stays as the references show. No impact flashes or symbols.";
-    case "victory":
-      return "This is a victory pose: a short celebration — a fist or the held prop raised, a small hop or a cheer — that settles into a proud stance. The feet return to the ground line. No confetti, sparkles, stars or symbols.";
-    default:
-      return "Carry the action in the body — pose, weight and contacts — one readable phase after the next.";
-  }
+/** An explicit action owns the phases; the inferred state adds no anatomy. */
+function stateText(state) {
+  return `${state === "generic" ? "Animate the requested action" : `This is ${state === "idle" || state === "attack" ? "an" : "a"} ${state} motion`}: follow the explicit action and the described subject structure, using only features the subject actually has. The action determines the phases, deformation, materials and effects; do not add anatomy or movements from the state name.`;
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -425,22 +382,22 @@ export function renderSheetPrompt({ character, motion }, parts) {
   const margin = m.x === m.y
     ? `at least ${m.x} px of empty background on every side`
     : `at least ${m.x} px of empty background left and right and ${m.y} px above and below`;
-  text.push(`Each cell holds the whole character exactly once, centred in the cell, with ${margin} — anything the character holds or wears that moves included — and nothing crosses into a neighbouring cell.`);
+  text.push(`Each cell holds the whole subject exactly once, centred in the cell, with ${margin} — all requested motion and effects included — and nothing crosses into a neighbouring cell.`);
   if (g.guide) {
     text.push(`The last attached image is the layout guide for this sheet: its dark boxes are the ${n} cells, the blue boxes inside them the safe area every frame stays within, and the thin vertical lines the cell centres. Follow its cell count, spacing, centring and padding, and do not draw it: no boxes, guide lines, centre marks, guide colours or grey background anywhere in the output.`);
   }
   // 3. The subject, its facing, and identity over motion.
-  text.push("The same character in every cell, matching the attached references exactly.");
+  text.push("The same subject in every cell, matching the attached references exactly.");
   if (description) text.push(closed(description));
-  text.push("Keep white and pale details inside the character — highlights, eye whites, pale hair or clothing — fully opaque; only the background is white.");
+  text.push("Preserve the described materials, including intentional translucency, emission and pale details; the white plate is only the background.");
   if (g.direction) text.push(FACING_LOCK[g.direction]);
-  else if (character.facing === "left" || character.facing === "right") text.push(`The character faces ${character.facing}.`);
+  else if (character.facing === "left" || character.facing === "right") text.push(`The subject faces ${character.facing}.`);
   if (g.anchor) {
     text.push(`The attached ${g.anchor}-facing anchor is authoritative for that facing: match its view in every cell, while the other references carry the identity.`);
   }
   if (VIEW_TEXT[character.view]) text.push(VIEW_TEXT[character.view]);
-  text.push("Fixed camera: consistent body proportions, drawing scale and camera distance in every cell, and ground contacts share one baseline while the character stands on the ground.");
-  text.push("The references own the identity — face, hair shape, markings, palette, outline weight, proportions, outfit and props stay exactly as they show, and whatever is worn or held on one side stays on that side. This sheet owns motion only: spend the variation on pose, limb contacts, body height, torso lean, head bob, and hair and cloth follow-through. Prefer a subtler animation over any change that alters the character's identity.");
+  text.push("Fixed camera: consistent reference scale and camera distance in every cell, and any ground contacts specified by the action share one baseline.");
+  text.push("The references and description own the subject's identity and structure. Preserve its defining details and side-specific features while allowing the changes of shape, colour, size and opacity requested by the action. Do not invent features absent from the subject.");
   if (g.asymmetric) {
     const sentence = typeof character.asymmetric === "string" ? character.asymmetric.trim() : "";
     if (!sentence) throw new Error("the asymmetric clause needs character.asymmetric");
@@ -456,16 +413,16 @@ export function renderSheetPrompt({ character, motion }, parts) {
   if (g.rhythm) {
     // The attach order is references, this sheet, then the guide: the guide
     // keeps "last", which its own clause has always said.
-    text.push(`The ${g.guide ? "second-to-last attached image, just before the layout guide," : "last attached image"} is the finished ${g.rhythm}-facing sheet of this same motion, for rhythm only: match its step timing, stride length and drawing scale cell for cell, and take nothing else from it — not its facing, and not the side any detail is on.`);
+    text.push(`The ${g.guide ? "second-to-last attached image, just before the layout guide," : "last attached image"} is the finished ${g.rhythm}-facing sheet of this same motion, for rhythm only: match its phase timing and reference scale cell for cell, and take nothing else from it — not its facing, and not the side any detail is on.`);
   }
-  text.push(stateText(g.state, g.direction));
+  text.push(stateText(g.state));
   if (g.rowContinuity) {
     text.push("The motion runs straight on across row ends: the first cell of each row continues from the last cell of the row above by the same small step as the cells within a row.");
   }
   text.push(g.ending === "loop-close"
     ? `Cell ${n} leads smoothly into cell 1 on the next beat, with compatible movement direction and without an extra hold.`
     : `Cell ${n} is the pose the motion ends on.`);
-  text.push("Show it through pose, expression and silhouette, never through effects: nothing detached from the character — no floating sparkles, symbols, smoke, dust, motion arcs, speed lines, afterimages, smears, glows or impact bursts.");
+  text.push("Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration.");
   // 5. The white plate and the negatives the cut-out needs.
   text.push("A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no floor, no drop shadow, no ground shadow, no motion blur.");
   return text.join(" ");
@@ -520,7 +477,7 @@ export function buildSheetPrompt({ character, motion, refs = [], action, state, 
 // ---------------------------------------------------------------------------
 
 /** The version of the GIF text below; bumps with any change to a sentence. */
-export const GIF_PROMPT_BUILDER = "gif-prompt/1";
+export const GIF_PROMPT_BUILDER = "gif-prompt/2";
 
 /** The frame counts a GIF motion is drawn at — 8, 12 and 16 were measured
  *  (2026-11-05); fal accepts up to 64, but nothing past 16 has been looked at. */
@@ -616,19 +573,19 @@ export function renderGifPrompt({ character, motion }, parts) {
   // 1. The style anchor, verbatim.
   text.push(closed(style));
   // 2. What the file is, and how the character sits in every frame.
-  text.push(`One animated GIF of ${n} frames on one fixed canvas: the whole character exactly once in every frame, at the same size, with a clear margin of empty background on every side — anything the character holds or wears that moves included — and nothing cut off by the edge of the frame.`);
+  text.push(`One animated GIF of ${n} frames on one fixed canvas: the whole subject exactly once in every frame, at a consistent reference scale, allowing the size changes requested by the action, with a clear margin of empty background on every side — all requested motion and effects included — and nothing cut off by the edge of the frame.`);
   // 3. The subject, its facing, and identity over motion.
-  text.push("The same character in every frame, matching the attached references exactly.");
+  text.push("The same subject in every frame, matching the attached references exactly.");
   if (description) text.push(closed(description));
-  text.push("Keep white and pale details inside the character — highlights, eye whites, pale hair or clothing — fully opaque; only the background is transparent.");
+  text.push("Preserve the described materials, including intentional translucency, emission and pale details; transparency outside the subject is the background.");
   if (g.direction) text.push(gifWording(FACING_LOCK[g.direction]));
-  else if (character.facing === "left" || character.facing === "right") text.push(`The character faces ${character.facing}.`);
+  else if (character.facing === "left" || character.facing === "right") text.push(`The subject faces ${character.facing}.`);
   if (g.anchor) {
     text.push(`The attached ${g.anchor}-facing anchor is authoritative for that facing: match its view in every frame, while the other references carry the identity.`);
   }
   if (VIEW_TEXT[character.view]) text.push(VIEW_TEXT[character.view]);
-  text.push("Fixed camera: consistent body proportions, drawing scale and camera distance in every frame, and ground contacts share one baseline while the character stands on the ground.");
-  text.push("The references own the identity — face, hair shape, markings, palette, outline weight, proportions, outfit and props stay exactly as they show, and whatever is worn or held on one side stays on that side. This animation owns motion only: spend the variation on pose, limb contacts, body height, torso lean, head bob, and hair and cloth follow-through. Prefer a subtler animation over any change that alters the character's identity.");
+  text.push("Fixed camera: consistent reference scale and camera distance in every frame, and any ground contacts specified by the action share one baseline.");
+  text.push("The references and description own the subject's identity and structure. Preserve its defining details and side-specific features while allowing the changes of shape, colour, size and opacity requested by the action. Do not invent features absent from the subject.");
   if (g.asymmetric) {
     const sentence = typeof character.asymmetric === "string" ? character.asymmetric.trim() : "";
     if (!sentence) throw new Error("the asymmetric clause needs character.asymmetric");
@@ -639,11 +596,11 @@ export function renderGifPrompt({ character, motion }, parts) {
   }
   // 4. The motion: the agent's plan, then what the state demands.
   text.push(`The motion (${plural(n, "frame")}, ${g.ending === "loop-close" ? "looping" : "played once"}): ${closed(action)}`);
-  text.push(gifWording(stateText(g.state, g.direction)));
+  text.push(gifWording(stateText(g.state)));
   text.push(g.ending === "loop-close"
     ? `Frame ${n} leads smoothly into frame 1 on the next beat, with compatible movement direction and without an extra hold: it is the pose just before frame 1, not a copy of it.`
     : `Frame ${n} is the pose the motion ends on.`);
-  text.push("Show it through pose, expression and silhouette, never through effects: nothing detached from the character — no floating sparkles, symbols, smoke, dust, motion arcs, speed lines, afterimages, smears, glows or impact bursts.");
+  text.push("Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration.");
   // 5. The background.
   text.push("A fully transparent background in every frame. No floor, no ground line, no drop shadow, no ground shadow, no scenery, no text, no motion blur.");
   return text.join(" ");

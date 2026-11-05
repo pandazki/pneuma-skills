@@ -3,7 +3,7 @@
  * keeps `tsc --noEmit` honest for the tests that import it.
  */
 
-export declare const SHEET_PROMPT_BUILDER: "sheet-prompt/2";
+export declare const SHEET_PROMPT_BUILDER: "sheet-prompt/3";
 export declare const DEFAULT_SAFE_MARGIN_RATIO: number;
 export declare const GENERATION_CELL_MAX: number;
 export declare const SHEET_FRAME_COUNTS: number[];
@@ -126,7 +126,7 @@ export declare function buildSheetPrompt(input: {
 };
 
 /** The version of the GIF prompt text. */
-export declare const GIF_PROMPT_BUILDER: string;
+export declare const GIF_PROMPT_BUILDER: "gif-prompt/2";
 /** The frame counts a GIF motion is drawn at (measured up to 16). */
 export declare const GIF_FRAME_RANGE: Readonly<{ min: number; max: number }>;
 /** A sheet guard's sentence said of the frames of one animation; throws when a cell, sheet or grid is left in it. */

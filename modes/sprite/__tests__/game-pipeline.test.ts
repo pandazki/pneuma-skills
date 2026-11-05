@@ -82,14 +82,14 @@ describe("facing sheet and pack clip prompts", () => {
 
   test("an asymmetric character's facing sheet carries the side sentence for every copy", () => {
     const { prompt } = facingSheetPrompt({ character: { ...PIP, asymmetric: "the satchel hangs at her own left hip" } });
-    expect(prompt).toContain("stay on the same side of the body in every copy: the satchel hangs at her own left hip.");
+    expect(prompt).toContain("stay on the same side of the subject in every copy: the satchel hangs at her own left hip.");
     expect(prompt).toContain("For the front-left copy: Facing down and to the left");
   });
 
   test("a pack clip keeps every copy facing its way and in its cell; idle pins its last frame", () => {
     const pack = { state: "walk", rows: 3, cols: 3, cells: FACING_LAYOUTS[8].cells.map((d) => (d ? { direction: d, motion: `walk-${d}` } : null)) };
     const walk = packClipPrompt({ character: PIP, pack });
-    expect(walk.prompt).toContain("All 8 copies walk in place at the same time, in sync");
+    expect(walk.prompt).toContain("All 8 copies perform a steady locomotion cycle in place in sync");
     expect(walk.prompt).toContain("no copy turns, rotates or changes direction");
     expect(walk.pinned).toBe(false);
     const idle = packClipPrompt({ character: PIP, pack: { ...pack, state: "idle" } });
@@ -100,11 +100,11 @@ describe("facing sheet and pack clip prompts", () => {
       .toContain("All 8 copies moonwalk backwards in place.");
   });
 
-  test("an items pack speaks of items and always closes its loop", () => {
+  test("an items pack defaults to a closed loop", () => {
     const pack = { state: "loop", rows: 1, cols: 2, cells: [{ item: "key", motion: "key-loop" }, { item: "ring", motion: "ring-loop" }] };
     const { prompt, pinned } = packClipPrompt({ character: PIP, pack });
     expect(prompt).toContain("a 2 by 1 grid of 2 game items");
-    expect(prompt).toContain("All 2 items come alive");
+    expect(prompt).toContain("All 2 items perform a repeating animation");
     expect(pinned).toBe(true);
     expect(packCellMotionId("loop", { item: "key" })).toBe("key-loop");
     expect(packCellMotionId("walk", { direction: "front-left" })).toBe("walk-front-left");

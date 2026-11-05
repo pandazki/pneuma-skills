@@ -21,7 +21,7 @@
 import { DIRECTIONS, VIEW_TEXT, sideClause } from "./sheet-prompt.mjs";
 
 /** The version of the text below; any change to a sentence bumps it. */
-export const PACK_PROMPT_BUILDER = "pack-prompt/1";
+export const PACK_PROMPT_BUILDER = "pack-prompt/2";
 
 /**
  * The layouts a facing sheet is drawn on, row-major, `null` an empty cell.
@@ -92,7 +92,7 @@ export function cellRects(width, height, rows, cols) {
 /** The facing words the sheet uses for each cell. */
 const FACING_WORDS = {
   front: "faces straight toward the viewer (front view)",
-  back: "faces straight away from the viewer (back view, walking north up the screen, no face visible)",
+  back: "faces straight away from the viewer (back view)",
   left: "faces the left edge of the picture (left profile)",
   right: "faces the right edge of the picture (right profile)",
   "front-left": "is a front three-quarter view facing down and to the left",
@@ -127,13 +127,13 @@ export function facingSheetPrompt({ character, layout: given = "8" }) {
   const count = cells.filter(Boolean).length;
   const empty = cells.map((c, i) => (c === null ? i : -1)).filter((i) => i >= 0);
   const text = [closed(style)];
-  text.push(`FACING SHEET for a game sprite: the character in the attached references, matching them exactly, drawn ${count} times — once per facing — on a strict ${cols} by ${rows} grid of equal square cells, read left to right, top to bottom.`);
+  text.push(`FACING SHEET for a game sprite: the subject in the attached references, matching them exactly, drawn ${count} times — once per facing — on a strict ${cols} by ${rows} grid of equal square cells, read left to right, top to bottom.`);
   if (description) text.push(closed(description));
   if (empty.length) {
     const where = empty.map((i) => POSITION_WORDS(rows, cols, Math.floor(i / cols), i % cols)).join(" and ");
     text.push(`The ${where} cell${empty.length > 1 ? "s are" : " is"} completely empty white.`);
   }
-  text.push("Every copy is the same calm standing pose, the same size, with its feet on the same height inside its own cell, and fits fully inside its cell with clear empty margin on every side; nothing crosses a cell boundary.");
+  text.push("Every copy shows the same neutral reference state and reference scale at the same relative position inside its own cell, and fits fully inside its cell with clear empty margin on every side; nothing crosses a cell boundary.");
   if (VIEW_TEXT[character.view]) text.push(VIEW_TEXT[character.view]);
   else text.push("Every copy is seen from the same camera.");
   const facings = [];
@@ -149,14 +149,14 @@ export function facingSheetPrompt({ character, layout: given = "8" }) {
     : `The copies face: ${facings.join("; ")}.`);
   const asymmetric = typeof character.asymmetric === "string" ? character.asymmetric.trim() : "";
   if (asymmetric) {
-    text.push(`These details are side-specific and stay on the same side of the body in every copy: ${closed(asymmetric)}`);
+    text.push(`These details are side-specific and stay on the same side of the subject in every copy: ${closed(asymmetric)}`);
     for (const d of cells) {
       if (!d) continue;
       const sides = sideClause(d);
       if (sides) text.push(`For the ${d} copy: ${sides}`);
     }
   }
-  text.push("The references own the identity — face, hair, markings, palette, outline weight, proportions, outfit and props stay exactly as they show; this sheet changes the facing only.");
+  text.push("The references and description own the subject identity, structure and materials, including intentional translucency or emission; preserve its defining details and change only the facing.");
   text.push("No grid lines drawn. A flat solid pure white background, no gradient, no floor, no ground shadow, no text, no labels, no arrows.");
   return { prompt: text.join(" "), layout, builder: PACK_PROMPT_BUILDER };
 }
@@ -165,17 +165,19 @@ export function facingSheetPrompt({ character, layout: given = "8" }) {
  * What every cell does in a pack clip, per state — the sentence after
  * "All N copies …". Written for a grid of copies performing in sync; the
  * single-clip sentences (`references/video-preview.md`) are the source.
+ * Subject applicability follows sprite-gen `video/body_plan.py`@4f5ccd55;
+ * our existing description and action replace its explicit body-plan flags.
  */
 const PACK_STATE_TEXT = {
-  idle: "stand still in a relaxed idle at the same time, in sync: slow, gentle breathing that softly rises and falls in the chest and shoulders, a slight settle of the arms, hair and loose cloth, and one natural blink; the feet never lift, step, shuffle or slide",
-  walk: "walk in place at the same time, in sync, like walk cycles on treadmills: a steady walking cycle with clear repeating foot contacts and an even left-right rhythm, arms swinging gently",
-  run: "run in place at the same time, in sync, like run cycles on treadmills: a fast bounding running cycle with clear repeating foot contacts, arms pumping",
-  attack: "perform one melee attack at the same time, in sync, with what each already holds: a windup, one clean strike in the direction it faces, a held impact pose, then a recovery to the exact starting stance; every grip stays exactly as drawn",
-  jump: "perform one clean vertical jump in place at the same time, in sync: a short crouch, spring straight up, land softly on the same spot, and return to the exact starting stance",
-  hurt: "react to being hit at the same time, in sync: the body jolts back away from the blow, then recovers to the starting stance",
-  death: "collapse at the same time, in sync: stagger, lose balance and fall to the ground inside its own cell, ending lying still",
-  cast: "cast a spell at the same time, in sync: gather, raise the arms or the held focus, release forward in the direction it faces, recover",
-  loop: "come alive with a subtle looping idle animation, each in its own natural way — a gentle float up and down, a soft shimmer of light gliding across the surface, a small wobble or flicker — without changing shape, colour or size",
+  idle: "perform a quiet idle cycle in sync, using subtle motion appropriate to the described subject",
+  walk: "perform a steady locomotion cycle in place in sync, with distinct phases appropriate to the described subject structure",
+  run: "perform a fast locomotion cycle in place in sync, with distinct phases appropriate to the described subject structure",
+  attack: "perform one attack in sync: anticipation, strike in the chosen facing, follow-through, recovery to the starting state, using only the subject's described features",
+  jump: "perform one vertical jump in place in sync: anticipation, lift, peak, descent and settle on the same spot",
+  hurt: "perform one hit reaction in sync: recoil away from the impact, then recover to the starting state",
+  death: "perform one defeat or deactivation in sync, ending at rest inside the cell in a way appropriate to the described subject",
+  cast: "perform one spell cast in sync: gather, build, release in the chosen facing, recover, using the described features and effects",
+  loop: "perform a repeating animation appropriate to each described subject, with readable changes and a smooth loop closure",
 };
 
 /** The states a pack clip has a sentence for; anything else needs `--action`. */
@@ -194,39 +196,45 @@ export function packClipPrompt({ character, pack, action = null }) {
   const cells = (pack?.cells ?? []).filter(Boolean);
   if (!cells.length) throw new Error("the pack has no cells");
   const state = pack.state;
-  const doing = typeof action === "string" && action.trim()
+  const items = cells.some((c) => c.item);
+  const custom = typeof action === "string" && action.trim() !== "";
+  const pinned = !custom && (PINNED_PACK_STATES.includes(state) || (items && state === "loop"));
+  const doing = custom
     ? action.trim().replace(/[.]+$/, "")
     : PACK_STATE_TEXT[state];
   if (!doing) {
     throw new Error(`--action: '${state}' has no built-in sentence (${PACK_STATES.join(", ")}) — say what every copy does`);
   }
-  const items = cells.some((c) => c.item);
   const n = cells.length;
   const { rows, cols } = pack;
   const empty = pack.cells.some((c) => c === null);
   const text = [];
   text.push(items
     ? `2D game asset animation. The image is a ${cols} by ${rows} grid of ${n} game items, one per cell.`
-    : `2D game sprite animation. The image is a ${cols} by ${rows} grid of ${n} copies of the same character, one per cell, each facing its own direction${empty ? "; the empty cell stays empty" : ""}.`);
+    : `2D game sprite animation. The image is a ${cols} by ${rows} grid of ${n} copies of the same subject, one per cell, each facing its own direction${empty ? "; the empty cell stays empty" : ""}.`);
+  if (typeof character?.description === "string" && character.description.trim()) text.push(closed(character.description));
+  if (typeof character?.asymmetric === "string" && character.asymmetric.trim()) {
+    text.push(`These details are side-specific and never flip or change sides throughout the clip: ${closed(character.asymmetric)}`);
+  }
   if (VIEW_TEXT[character?.view] && !items) text.push(VIEW_TEXT[character.view]);
   text.push(`All ${n} ${items ? "items" : "copies"} ${doing}.`);
   if (!items) {
-    text.push("Every copy keeps facing exactly the direction it faces in the first frame for the whole clip — no copy turns, rotates or changes direction — and stays in its own cell at the same spot and the same size, never moving across the screen and never crossing into a neighbouring cell.");
+    text.push("Every copy keeps facing exactly the direction it faces in the first frame for the whole clip — no copy turns, rotates or changes direction — and stays in its own cell at the same reference position and scale, allowing the deformation and material changes requested by the action, never moving across the screen and never crossing into a neighbouring cell.");
     // Measured (0.6.0, Pip's run): a fast state turned all four diagonal
     // copies into side profiles in two takes out of three; the walk and the
     // idle kept them. Said outright, the corners are the ones that slip.
     if (cells.some((c) => c.direction && c.direction.includes("-"))) {
-      text.push("The diagonal copies are three-quarter views and stay three-quarter views for the whole clip: each one keeps moving toward its own corner of the picture and never turns into a side profile, a front view or a back view.");
+      text.push("The diagonal copies are three-quarter views and stay three-quarter views for the whole clip: each one keeps its assigned orientation toward its own corner of the picture and never turns into a side profile, a front view or a back view.");
     }
   } else {
-    text.push("Every item stays centred in its own cell at the same size for the whole clip and never crosses into a neighbouring cell; nothing new appears.");
+    text.push("Every item stays centred in its own cell and never crosses into a neighbouring cell; keep all requested motion and effects inside the cell.");
   }
-  text.push("Camera completely locked: no pan, no tilt, no zoom, no parallax, no reframing, no cut. Keep the design, colors and proportions exactly as in the image. Crisp, clean frames with no motion blur.");
-  text.push("The background stays a flat solid pure chroma-key green fill for the whole clip, evenly lit, no gradient: no floor, no ground line, no shadows, no reflection, no particles, no effects, and no green light spilling onto the subjects.");
-  if (PINNED_PACK_STATES.includes(state) || items) {
+  text.push("Camera completely locked: no pan, no tilt, no zoom, no parallax, no reframing, no cut. Preserve the subject identity and described structure and materials; allow the shape, colour, size and opacity changes requested by the action. Do not invent anatomy. Crisp, clean frames with no motion blur.");
+  text.push("The background stays a flat solid pure chroma-key green fill for the whole clip, evenly lit, no gradient: no floor, no ground line, no background shadows or reflections, and no green light spilling onto the subjects. Requested particles, glow, smoke and other effects belong to the subjects and remain inside their cells.");
+  if (pinned) {
     text.push("The last frame returns to the exact picture of the first frame.");
   }
-  return { prompt: text.join(" "), builder: PACK_PROMPT_BUILDER, pinned: PINNED_PACK_STATES.includes(state) || items };
+  return { prompt: text.join(" "), builder: PACK_PROMPT_BUILDER, pinned };
 }
 
 /** A cell's motion id: `<state>-<direction>`, or the item's own loop id. */
@@ -279,7 +287,8 @@ export function itemSheetPrompt({ character, items, cols, rows }) {
   text.push(`The items, in order: ${names.map((n, i) => `${i + 1}. ${n}`).join("; ")}.`);
   const description = typeof character.description === "string" ? character.description.trim() : "";
   if (description) text.push(closed(description));
-  text.push("Every item is a single object seen from the same three-quarter angle, with the same light from the upper left, the same outline weight and the same level of detail, centred in its cell at a similar visual size, filling about 65 percent of the cell, with clear empty margin on every side; nothing crosses a cell boundary and no item touches another.");
+  text.push("Every item is one complete subject seen from the same three-quarter angle, with the same light from the upper left, the same outline weight and the same level of detail, centred in its cell at a similar visual size, filling about 65 percent of the cell, with clear empty margin on every side; nothing crosses a cell boundary and no item touches another.");
+  text.push("Preserve the described structure and materials, including intentional translucency or emission; do not add anatomy absent from the description.");
   text.push("Inventory-icon readability: strong silhouette, clear shapes, rich but limited palette.");
   text.push("No grid lines drawn. A flat solid pure white background, no gradient, no floor, no cast shadow, no text, no labels, no numbers, no frames or slots behind the items.");
   return { prompt: text.join(" "), builder: PACK_PROMPT_BUILDER };
