@@ -150,7 +150,7 @@ function animatedPng(bytes) {
 export function loadFinalArtifact(path, codecs, records = []) {
   const { bytes, record } = snapshot(path, records);
   const extension = extname(path).toLowerCase();
-  let frames, durationsMs, loop, pivots, order, sheet;
+  let frames, durationsMs, loop, pivots, order, sheet, rectangles = null;
   if (extension === ".png") {
     if (
       !bytes
@@ -158,6 +158,7 @@ export function loadFinalArtifact(path, codecs, records = []) {
         .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
     )
       throw Error("PNG signature mismatch");
+    if (bytes.length >= 25 && bytes[24] === 16) throw Error("16-bit PNG is unsupported; comparison requires RGBA8 precision");
     if (animatedPng(bytes)) throw Error("Animated PNG is unsupported");
     frames = [imageValid(codecs.readRgba(record.realPath))];
     durationsMs = null;
@@ -230,6 +231,8 @@ export function loadFinalArtifact(path, codecs, records = []) {
         .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
     )
       throw Error("Atlas sheet must be PNG");
+    if (sheetInput.bytes.length >= 25 && sheetInput.bytes[24] === 16) throw Error("16-bit PNG is unsupported; comparison requires RGBA8 precision");
+    if (animatedPng(sheetInput.bytes)) throw Error("Animated PNG is unsupported");
     sheet = imageValid(codecs.readRgba(sheetInput.record.realPath));
     if (!equal(doc.meta.size, { w: sheet.width, h: sheet.height }))
       throw Error("Atlas sheet dimensions disagree");
@@ -249,6 +252,7 @@ export function loadFinalArtifact(path, codecs, records = []) {
     loop = { plays: doc.meta.loop ? "infinite" : 1 };
     durationsMs = [];
     pivots = [];
+    rectangles = [];
     frames = order.map((key) => {
       const f = doc.frames[key],
         r = f.frame;
@@ -279,6 +283,7 @@ export function loadFinalArtifact(path, codecs, records = []) {
         (f.anchor && !equal(f.anchor, f.pivot))
       )
         throw Error("Invalid atlas pivot");
+      rectangles.push({ x: r.x, y: r.y, w: r.w, h: r.h });
       durationsMs.push(f.duration);
       pivots.push(f.pivot);
       const data = Buffer.alloc(r.w * r.h * 4);
@@ -303,6 +308,7 @@ export function loadFinalArtifact(path, codecs, records = []) {
     pivots,
     order,
     sheet,
+    rectangles,
     files: records.slice(),
     pixelSha256: hash(Buffer.concat(frames.map((f) => f.data))),
     ...(sheet ? { sheetPixelSha256: hash(sheet.data) } : {}),
@@ -323,6 +329,7 @@ export function compareFinalArtifacts(
     ["loop", baseline.loop, candidate.loop],
     ["pivots", baseline.pivots, candidate.pivots],
     ["frameOrder", baseline.order, candidate.order],
+    ["rectangles", baseline.rectangles, candidate.rectangles],
   ])
     if (!equal(a, b)) changed.push(property);
   if (baseline.sheet || candidate.sheet) {
@@ -402,21 +409,23 @@ export function compareFinalArtifacts(
   };
 }
 function contact(frames) {
-  const width = Math.max(...frames.map((f) => f.width)),
-    height = frames.reduce((s, f) => s + f.height, 0),
-    data = Buffer.alloc(width * height * 4);
-  let y = 0;
-  for (const f of frames) {
-    for (let row = 0; row < f.height; row++)
-      Buffer.from(f.data).copy(
-        data,
-        (y + row) * width * 4,
-        row * f.width * 4,
-        (row + 1) * f.width * 4,
-      );
-    y += f.height;
-  }
-  return { width, height, data };
+  const cell = 256, columns = Math.min(8, frames.length);
+  const width = columns * cell, height = Math.ceil(frames.length / columns) * cell;
+  const data = Buffer.alloc(width * height * 4), mapping = [];
+  frames.forEach((f, index) => {
+    const scale = Math.min(1, cell / f.width, cell / f.height);
+    const w = Math.max(1, Math.round(f.width * scale));
+    const h = Math.max(1, Math.round(f.height * scale));
+    const x = (index % columns) * cell, y = Math.floor(index / columns) * cell;
+    mapping.push({ frame: index, x, y, width: w, height: h, sourceWidth: f.width, sourceHeight: f.height });
+    for (let row = 0; row < h; row++) {
+      for (let col = 0; col < w; col++) {
+        const source = (Math.min(f.height - 1, Math.floor(row / scale)) * f.width + Math.min(f.width - 1, Math.floor(col / scale))) * 4;
+        data.set(f.data.subarray(source, source + 4), ((y + row) * width + x + col) * 4);
+      }
+    }
+  });
+  return { image: { width, height, data }, mapping };
 }
 
 /** CLI integration seam. All writes land in a new directory; inputs never change. */
@@ -451,14 +460,15 @@ export function runCompare({ baseline, candidate, out, alphaClean }, codecs) {
         ...(b.sheetPixelSha256 ? { sheetPixelSha256: b.sheetPixelSha256 } : {}),
       },
     };
+    const baselinePreview = contact(a.frames), candidatePreview = contact(b.frames);
     codecs.writeRgbaPng(
       join(stage, "baseline.png"),
-      contact(a.frames),
+      baselinePreview.image,
       "compare baseline",
     );
     codecs.writeRgbaPng(
       join(stage, "candidate.png"),
-      contact(b.frames),
+      candidatePreview.image,
       "compare candidate",
     );
     if (!report.changedProtectedProperties.includes("geometry")) {
@@ -467,16 +477,17 @@ export function runCompare({ baseline, candidate, out, alphaClean }, codecs) {
         height: f.height,
         data: Buffer.from(
           f.data.map((v, p) =>
-            p % 4 === 3 ? 255 : Math.abs(v - b.frames[i].data[p]),
+            p % 4 === 3 ? 255 : Math.max(Math.abs(v - b.frames[i].data[p]), Math.abs(f.data[Math.floor(p / 4) * 4 + 3] - b.frames[i].data[Math.floor(p / 4) * 4 + 3])),
           ),
         ),
       }));
       codecs.writeRgbaPng(
         join(stage, "difference.png"),
-        contact(frames),
+        contact(frames).image,
         "compare difference",
       );
     }
+    report.previews = { sampling: "nearest-neighbour; measurements use full-resolution pixels", baseline: baselinePreview.mapping, candidate: candidatePreview.mapping, difference: "RGB channels show max of RGB difference and alpha difference" };
     verify(records);
     writeFileSync(
       join(stage, "comparison.json"),

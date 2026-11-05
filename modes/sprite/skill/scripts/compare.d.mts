@@ -34,6 +34,7 @@ export interface FinalArtifact {
   pivots: { x: number; y: number }[] | null;
   order: string[] | null;
   sheet?: RgbaImage;
+  rectangles: { x: number; y: number; w: number; h: number }[] | null;
   files: InputDigest[];
   pixelSha256: string;
   sheetPixelSha256?: string;

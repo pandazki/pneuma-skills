@@ -15,6 +15,7 @@ import {
   runCompare,
   type CompareCodecs,
 } from "../skill/scripts/compare.mjs";
+import { cleanAlphaHaze } from "../skill/scripts/alpha-clean.mjs";
 const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const image = (value = 255) => ({
   width: 1,
@@ -160,14 +161,15 @@ describe("final artifact comparison", () => {
         writeFileSync(p, Buffer.from("changed"));
         return im;
       };
-      let failure: any;
+      let failure: unknown;
       try {
         runCompare({ baseline: a, candidate: b, out: join(r, "out") }, c);
       } catch (e) {
         failure = e;
       }
+      if (!(failure instanceof Error) || !("inputs" in failure)) throw failure;
       expect(failure.message).toContain("changed");
-      expect(failure.inputs[0].sha256).toHaveLength(64);
+      expect((failure.inputs as { sha256: string }[])[0]!.sha256).toHaveLength(64);
       expect(existsSync(join(r, "out"))).toBe(false);
     }));
   test("GIF preserves unequal real delays and refuses fallback timing", () =>
@@ -253,4 +255,43 @@ test("symlink input and sheet references are refused", () =>
     expect(() => loadFinalArtifact(link, c)).toThrow("Symlink");
     symlinkSync(source, join(r, "sheet.png"));
     expect(() => loadFinalArtifact(atlas(r), c)).toThrow("Symlink");
+  }));
+
+
+test("changed atlas rectangles cannot certify cleanup of an unchanged opaque sheet", () =>
+  fixture((r, c) => {
+    png(r, "sheet.png");
+    c.readRgba = () => ({ width: 2, height: 1, data: Buffer.from([255, 0, 0, 255, 0, 0, 255, 255]) });
+    const path = atlas(r);
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.meta.size.w = 2;
+    writeFileSync(path, JSON.stringify(doc));
+    const a = loadFinalArtifact(path, c);
+    doc.frames.idle_00.frame.x = 1;
+    writeFileSync(path, JSON.stringify(doc));
+    const b = loadFinalArtifact(path, c);
+    const report = compareFinalArtifacts(a, b, { alphaClean: { maxAlpha: 15, keepEdge: 2 }, cleanAlphaHaze });
+    expect(report.changedProtectedProperties).toContain("rectangles");
+    expect(report.changedPixels).toBe(1);
+    expect(report.alphaClean.status).toBe("unverified");
+  }));
+
+test("atlas APNG and 16-bit PNG precision are refused before decoding", () =>
+  fixture((r, c) => {
+    const chunk = Buffer.alloc(12); chunk.write("acTL", 4);
+    const path = png(r, "sheet.png");
+    writeFileSync(path, Buffer.concat([signature, chunk]));
+    expect(() => loadFinalArtifact(atlas(r), c)).toThrow("Animated PNG");
+    const ihdr = Buffer.alloc(25); signature.copy(ihdr); ihdr[24] = 16;
+    writeFileSync(path, ihdr);
+    expect(() => loadFinalArtifact(path, c)).toThrow("16-bit PNG");
+    expect(() => loadFinalArtifact(atlas(r), c)).toThrow("16-bit PNG");
+  }));
+
+test("alpha-only black pixel changes are visible in tiled difference evidence", () =>
+  fixture((r, c) => {
+    const a = png(r, "a.png"), b = png(r, "b.png");
+    c.readRgba = (p) => ({ width: 1, height: 1, data: Buffer.from([0, 0, 0, p.endsWith("/a.png") ? 15 : 0]) });
+    runCompare({ baseline: a, candidate: b, out: join(r, "out") }, c);
+    expect([...readFileSync(join(r, "out", "difference.png")).subarray(0, 4)]).toEqual([15, 15, 15, 255]);
   }));

@@ -44,6 +44,7 @@ import {
   renameSync, rmSync, statSync, unlinkSync, writeFileSync, lstatSync, realpathSync, rmdirSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { runCompare } from "./compare.mjs";
 import { cleanAlphaHaze } from "./alpha-clean.mjs";
 import { diagnoseAnimation } from "./animation-diagnostics.mjs";
 import { tmpdir } from "node:os";
@@ -356,7 +357,7 @@ const EXPORT_CODECS = { mp4: "h264", mov: "prores", webm: "vp9" };
 
 const SUBCOMMANDS = [
   "guide",
-  "probe", "alpha-clean", "key", "flatten", "slice", "clean", "align", "pack", "gif",
+  "probe", "compare", "alpha-clean", "key", "flatten", "slice", "clean", "align", "pack", "gif",
   "inspect", "run", "contact", "from-video", "from-gif", "retime", "loop", "transition", "lineup", "sizes", "export", "rive",
   "fit", "breathe", "pixel",
   "mirror", "recolor", "recolor-palette",
@@ -378,6 +379,10 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       a blue box on its safe area (inset --margin of the cell, floored) and
       a centre line. --cell is the GENERATION cell ('sheet-prompt --json'
       reports it with the call). A working file, not an asset.
+
+  compare <baseline> --candidate <png|atlas.json|gif> --out <newDirectory>
+      Compare final pixels and playback; optional --alpha-clean --max-alpha 15 --keep-edge 2.
+      Writes comparison.json and tiled evidence; never adopts a candidate.
 
   alpha-clean <png|framesDir> --out <newDirectory> [--max-alpha 15] [--keep-edge 2]
       Opt-in faint-alpha cleanup. Preserve original stronger support and its
@@ -9748,6 +9753,7 @@ const OPTIONS = {
   },
   guide: { rows: { type: "string" }, cols: { type: "string" }, cell: { type: "string" }, out: { type: "string" }, margin: { type: "string" } },
   fit: { out: { type: "string" }, max: { type: "string" }, pad: { type: "string" }, threshold: { type: "string" } },
+  compare: { candidate: { type: "string" }, out: { type: "string" }, "alpha-clean": { type: "boolean", default: false }, "max-alpha": { type: "string" }, "keep-edge": { type: "string" } },
   "alpha-clean": { out: { type: "string" }, "max-alpha": { type: "string" }, "keep-edge": { type: "string" } },
   probe: { threshold: { type: "string" } },
   key: {
@@ -10340,6 +10346,11 @@ function main() {
         width: values.width === undefined ? null : num(values.width, "--width", { integer: true, min: 1 }),
       });
       emit(values, out, [`wrote ${out.gif}${out.webp ? ` and ${out.webp}` : ""}`, ...out.warnings]);
+      break;
+    }
+    case "compare": {
+      const out = runCompare({ baseline: requirePositional(positionals, "<baseline>"), candidate: requireFlag(values.candidate, "--candidate"), out: requireFlag(values.out, "--out"), ...(values["alpha-clean"] ? { alphaClean: { maxAlpha: num(values["max-alpha"] ?? "15", "--max-alpha", { integer: true, min: 0, max: 254 }), keepEdge: num(values["keep-edge"] ?? "2", "--keep-edge", { integer: true, min: 0, max: 64 }) } } : {}) }, { readRgba, writeRgbaPng, decodeGifFrames, cleanAlphaHaze });
+      emit(values, out, [`${out.status}: artistic quality unknown; evidence in ${out.out}`]);
       break;
     }
     case "alpha-clean": {
