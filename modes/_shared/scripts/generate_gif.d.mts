@@ -146,10 +146,21 @@ export interface GifDependencies {
   download?: (url: string, options?: { signal?: AbortSignal }) => Promise<Uint8Array>;
 }
 
+/** A failure after fal accepted the job: the job may be billed. */
+export interface GifPaidError extends Error {
+  requestId?: string;
+  /** The result's URL, once the job returned one: fetch it from there, do not resubmit. */
+  url?: string;
+  /** Bytes kept on disk: the GIF at `output` (wrong frame count), `<output>.received` (not a GIF), or a staged file `output` could not take. */
+  path?: string;
+}
+
 /**
- * One job, written to `output`. Throws with `requestId` on any failure after
- * fal accepted the job; a GIF whose frame count differs from the request is
- * kept on disk (`error.path`) and thrown as a failure.
+ * One job, written to `output`, which must not exist (checked before the
+ * request and again, atomically, when the GIF is placed). Throws a
+ * `GifPaidError` on any failure after fal accepted the job; a GIF whose
+ * frame count differs from the request is kept at `output` and thrown as a
+ * failure.
  */
 export function generateGif(
   options: GifOptions & {

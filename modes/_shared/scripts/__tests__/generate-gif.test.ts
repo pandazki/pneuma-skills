@@ -171,11 +171,69 @@ describe("generateGif", () => {
     expect(readGifInfo(readFileSync(output)).frames).toBe(9);
   });
 
-  test("bytes that are not a GIF write nothing", async () => {
+  type PaidError = Error & { requestId?: string; url?: string; path?: string };
+  const failure = async (promise: Promise<unknown>) => promise.then(() => undefined, (e) => e as PaidError);
+  const RESULT_URL = "https://v3b.fal.media/files/b/x/anim.gif";
+
+  test("bytes that are not a GIF are kept beside the output, not at it, and the failure names the request and the URL", async () => {
     const output = join(workspace, "png", "gif-raw.gif");
-    await expect(generateGif({ prompt: "Idle", output, apiKey: "k" }, { runJob: job(), download: async () => PNG }))
-      .rejects.toThrow("not a usable GIF");
+    const error = await failure(generateGif({ prompt: "Idle", output, apiKey: "k" }, { runJob: job("req-png"), download: async () => PNG }));
+    expect(error?.message).toContain("not a usable GIF");
     expect(existsSync(output)).toBe(false);
+    expect(error?.requestId).toBe("req-png");
+    expect(error?.url).toBe(RESULT_URL);
+    expect(error?.message).toContain(RESULT_URL);
+    expect(error?.message).toContain("req-png");
+    expect(error?.message).toContain(error!.path!);
+    expect(readFileSync(error!.path!).equals(PNG)).toBe(true);
+  });
+
+  test("a finished job whose download fails names its request and its URL, and writes nothing", async () => {
+    const output = join(workspace, "cdn", "gif-raw.gif");
+    const error = await failure(generateGif({ prompt: "Idle", output, apiKey: "k" }, {
+      runJob: job("req-cdn"),
+      download: async () => {
+        throw new Error("HTTP 503");
+      },
+    }));
+    expect(error?.requestId).toBe("req-cdn");
+    expect(error?.url).toBe(RESULT_URL);
+    expect(error?.message).toContain("HTTP 503");
+    expect(error?.message).toContain(`fetch it from ${RESULT_URL}`);
+    expect(error?.message).toContain("do not resubmit");
+    expect(error?.message).toContain("req-cdn");
+    expect(existsSync(output)).toBe(false);
+  });
+
+  test("an existing --output is refused before any request; a file that appears there mid-job is never replaced", async () => {
+    const output = join(workspace, "taken", "gif-raw.gif");
+    mkdirSync(join(workspace, "taken"), { recursive: true });
+    writeFileSync(output, "an earlier take");
+    let calls = 0;
+    const counting = async () => {
+      calls += 1;
+      return job()();
+    };
+    await expect(generateGif({ prompt: "Idle", output, apiKey: "k" }, { runJob: counting, download: async () => gif(9) }))
+      .rejects.toThrow("already exists");
+    expect(calls).toBe(0);
+    expect(readFileSync(output, "utf8")).toBe("an earlier take");
+
+    // Free before paying, taken by the time the GIF arrives.
+    const raced = join(workspace, "raced", "gif-raw.gif");
+    const error = await failure(generateGif({ prompt: "Idle", output: raced, apiKey: "k" }, {
+      runJob: job("req-race"),
+      download: async () => {
+        mkdirSync(join(workspace, "raced"), { recursive: true });
+        writeFileSync(raced, "the other run's take");
+        return gif(9);
+      },
+    }));
+    expect(readFileSync(raced, "utf8")).toBe("the other run's take");
+    expect(error?.requestId).toBe("req-race");
+    expect(error?.url).toBe(RESULT_URL);
+    expect(readGifInfo(readFileSync(error!.path!)).frames).toBe(9);
+    expect(error?.message).toContain(error!.path!);
   });
 
   test("a job that ran and failed is reported with its id and run exactly once", async () => {

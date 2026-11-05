@@ -41,7 +41,16 @@
  * The result is checked before it is called a success: the bytes must be a
  * GIF and must hold exactly the frames asked for (counted from the file's
  * own block structure, `readGifInfo`). A GIF with another frame count is
- * kept at `--output` for inspection and reported as a FAILURE.
+ * kept at `--output` for inspection and reported as a FAILURE; bytes that
+ * are not a GIF are kept at `<output>.received`.
+ *
+ * `--output` is never replaced: an existing file is refused before the
+ * request, and the result is placed with no-clobber semantics
+ * (`fal-queue.mjs::writeNewFile`), so a run that took the name meanwhile
+ * keeps its file and this result is kept beside it. Every failure after fal
+ * accepted the job names the request id and, once there is one, the result
+ * URL — the job may be billed, and the result can be fetched again from
+ * there without resubmitting.
  *
  * `--json` prints exactly one object on stdout:
  *   { backend, model, endpoint, requestId, files, frameCount,
@@ -55,12 +64,12 @@
  * `fal-queue.mjs::loadFalKey`. Never printed, never an argv.
  */
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, extname, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { downloadFalFile, falMediaUrl, loadFalKey, runFalJob } from "./fal-queue.mjs";
+import { downloadFalFile, falMediaUrl, loadFalKey, runFalJob, writeNewFile } from "./fal-queue.mjs";
 
 export const GIF_MODELS = ["flare", "sunburst"];
 export const DEFAULT_GIF_MODEL = "flare";
@@ -158,6 +167,11 @@ export function buildGifRequest({
   }
   if (typeof output !== "string" || !output.trim()) throw new Error("--output is required");
   if (extname(output).toLowerCase() !== ".gif") throw new Error(`--output must be a .gif path (got: ${output})`);
+  // A paid GIF never replaces a file — an earlier take may be the only copy
+  // of something already paid for. Checked here, before any request, and
+  // again when the result is placed (`writeNewFile`), for a run that took
+  // the name meanwhile.
+  if (existsSync(output)) throw new Error(`--output ${output} already exists — a generated GIF never replaces a file; choose a new path (gif-prompt prints a free one)`);
   if (!GIF_MODELS.includes(model)) throw new Error(`--model must be one of: ${GIF_MODELS.join(", ")} (got: ${model})`);
   if (!GIF_QUALITIES.includes(quality)) throw new Error(`--quality must be one of: ${GIF_QUALITIES.join(", ")} (got: ${quality})`);
   if (background !== undefined && background !== null && !GIF_BACKGROUNDS.includes(background)) {
@@ -311,11 +325,28 @@ function withRequest(message, requestId) {
 }
 
 /**
+ * A failure after fal accepted the job: the job ran and may have been
+ * billed, so the error carries what reconciles it — `requestId`, the
+ * result's `url` when there is one, and `path` when bytes were kept — and
+ * says not to send it again.
+ */
+function paidFailure(message, { requestId, url, path } = {}) {
+  const where = !url ? "" : path ? `; the result is also at ${url}` : `; fetch it from ${url}`;
+  const error = new Error(withRequest(`${message} — the job ran and may have been billed${where}; do not resubmit`, requestId));
+  if (requestId) error.requestId = requestId;
+  if (url) error.url = url;
+  if (path) error.path = path;
+  return error;
+}
+
+/**
  * Run one GIF job and write the animation to `output`.
  *
  * The job runner and downloader are injected so the whole path runs without
  * fal. One job, never more: a failure is thrown with its request id
- * (`error.requestId`) and nothing is sent again.
+ * (`error.requestId`) and nothing is sent again. A failure after the job
+ * finished also carries the result URL (`error.url`) and, when bytes were
+ * kept on disk, their path (`error.path`).
  */
 export async function generateGif(options, { runJob = runFalJob, download = downloadFalFile } = {}) {
   const { output, apiKey, signal, deadlineMs = 600_000, onStatus } = options;
@@ -350,34 +381,45 @@ export async function generateGif(options, { runJob = runFalJob, download = down
 
   const image = (job?.data?.images ?? [])[0];
   if (!image?.url) {
-    const error = new Error(withRequest(`the result carried no GIF URL: ${JSON.stringify(job?.data ?? null).slice(0, 300)}`, requestId));
-    if (requestId) error.requestId = requestId;
-    throw error;
+    throw paidFailure(`the result carried no GIF URL: ${JSON.stringify(job?.data ?? null).slice(0, 300)}`, { requestId });
+  }
+  const resultUrl = image.url;
+
+  let bytes;
+  try {
+    bytes = Buffer.from(await download(resultUrl, { signal }));
+  } catch (error) {
+    if (error?.name === "AbortError" || signal?.aborted) {
+      // The job finished; only the download was interrupted.
+      if (error && typeof error === "object") Object.assign(error, { requestId, url: resultUrl });
+      throw error;
+    }
+    throw paidFailure(`the GIF was generated but its download failed (${error instanceof Error ? error.message : String(error)})`, { requestId, url: resultUrl });
   }
 
-  const bytes = Buffer.from(await download(image.url, { signal }));
   let info;
   try {
     info = readGifInfo(bytes);
   } catch (error) {
-    const wrapped = new Error(withRequest(`the result is not a usable GIF — ${error.message}; nothing was written`, requestId));
-    if (requestId) wrapped.requestId = requestId;
-    throw wrapped;
+    // Whatever these bytes are, they are what was paid for: keep them, but
+    // not at --output, which holds a GIF or nothing.
+    let kept = null;
+    try {
+      kept = writeNewFile(`${output}.received`, bytes);
+    } catch (keepError) {
+      kept = keepError?.keptAt ?? null;
+    }
+    throw paidFailure(`the result is not a usable GIF — ${error.message}; ${kept ? `the bytes received are kept at ${kept}` : "the bytes received could not be kept"}`, { requestId, url: resultUrl, path: kept ?? undefined });
   }
 
-  mkdirSync(dirname(resolve(output)), { recursive: true });
-  const staged = `${output}.tmp`;
-  writeFileSync(staged, bytes);
-  renameSync(staged, output);
+  try {
+    writeNewFile(output, bytes);
+  } catch (error) {
+    throw paidFailure(`the GIF was generated but not saved: ${error instanceof Error ? error.message : String(error)}`, { requestId, url: resultUrl, path: error?.keptAt });
+  }
 
   if (info.frames !== body.frame_count) {
-    const error = new Error(withRequest(
-      `asked for ${body.frame_count} frames but the GIF holds ${info.frames} — kept at ${output} for inspection, not reported as a success`,
-      requestId,
-    ));
-    if (requestId) error.requestId = requestId;
-    error.path = output;
-    throw error;
+    throw paidFailure(`asked for ${body.frame_count} frames but the GIF holds ${info.frames} — kept at ${output} for inspection, not reported as a success`, { requestId, url: resultUrl, path: output });
   }
 
   const uniform = info.delaysMs.every((d) => d === info.delaysMs[0]);
@@ -393,7 +435,7 @@ export async function generateGif(options, { runJob = runFalJob, download = down
     endpoint: url,
     ...(requestId ? { requestId } : {}),
     files: [output],
-    url: image.url,
+    url: resultUrl,
     frameCount: info.frames,
     frameDurationMs: uniform ? info.delaysMs[0] : Math.round(durationMs / info.frames),
     durationMs,
@@ -498,7 +540,9 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   } catch (error) {
     if (interruptedBy || error?.name === "AbortError") {
-      console.error(`ERROR: ${interruptedBy ?? "interrupted"} — the fal.ai job was cancelled${error?.requestId ? ` (fal request ${error.requestId}); whether it had already been billed is not knowable from here` : ""}`);
+      console.error(error?.url
+        ? `ERROR: ${interruptedBy ?? "interrupted"} while downloading the finished GIF (fal request ${error.requestId}) — the job ran and may have been billed; fetch it from ${error.url}; do not resubmit`
+        : `ERROR: ${interruptedBy ?? "interrupted"} — the fal.ai job was cancelled${error?.requestId ? ` (fal request ${error.requestId}); whether it had already been billed is not knowable from here` : ""}`);
       return 130;
     }
     throw error;
