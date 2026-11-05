@@ -336,6 +336,13 @@ globalThis.fetch = async (url, options = {}) => {
     expect(r.err).toContain("asked for 12 frames but the GIF holds 9");
   });
 
+  test("--help prints the usage and exits 0, with no key and no request", () => {
+    const r = runCli("cli-help", ["--help"], null, { FAL_KEY: "" });
+    expect(r.code).toBe(0);
+    expect(r.err).toContain("--frame-count");
+    expect(r.sent).toEqual([]);
+  });
+
   test("a request outside fal's limits is refused before any key or network is needed", () => {
     const r = runCli("cli-budget", ["Idle", "--output", "gif-raw.gif", "--frame-count", "16", "--image-size", "1024x1024"], null, { FAL_KEY: "" });
     expect(r.code).toBe(1);
