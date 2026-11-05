@@ -3172,9 +3172,10 @@ words cell, sheet and grid never reach the model; frame counts are 2–16
 **Cost: not measured per request.** fal returns no token counts for GPT Image
 2.6, its pricing API lists the endpoint as "1 unit", and its usage API
 answered 403. The account balance is shared with other work and lags: the
-idle's window moved $0.145 with another agent on the same key, the next two
-moved $0.00. List prices per 1M tokens: image output $30, image input $8,
-text input $5. The ≈ $0.05–0.10 a GIF in SKILL.md is an estimate from those
+idle's own window moved $0.145, the next two moved $0.00 during their calls,
+and from before the first call to after the third it fell $0.405 — another
+agent on the same key included, late charges not excluded. List prices per
+1M tokens: image output $30, image input $8, text input $5. The ≈ $0.05–0.10 a GIF in SKILL.md is an estimate from those
 windows and from OpenRouter's billed $0.055 for a 2048×1024 Flare sheet
 (1,182 output tokens) — 8–12 frames of 512² are 2–3 MP of output. The script
 prints `cost: unknown (…)` with that reason and the list price.
