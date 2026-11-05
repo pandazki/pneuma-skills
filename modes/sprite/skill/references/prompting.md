@@ -1,6 +1,6 @@
 # Sheet prompt grammar
 
-How to ask GPT Image 2.5 for a sprite sheet that slices cleanly. The pipeline
+How to ask GPT Image 2.6 for a sprite sheet that slices cleanly. The pipeline
 can align frames and pack an atlas; it cannot fix a drawing whose character
 changed size halfway through the grid. Everything here is about what happens
 before the pipeline runs.
@@ -241,12 +241,12 @@ the rule once for all the scripts).
   in full: `--background transparent` needs `--output-format png` or `webp`
   (it refuses on jpeg, which has no alpha channel), the JSON result reports
   `hasAlpha` for what actually arrived, and the script prints a `WARN` when a
-  provider ignores the request. None of that is reachable on OpenRouter's GPT
-  Image 2.5 today: as of 2026-09-09 both `sunburst` and `flare` reject the
-  parameter with a `400` before generating anything — `background: not
-  supported. Accepted: auto, opaque` — so the try is free and the answer is
-  always the same. Ask for the white plate in the prompt, pass `opaque`, and
-  probe the sheet (workflow B step 5) instead of trusting any flag.
+  provider ignores the request. On OpenRouter, GPT Image 2.5 rejected the
+  parameter with a `400` (2026-09-09, both models); GPT Image 2.6 accepts it
+  and returns real alpha (2026-11-05, Flare and Sunburst). This pipeline is
+  still measured on the white plate, not on native alpha: ask for the white
+  plate in the prompt, pass `opaque`, and probe the sheet (workflow B step 5)
+  instead of trusting any flag.
 - **`--image-size` pins the pixels** (`2048x1024` for a 4×2 sheet,
   `2048x2048` for 4×4); `--aspect-ratio` only asks for a shape at whatever
   size the provider picks. Pin the size for a sheet — 2048 across four
@@ -625,12 +625,12 @@ straight away, back of the head to the camera, no face; *right* / *left* — a
 pure side profile facing the right / left of the picture. Register it as the
 direction's anchor (one per direction; registering the same id again
 replaces it). The example records the Flare default; record
-`openai/gpt-image-2.5-sunburst` if that generation was upgraded:
+`openai/gpt-image-2.6-sunburst` if that generation was upgraded:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs add-ref --dir <character> --id anchor-back \
   --file refs/anchor-back.png --role anchor --direction back \
-  --from ref-turnaround,ref-portrait --model openai/gpt-image-2.5-flare --prompt "<the prompt>" --json
+  --from ref-turnaround,ref-portrait --model openai/gpt-image-2.6-flare --prompt "<the prompt>" --json
 ```
 
 A frame the user already likes can be the anchor instead — copy it out of

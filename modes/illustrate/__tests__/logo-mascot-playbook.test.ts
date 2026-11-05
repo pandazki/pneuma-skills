@@ -31,6 +31,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import illustrateManifest from "../manifest.js";
+import { DEFAULT_EDIT_IMAGE_MODEL, DEFAULT_IMAGE_MODEL } from "../../_shared/scripts/generate_image.mjs";
 
 const MODE_DIR = join(import.meta.dir, "..");
 const SKILL = readFileSync(join(MODE_DIR, "skill", "SKILL.md"), "utf-8");
@@ -227,8 +228,9 @@ describe("genre and model floor", () => {
       PLAYBOOK.indexOf("## Script settings"),
       PLAYBOOK.indexOf("## Prompt skeleton"),
     );
-    expect(settings).toContain("gpt-image-2.5-sunburst");
-    expect(settings).toContain("gpt-image-2.5-flare");
+    for (const model of [DEFAULT_IMAGE_MODEL, DEFAULT_EDIT_IMAGE_MODEL]) {
+      expect(settings).toContain(model.replace(/^openai\//, ""));
+    }
     // A missing key is a blocker to report, never a licence to hand-draw one.
     expect(settings).toContain("OPENROUTER_API_KEY");
     expect(settings).toContain("Never stand in for a generation");
@@ -259,7 +261,7 @@ describe("candidate evaluation (deliberately not synced)", () => {
 
 describe("skill version", () => {
   test("ships the image upgrade and preserves the upstream sync changelog", () => {
-    expect(illustrateManifest.version).toBe("0.6.2");
+    expect(illustrateManifest.version).toBe("0.6.3");
     // A bump without a same-key entry ships a silent update — the launcher's
     // skill-update prompt reads its bullets straight out of this map.
     expect(illustrateManifest.changelog?.[illustrateManifest.version!]).toBeDefined();

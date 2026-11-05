@@ -17,7 +17,7 @@ import { load, save } from "./domain.js";
 
 const plotwiseManifest: ModeManifest = {
   name: "plotwise",
-  version: "0.7.2",
+  version: "0.7.3",
   displayName: {
     en: "Plotwise",
     "zh-CN": "Plotwise",
@@ -218,7 +218,7 @@ The user just opened the learning studio. Greet them briefly (1-2 sentences) and
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
         description:
-          "Required — GPT 5.6 Luna via OpenRouter writes the screenplay, every detour and question scene, and judges the narration; GPT Image 2.5 generates style anchors and character references",
+          "Required — GPT 5.6 Luna via OpenRouter writes the screenplay, every detour and question scene, and judges the narration; GPT Image 2.6 generates style anchors and character references",
         type: "string",
         defaultValue: "",
         sensitive: true,
@@ -237,6 +237,7 @@ scene length toward these preferences, while always respecting explicit instruct
   },
 
   changelog: {
+    "0.7.3": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.7.2": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.7.1": ["Skill states the montage rule directly, replaces one-line clamps with a stated chat-reply intent, and drops trial narratives and 0.5/0.6 version references"],
     "0.7.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],

@@ -19,7 +19,7 @@ import { loadBoard, saveBoard } from "./domain.js";
 
 const banshoManifest: ModeManifest = {
   name: "bansho",
-  version: "0.26.3",
+  version: "0.26.4",
   // The name is the brand and stays romanized where the script has no
   // word for it (house style — `modes/kami/manifest.ts` ships "Kami" ×7);
   // the CJK locales have their own reading of 板書 and use it.
@@ -44,6 +44,7 @@ const banshoManifest: ModeManifest = {
     de: "Erklären wie an der Tafel: Schreib die Vorlesung in schlichtem Markdown, und die Tafel führt sie selbst auf — fließende Handschrift, handgezeichnete Hervorhebungen und Diagramme, die entstehen, sobald die Erzählung sie erreicht; jederzeit zurückspulbar",
   },
   changelog: {
+    "0.26.4": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.26.3": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.26.2": ["Skill text states the current board rules directly instead of as changes from earlier versions; measured percentages and the fold incident replaced by the rule they taught"],
     "0.26.1": ["Fix skill metadata parsing for Codex and Claude Code discovery"],
@@ -282,7 +283,7 @@ const banshoManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-bansho",
-    // Shared TTS uses fal.ai; generated figures use GPT Image 2.5 on OpenRouter.
+    // Shared TTS uses fal.ai; generated figures use GPT Image 2.6 on OpenRouter.
     // Both are optional: a lecture can play without generated voice or figures.
     sharedScripts: ["generate-tts.mjs", "generate_image.mjs"],
     envMapping: {
@@ -587,7 +588,7 @@ The user opened Bansho to have something explained on a board. Write the lecture
       {
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
-        description: "for GPT Image 2.5 illustrations; leave blank to use charts and graphs only",
+        description: "for GPT Image 2.6 illustrations; leave blank to use charts and graphs only",
         type: "string",
         defaultValue: "",
         sensitive: true,

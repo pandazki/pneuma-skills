@@ -30,7 +30,7 @@ const SAFE_MARGINS_MM: Record<string, { top: number; side: number; bottom: numbe
 
 const kamiManifest: ModeManifest = {
   name: "kami",
-  version: "1.9.0",
+  version: "1.9.1",
   displayName: {
     en: "Kami",
     "zh-CN": "Kami",
@@ -50,6 +50,7 @@ const kamiManifest: ModeManifest = {
     de: "Webdesign auf Papier-Leinwand mit warmer Pergament-Ästhetik —— Designsprache übernommen von tw93/kami (MIT)",
   },
   changelog: {
+    "1.9.1": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "1.9.0": [
       "Synced upstream tw93/kami V1.16.0 to V1.18.0 (Clean Finish / Charted Pages)",
       "Charts are generated from a JSON spec by the new chart script, never drawn by hand, and its check fails any chart whose marks were edited afterwards",
@@ -255,7 +256,7 @@ const kamiManifest: ModeManifest = {
       { name: "paperSize",   label: "Paper size",  type: "select", options: ["A4", "A5", "A3", "Letter", "Legal"], defaultValue: "A4" },
       { name: "orientation", label: "Orientation", type: "select", options: ["Portrait", "Landscape"],             defaultValue: "Portrait" },
 
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation and editing; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.6 generation and editing; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (p) => {
       const size = String(p.paperSize);

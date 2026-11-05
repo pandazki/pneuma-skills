@@ -170,10 +170,10 @@ After scaffold returns, the viewer auto-switches to the new set; follow up with 
 
 Two scripts live under `{SKILL_PATH}/scripts/`:
 
-- `generate_image.mjs` — text-to-image and reference-image edits via GPT Image 2.5
-- `edit_image.mjs` — modify an existing local image with an optional highlighter annotation (GPT Image 2.5 via OpenRouter)
+- `generate_image.mjs` — text-to-image and reference-image edits via GPT Image 2.6
+- `edit_image.mjs` — modify an existing local image with an optional highlighter annotation (GPT Image 2.6 via OpenRouter)
 
-Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.5-flare`, including generations guided by reference images. `edit_image.mjs` defaults to `gpt-image-2.5-sunburst`. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
+Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.6-flare`, including generations guided by reference images. `edit_image.mjs` defaults to `gpt-image-2.6-sunburst`. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
 
 **Generate vs. code the visual.** Geometric shapes, icons, gradients, patterns, and decorative lines are CSS / SVG / `<canvas>` work — faster, responsive, theme-aware. Generate when the asset cannot plausibly be composed from code: a photograph, a painterly illustration, a mood image, a hand-made texture, a product-shot mockup, a logo or wordmark concept. Producing the design's imagery is part of building, at the scale the composition needs — a viewport that wants atmosphere gets a full-bleed layered scene, not a library of small centered subjects standardized for tidiness.
 

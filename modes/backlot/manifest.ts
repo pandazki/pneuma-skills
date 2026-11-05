@@ -21,8 +21,9 @@ import { loadFilm, saveFilm } from "./domain.js";
 
 const backlotManifest: ModeManifest = {
   name: "backlot",
-  version: "0.2.1",
+  version: "0.2.2",
   changelog: {
+    "0.2.2": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.2.1": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.2.0": [
       "A finished film has a supported way into the Cut stage. The cut itself makes straight cuts with voice-over and one music bed. When the last pass adds more (titles, captions, UI over the picture, a dissolve, a slowed shot, a re-timed mix), the agent now registers the result with cut --finish. The Cut stage then plays the film you are handed, says what the pass added and keeps the plain assembly it was made over. Before, a composited film was copied into the cut folder by hand and the stage read 'nothing yet'",
@@ -346,7 +347,7 @@ The user just opened the backlot workspace. Greet them briefly (1-2 sentences): 
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
         description:
-          "Optional — enables the character sheets and set concepts of the bible, the storyboard frames, and the music bed (GPT Image 2.5 and Lyria 3). Without it the film is still written, blocked and shot; it just has no look frames and no music.",
+          "Optional — enables the character sheets and set concepts of the bible, the storyboard frames, and the music bed (GPT Image 2.6 and Lyria 3). Without it the film is still written, blocked and shot; it just has no look frames and no music.",
         type: "string",
         defaultValue: "",
         sensitive: true,

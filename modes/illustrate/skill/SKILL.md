@@ -172,10 +172,10 @@ After scaffolding, the canvas shows a placeholder row; run the generation script
 
 ## AI Image Generation
 
-- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2.5-flare`; use `--model sunburst` for edits or a generation upgrade)
-- `scripts/edit_image.mjs` — Modify an existing local image with an optional highlighter annotation (GPT Image 2.5 via OpenRouter)
+- `scripts/generate_image.mjs` — Generate new images from text prompts (default model: `gpt-image-2.6-flare`; use `--model sunburst` for edits or a generation upgrade)
+- `scripts/edit_image.mjs` — Modify an existing local image with an optional highlighter annotation (GPT Image 2.6 via OpenRouter)
 
-**Workflow at a glance**: write placeholder row to `manifest.json` (status: "generating") → run script → update manifest with result. Detailed flags, prompt engineering, and the GPT Image 2.5 reference-image edit path are documented in the sections below.
+**Workflow at a glance**: write placeholder row to `manifest.json` (status: "generating") → run script → update manifest with result. Detailed flags, prompt engineering, and the GPT Image 2.6 reference-image edit path are documented in the sections below.
 {{/imageGenEnabled}}
 
 ## Data Model
@@ -313,10 +313,10 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 
 | Model | Pick when | Backend |
 |---|---|---|
-| `gpt-image-2.5-flare` | Default for new images, with or without references | OpenRouter |
-| `gpt-image-2.5-sunburst` | Default for editing; optional generation upgrade | OpenRouter |
+| `gpt-image-2.6-flare` | Default for new images, with or without references | OpenRouter |
+| `gpt-image-2.6-sunburst` | Default for editing; optional generation upgrade | OpenRouter |
 
-Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.5-flare`, including generations guided by reference images. `edit_image.mjs` defaults to `gpt-image-2.5-sunburst`. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
+Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.6-flare`, including generations guided by reference images. `edit_image.mjs` defaults to `gpt-image-2.6-sunburst`. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
 
 ### Parameters
 
@@ -343,7 +343,7 @@ Two edit paths are available — pick based on how the user pointed at the chang
 
 ### Path A: Annotation-Driven (`edit_image.mjs`)
 
-Use when the source is a **local file** and the user's intent is best expressed by pointing at a region (e.g. they circled it with the highlighter tool). This sends the original image and an optional annotation crop to GPT Image 2.5, which reasons about both in one pass.
+Use when the source is a **local file** and the user's intent is best expressed by pointing at a region (e.g. they circled it with the highlighter tool). This sends the original image and an optional annotation crop to GPT Image 2.6, which reasons about both in one pass.
 
 ```bash
 cd {SKILL_PATH} && node scripts/edit_image.mjs \
@@ -358,7 +358,7 @@ cd {SKILL_PATH} && node scripts/edit_image.mjs \
 | `--input, -i` | file path | **required** | Original image to modify |
 | `--annotation, -a` | file path | none | Highlighter region crop (sent as 2nd image) |
 | `--aspect-ratio` | same as generate | `auto` | Keeps original ratio by default |
-| `--model` | same as generate | `gpt-image-2.5-sunburst` | Edits default to Sunburst |
+| `--model` | same as generate | `gpt-image-2.6-sunburst` | Edits default to Sunburst |
 | `--quality` | same as generate | `high` | Output quality |
 | `--image-size` | preset or `WxH` | — | Explicit output size |
 | `--output-format` | `png`, `jpeg`, `webp` | `png` | Output file format |
@@ -385,7 +385,7 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
 |----------|---------|
 | User says "make this darker" / "change the color" on a selected local image | `edit_image.mjs` |
 | User highlights a region and says "fix this part" | `edit_image.mjs --annotation` |
-| Source image is a URL and the change needs precise text/layout preservation | `generate_image.mjs --image-urls ... --model sunburst` (GPT Image 2.5 edit) |
+| Source image is a URL and the change needs precise text/layout preservation | `generate_image.mjs --image-urls ... --model sunburst` (GPT Image 2.6 edit) |
 | User wants completely new images from a text description | `generate_image.mjs` |
 | User wants variations of a concept (not tied to a specific image file) | `generate_image.mjs` with modified prompt |
 

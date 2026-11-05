@@ -92,7 +92,7 @@ So labels go on the board, written by the board: place the picture with
 ## Ordering one
 
 Use the bundled generator through OpenRouter. New figures default to GPT Image
-2.5 Flare, including new figures guided by references. Add `--model sunburst`
+2.6 Flare, including new figures guided by references. Add `--model sunburst`
 to upgrade a generation or to edit an existing figure with `--image-urls`.
 Attaching references alone keeps the generation default.
 

@@ -96,7 +96,7 @@ does not make it free.
 
 ## Generation and keys
 
-Images go to OpenRouter (GPT Image 2.5: `flare` is the general default,
+Images go to OpenRouter (GPT Image 2.6: `flare` is the general default,
 `sunburst` the precision model), video to fal (Seedance 2.5 reference-to-
 video). Keys come from `OPENROUTER_API_KEY` and `FAL_KEY` in the environment
 or the session's `.env`; never print them. A missing key fails before anything

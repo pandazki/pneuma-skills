@@ -8,8 +8,9 @@ import { loadDeck, saveDeck } from "./domain.js";
 
 const slideManifest: ModeManifest = {
   name: "slide",
-  version: "1.3.2",
+  version: "1.3.3",
   changelog: {
+    "1.3.3": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "1.3.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "1.3.1": ["Canvas dimensions come from contentWidth and contentHeight template params instead of hard-coded 592px figures; duplicate overflow self-check removed"],
     "1.3.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
@@ -229,7 +230,7 @@ The user just opened the workspace. You are ready to assist with presentation cr
     params: [
       { name: "slideWidth", label: "Slide width", description: "pixels", type: "number", defaultValue: 1280 },
       { name: "slideHeight", label: "Slide height", description: "pixels", type: "number", defaultValue: 720 },
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation, leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.6 generation, leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (params) => ({
       ...params,

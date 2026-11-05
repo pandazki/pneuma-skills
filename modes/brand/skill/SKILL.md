@@ -48,7 +48,7 @@ brand decisions itself. Read-only sharing hides agent controls.
 - Read actual reference images. Record the role of each reference; a layout example
   is not permission to replace the brand's identity with that reference's identity.
 - Prefer the installed shared scripts through OpenRouter for raster art. New
-  images use GPT Image 2.5 Flare; edits use Sunburst. Add `--model sunburst`
+  images use GPT Image 2.6 Flare; edits use Sunburst. Add `--model sunburst`
   to upgrade a generation. See the image workflow for the commands and key setup.
   Keep consistent anchors for character identity. Do not redraw a detailed mascot
   with approximate CSS geometry in downstream examples.

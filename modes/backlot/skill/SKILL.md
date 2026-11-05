@@ -403,7 +403,7 @@ Every subcommand takes the project directory as its first argument.
 `generate_image.mjs "<prompt>" --output-dir … [--image-urls <ref>]…` makes
 character sheets, the style key frame and any set concept; `--image-urls`
 takes local paths and is the continuity mechanism. Use OpenRouter with GPT Image
-2.5 Flare for new sheets, style frames and concepts, even with references;
+2.6 Flare for new sheets, style frames and concepts, even with references;
 `--model sunburst` upgrades a generation. For changes to an existing picture,
 use `edit_image.mjs` (Sunburst by default) or explicitly add `--model sunburst`
 to `generate_image.mjs --image-urls`. `previz.mjs anchor` selects Sunburst because

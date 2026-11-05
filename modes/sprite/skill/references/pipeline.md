@@ -82,10 +82,11 @@ stays inside its own cell.
 `{ width, height, hasAlpha, alphaCoverage, cornerColor }`. `hasAlpha` is true
 when any pixel's alpha is below 255; `alphaCoverage` is the fraction of pixels
 above the alpha threshold; `cornerColor` is the median of the four 8×8 corner
-patches as `#rrggbb`. Run this on every freshly generated sheet. On OpenRouter's
-GPT Image 2.5 the answer is always `hasAlpha: false` with a near-white
-`cornerColor`, so it is not really a branch — it is the free confirmation that
-the plate is flat and one colour, and the colour `key --color auto` will use.
+patches as `#rrggbb`. Run this on every freshly generated sheet. A sheet asked
+for on the white plate with `--background opaque` has answered `hasAlpha: false`
+with a near-white `cornerColor` every time it was measured (GPT Image 2.5), so it
+is not really a branch — it is the free confirmation that the plate is flat and
+one colour, and the colour `key --color auto` will use.
 
 ### `key <in> --out <png> [--color auto|#rrggbb] [--similarity 0.12] [--blend 0.05] [--keyer unmix|colorkey]`
 
@@ -2418,13 +2419,13 @@ come from `Date.now()` unless `--at <ms>` is passed.
 The image call takes a minute or two, and the stage should not be empty for it.
 So the first call goes **before** `generate_image.mjs`. These examples use the
 Flare generation default; if you upgrade with `--model sunburst`, record
-`openai/gpt-image-2.5-sunburst` in both calls instead. The closing call must
+`openai/gpt-image-2.6-sunburst` in both calls instead. The closing call must
 match the model reported by the generator:
 
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs set-sheet --dir <character> --motion <id> \
   --file motions/<id>/sheet-raw.png --from ref-turnaround,ref-portrait \
-  --model openai/gpt-image-2.5-flare --prompt "<the prompt you are about to send>" \
+  --model openai/gpt-image-2.6-flare --prompt "<the prompt you are about to send>" \
   --background opaque --status generating --json
 ```
 
@@ -2439,7 +2440,7 @@ The second call goes **after** the image has landed — the same command without
 ```bash
 node {SKILL_PATH}/scripts/sprite-project.mjs set-sheet --dir <character> --motion <id> \
   --file motions/<id>/sheet-raw.png --from ref-turnaround,ref-portrait \
-  --model openai/gpt-image-2.5-flare --prompt "<the same prompt>" --background opaque --json
+  --model openai/gpt-image-2.6-flare --prompt "<the same prompt>" --background opaque --json
 ```
 
 Now the file is measured and the same asset flips to `status: "ready"` with real
@@ -2561,8 +2562,10 @@ without references — both models, both ways. That is why workflow B has no
 transparent branch left to take: ask the prompt for *a flat solid pure white
 background*, pass `--background opaque`, and key afterwards. `probe` then
 reports `hasAlpha: false`, `alphaCoverage: 1`, `cornerColor: "#fefefe"` —
-every time. The flag itself is still there and still free to try, since the
-rejection arrives before any image is drawn; this record is what it answers.
+every time. GPT Image 2.6 changed the answer (2026-11-05): Flare and Sunburst
+both accept `transparent` on OpenRouter and return RGBA with real alpha.
+Workflow B still takes the white plate and the key: its probes, keying and fit
+steps are measured on that route, not on native alpha.
 
 | Step | Wall time | Result |
 |---|---|---|

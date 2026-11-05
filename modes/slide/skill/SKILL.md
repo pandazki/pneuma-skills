@@ -486,20 +486,20 @@ You have access to an AI image generation script at `{SKILL_PATH}/scripts/genera
 - The slide is diagram/chart/data-focused — use CSS/SVG instead
 - The slide is typography-only by design intent
 
-**Model picking** (default is `gpt-image-2.5-flare`):
+**Model picking** (default is `gpt-image-2.6-flare`):
 
 | Model | Pick when | Backend |
 |---|---|---|
-| `gpt-image-2.5-flare` | Default for new images, with or without references | OpenRouter |
-| `gpt-image-2.5-sunburst` | Default for editing; optional generation upgrade | OpenRouter |
+| `gpt-image-2.6-flare` | Default for new images, with or without references | OpenRouter |
+| `gpt-image-2.6-sunburst` | Default for editing; optional generation upgrade | OpenRouter |
 
-Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.5-flare`, including generations guided by reference images. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
+Both models use OpenRouter and require `OPENROUTER_API_KEY`. New images default to `gpt-image-2.6-flare`, including generations guided by reference images. To edit through `generate_image.mjs --image-urls`, pass `--model sunburst`; adding references alone does not select an editing model. Add `--model sunburst` to any generation call when a deliberate upgrade is needed. `--model flare`, the full model slugs, and the `openai/`-prefixed IDs are also accepted.
 
 **Workflow**:
 
 1. **Plan in outline**: The design outline's Visual field should already specify which slides need generated images and what kind
 2. **Craft a detailed prompt**: Include subject, style, composition, mood, and technical details
-3. **Generate** (defaults to `gpt-image-2.5-flare`):
+3. **Generate** (defaults to `gpt-image-2.6-flare`):
 
 ```bash
 cd {SKILL_PATH} && node scripts/generate_image.mjs \

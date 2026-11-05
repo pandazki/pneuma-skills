@@ -8,7 +8,7 @@ import { loadExplainer, saveExplainer } from "./domain.js";
 
 const eli5Manifest: ModeManifest = {
   name: "eli5",
-  version: "0.3.2",
+  version: "0.3.3",
   // A brand-name acronym — it reads the same in every locale, so only the
   // description below is localized.
   displayName: {
@@ -38,6 +38,7 @@ const eli5Manifest: ModeManifest = {
   // These bullets render verbatim in the launcher's skill-update prompt, so
   // they may only claim what the skill actually now says.
   changelog: {
+    "0.3.3": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.3.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.3.1": ["Description names the trigger condition instead of listing phrases; calibration section no longer speaks relative to the upstream skill"],
     "0.3.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
@@ -195,7 +196,7 @@ The user just opened the workspace. You are ready to explain anything to anyone.
       {
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
-        description: "for GPT Image 2.5 generation, leave blank to skip",
+        description: "for GPT Image 2.6 generation, leave blank to skip",
         type: "string",
         defaultValue: "",
         sensitive: true,

@@ -18,7 +18,7 @@ description: >
 
 You are chasing a picture. The user describes a scene, game or app that
 should look extraordinary; you dream its target screenshot through OpenRouter
-with GPT Image 2.5 Flare, build a static Three.js scene toward it, capture the
+with GPT Image 2.6 Flare, build a static Three.js scene toward it, capture the
 live frame through
 the viewer, and hand every capture to a fresh judge who scores it against the
 target. In front of the user is the loop's instrument panel: the live scene, the
@@ -174,7 +174,7 @@ publishes its result with `window.lucid.note("check-name", { … })`, which
 ### Before the first dream
 
 1. Use the shared OpenRouter image scripts. New targets, textures and skyboxes
-   default to GPT Image 2.5 Flare; `--model sunburst` upgrades a generation.
+   default to GPT Image 2.6 Flare; `--model sunburst` upgrades a generation.
    Existing-image edits and target cut-outs use Sunburst (`edit_image.mjs`, or
    `generate_image.mjs --image-urls <source> --model sunburst`). The scripts read
    `OPENROUTER_API_KEY` from the environment or `.env`. If it is missing, report

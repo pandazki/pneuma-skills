@@ -28,8 +28,9 @@ import type { ModeManifest } from "../../core/types/mode-manifest.js";
 
 const projectOnboardManifest: ModeManifest = {
   name: "project-onboard",
-  version: "1.1.2",
+  version: "1.1.3",
   changelog: {
+    "1.1.3": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "1.1.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "1.1.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
     "1.1.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
@@ -70,7 +71,7 @@ const projectOnboardManifest: ModeManifest = {
     params: [{
       name: "openrouterApiKey",
       label: "OpenRouter API Key",
-      description: "optional GPT Image 2.5 welcome images and project covers",
+      description: "optional GPT Image 2.6 welcome images and project covers",
       type: "string",
       defaultValue: "",
       sensitive: true,

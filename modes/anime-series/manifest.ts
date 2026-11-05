@@ -41,8 +41,9 @@ import { loadSeries, saveSeries } from "./domain.js";
 
 const animeSeriesManifest: ModeManifest = {
   name: "anime-series",
-  version: "0.1.0",
+  version: "0.1.1",
   changelog: {
+    "0.1.1": ["Images now use GPT Image 2.6 through OpenRouter at the same price, with boards, panels and lineups still on Sunburst; a failed image made with GPT Image 2.5 retries on the model it recorded"],
     "0.1.0": [
       "A series is a cast wall, an episode desk and a season rail: the character, group, scene and style cards stay in view while you judge a shot (with the newest lineup of the picked sheets at one scale), one episode sits on the desk at a time, and the rail above holds every episode with its status and cost",
       "The bible is the one authority: every storyboard and video prompt is assembled by a script from the bible and the episode, never typed by hand, and the viewer shows the same text the script sends",
@@ -279,7 +280,7 @@ The user just opened the series workspace. Greet them briefly (1-2 sentences) in
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
         description:
-          "Optional — enables the design sheets and the storyboards (GPT Image 2.5). Without it the prompts are still assembled and can be copied into another tool.",
+          "Optional — enables the design sheets and the storyboards (GPT Image 2.6). Without it the prompts are still assembled and can be copied into another tool.",
         type: "string",
         defaultValue: "",
         sensitive: true,

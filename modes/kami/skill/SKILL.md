@@ -535,7 +535,7 @@ when a page is borderline, not before.
 ## Image generation (only when the user has configured a key)
 
 A script lives at `{SKILL_PATH}/scripts/generate_image.mjs`. Use OpenRouter
-with `OPENROUTER_API_KEY`: new images default to `gpt-image-2.5-flare`, including
+with `OPENROUTER_API_KEY`: new images default to `gpt-image-2.6-flare`, including
 reference-guided generations. Add `--model sunburst` to upgrade a generation
 or to edit an existing image supplied through `--image-urls`. Reference images
 alone do not change the model. For figure captions, diagram labels, mock book

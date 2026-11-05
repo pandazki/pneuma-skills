@@ -15,8 +15,9 @@ import { loadLoops, saveLoops } from "./domain.js";
 
 const lucidManifest: ModeManifest = {
   name: "lucid",
-  version: "0.1.1",
+  version: "0.1.2",
   changelog: {
+    "0.1.2": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.1.1": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.1.0": [
       "Describe what you want to see and the agent dreams it first: one generated target screenshot, locked, so every later round is measured against the same picture",
@@ -68,7 +69,7 @@ const lucidManifest: ModeManifest = {
   skill: {
     sourceDir: "skill",
     installName: "pneuma-lucid",
-    mdScene: `You are building toward a picture that does not exist yet. The user says what they want to see in the browser; you dream it first — one target screenshot generated through OpenRouter with GPT Image 2.5 Flare (Sunburst for edits), locked at \`target.png\` — and then build a static Three.js scene under \`scene/\` until the live frame matches it. In front of the user is the loop's instrument panel: your scene running live, the target over it under a draggable wipe, the score every round earned from a judge that had never seen the previous ones, and the ledger of every asset the scene needs.`,
+    mdScene: `You are building toward a picture that does not exist yet. The user says what they want to see in the browser; you dream it first — one target screenshot generated through OpenRouter with GPT Image 2.6 Flare (Sunburst for edits), locked at \`target.png\` — and then build a static Three.js scene under \`scene/\` until the live frame matches it. In front of the user is the loop's instrument panel: your scene running live, the target over it under a draggable wipe, the score every round earned from a judge that had never seen the previous ones, and the ledger of every asset the scene needs.`,
     envMapping: {
       BLENDER_PATH: "blenderPath",
       FAL_KEY: "falApiKey",
@@ -228,7 +229,7 @@ const lucidManifest: ModeManifest = {
     // first trials.
     reasoningEffort: "high",
     greeting: `<system-info pneuma-mode="Pneuma Lucid Mode" skill="pneuma-lucid" session="new"></system-info>
-The user just opened the lucid workspace. Greet them briefly (1-2 sentences): say that you start by dreaming a target screenshot through OpenRouter with GPT Image 2.5 Flare from whatever they describe, then build a Three.js scene toward it while a fresh judge scores each round. If no OpenRouter key is configured, explain that generating a target needs OPENROUTER_API_KEY; a user-supplied target can start the loop without generation.`,
+The user just opened the lucid workspace. Greet them briefly (1-2 sentences): say that you start by dreaming a target screenshot through OpenRouter with GPT Image 2.6 Flare from whatever they describe, then build a Three.js scene toward it while a fresh judge scores each round. If no OpenRouter key is configured, explain that generating a target needs OPENROUTER_API_KEY; a user-supplied target can start the loop without generation.`,
   },
 
   init: {
@@ -272,7 +273,7 @@ The user just opened the lucid workspace. Greet them briefly (1-2 sentences): sa
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
         description:
-          "Enables GPT Image 2.5 Flare target images and textures, Sunburst edits and cut-outs, and optional Sunburst generation upgrades.",
+          "Enables GPT Image 2.6 Flare target images and textures, Sunburst edits and cut-outs, and optional Sunburst generation upgrades.",
         type: "string",
         defaultValue: "",
         sensitive: true,

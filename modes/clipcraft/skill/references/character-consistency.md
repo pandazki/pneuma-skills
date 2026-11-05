@@ -47,12 +47,12 @@ non-photographically**. That is the workflow below.
 
 1. **`generate_image.mjs --image-urls <photo> --model sunburst`** (preferred when you
    want creative control). Write the prompt yourself, pass the source
-   photo as a reference, and let GPT Image 2.5 compose the 4-panel
+   photo as a reference, and let GPT Image 2.6 compose the 4-panel
    layout including the typewriter `OUTFIT` / `CHARACTER` text block.
-   GPT Image 2.5's text rendering and multi-panel composition make this
+   GPT Image 2.6's text rendering and multi-panel composition make this
    a single-call job.
 2. **`scripts/make-character-sheet.mjs`** (deterministic shortcut). A
-   purpose-built wrapper around GPT Image 2.5 on OpenRouter that
+   purpose-built wrapper around GPT Image 2.6 on OpenRouter that
    bakes the prompt and layout. Use when you want a one-liner and
    don't need per-character prompt tuning.
 
@@ -118,7 +118,7 @@ Professional game / animation character design reference document
 aesthetic.
 ```
 
-Call (from-scratch sheet, no source photo — gpt-image-2.5-flare t2i):
+Call (from-scratch sheet, no source photo — gpt-image-2.6-flare t2i):
 
 ```bash
 node "<SKILL_DIR>/scripts/generate_image.mjs" \

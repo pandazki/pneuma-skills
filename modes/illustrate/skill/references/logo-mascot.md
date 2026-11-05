@@ -54,7 +54,7 @@ expensive to compare in wasted generations — so propose before you generate.
    SKILL.md), but manifest updates stay yours alone, serialized.
 6. **Evaluate every output, then report honestly** — see the rubric at the end.
 7. **Refinement** of a picked candidate is the normal edit workflow (`edit_image.mjs`, or the
-   GPT Image 2.5 reference-image path with `--model sunburst`): new row labeled after the change, original preserved.
+   GPT Image 2.6 reference-image path with `--model sunburst`): new row labeled after the change, original preserved.
 
 ## Complexity budget
 
@@ -133,9 +133,9 @@ expensive to compare in wasted generations — so propose before you generate.
 
 ## Script settings (built-in models only)
 
-- **Start new candidates with `gpt-image-2.5-flare` through OpenRouter.** Add
+- **Start new candidates with `gpt-image-2.6-flare` through OpenRouter.** Add
   `--model sunburst` for a deliberate generation upgrade when a candidate needs
-  closer control. Refine an existing candidate with `edit_image.mjs` (`gpt-image-2.5-sunburst`
+  closer control. Refine an existing candidate with `edit_image.mjs` (`gpt-image-2.6-sunburst`
   by default), or `generate_image.mjs --image-urls ... --model sunburst`.
   References alone keep new-image generation on Flare. Preserve crisp geometry,
   flat masses, and clean marks in the brief and inspect the output.

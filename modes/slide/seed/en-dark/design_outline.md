@@ -24,7 +24,7 @@
 3. **Files in, deck out**: Workspace tree (manifest.json, theme.css, slides/*.html, assets/) feeds the live player. 1280x720 HTML fragments.
 4. **Watch the deck take shape**: Session timeline: outline, scaffold, cover, content, and the deck filling in slide by slide.
 5. **Point, don't describe**: Mock slide with selection box, the `<viewer-context>` address it produces, and the one-line edit.
-6. **Images that belong to the deck**: Prompt on the left, framed print on the right. GPT Image 2.5 via OpenRouter: generate new images or edit your own.
+6. **Images that belong to the deck**: Prompt on the left, framed print on the right. GPT Image 2.6 via OpenRouter: generate new images or edit your own.
 7. **One file holds the whole look**: Tokens rendered live from theme.css; this deck ships two.
 8. **Every slide fits**: The 1280x720 canvas with 64px padding, height math, and `checkContentFit` output.
 9. **From editor to stage**: Presenter mode, PDF / image export, drag-reorder, content sets.

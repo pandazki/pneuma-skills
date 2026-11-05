@@ -2,8 +2,8 @@
 
 ClipCraft's planning layer is the `previewFrames` array on each video track. It lets you stage three layers of fidelity on the timeline before any expensive video generation runs:
 
-1. **Sketch layer** — line-art images placed across the timeline. Cheap (`gpt-image-2.5-flare --style sketch --quality low`). Defines vibe, blocking, pacing.
-2. **Anchor layer** — photoreal first/last frames at planned generation boundaries (`gpt-image-2.5-flare --style photo --quality high`). Replaces specific sketch positions. Used as seedance from-image / end-image-url.
+1. **Sketch layer** — line-art images placed across the timeline. Cheap (`gpt-image-2.6-flare --style sketch --quality low`). Defines vibe, blocking, pacing.
+2. **Anchor layer** — photoreal first/last frames at planned generation boundaries (`gpt-image-2.6-flare --style photo --quality high`). Replaces specific sketch positions. Used as seedance from-image / end-image-url.
 3. **Real clip layer** — `Clip` on the same track from a seedance run. Replaces the planning layer in its time range via the upstream auto-fallback rule (clip wins per half-open interval).
 
 The user reviews at every layer transition. Your job is to surface the right artifact at the right time and ask "ready to commit?" before each escalation.
@@ -75,7 +75,7 @@ Then for each output file, register the asset and add the preview frame in `proj
       "actor": "agent",
       "agentId": "claude-clipcraft",
       "timestamp": 1714200000000,
-      "params": { "model": "gpt-image-2.5-flare", "style": "sketch", "prompt": "..." }
+      "params": { "model": "gpt-image-2.6-flare", "style": "sketch", "prompt": "..." }
     }
   }
 ],
@@ -207,10 +207,10 @@ A variant: if you have multiple anchors that need to be honored during the singl
 
 ## Path C — composite-and-slice for high panel-count consistency
 
-When the user wants 4–16 distinct panels (storyboard sketches, music-driven cuts, multi-shot beats), generating each panel as an independent gpt-image-2.5-flare call requires N separate image generations and produces panels that drift in character look, palette, and lighting. **Path C generates one composite image containing all N panels in a grid, then engineering-slices it into N individual files.** Trade-off summary:
+When the user wants 4–16 distinct panels (storyboard sketches, music-driven cuts, multi-shot beats), generating each panel as an independent gpt-image-2.6-flare call requires N separate image generations and produces panels that drift in character look, palette, and lighting. **Path C generates one composite image containing all N panels in a grid, then engineering-slices it into N individual files.** Trade-off summary:
 
 - **Cost:** one image generation instead of N; price depends on quality and dimensions
-- **Internal consistency:** dramatically higher — gpt-image-2.5-flare spends one image's attention budget across all panels at once
+- **Internal consistency:** dramatically higher — gpt-image-2.6-flare spends one image's attention budget across all panels at once
 - **Constraint:** panels must fit a 2×2 / 3×2 / 4×2 / 3×3 / 4×3 / 4×4 grid (4–16 panels)
 - **Best for:** sketch stage of a multi-panel project, or as the source of references for a Path B reference-mode seedance call
 

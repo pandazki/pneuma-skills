@@ -244,13 +244,13 @@ Seven CLI scripts wrap the provider APIs. Call them via the Bash tool.
 
 | Script | Purpose | Default model | Env var |
 |---|---|---|---|
-| `scripts/generate_image.mjs` | Text→image; edits via `--image-urls`; 1–10 images per call | GPT Image 2.5 Flare via OpenRouter; `--model sunburst` upgrades generation | `OPENROUTER_API_KEY` |
-| `scripts/edit_image.mjs` | Modify a local image with optional highlighter annotation (multimodal reasoning) | GPT Image 2.5 Sunburst via OpenRouter | `OPENROUTER_API_KEY` |
+| `scripts/generate_image.mjs` | Text→image; edits via `--image-urls`; 1–10 images per call | GPT Image 2.6 Flare via OpenRouter; `--model sunburst` upgrades generation | `OPENROUTER_API_KEY` |
+| `scripts/edit_image.mjs` | Modify a local image with optional highlighter annotation (multimodal reasoning) | GPT Image 2.6 Sunburst via OpenRouter | `OPENROUTER_API_KEY` |
 | `scripts/generate-video.mjs` | Text→video + image→video + reference-to-video | bytedance `seedance-2.0` (fallback: `veo3.1` via `--model veo3.1`) | `FAL_KEY` |
 | `scripts/generate-tts.mjs` | Text→speech (expressive: inline `[laughing]` / `[sigh]` tags, 30 voices) | fal.ai `gemini-3.1-flash-tts` | `FAL_KEY` |
 | `scripts/generate-bgm.mjs` | Text→background music | OpenRouter `google/lyria-3-pro-preview` | `OPENROUTER_API_KEY` |
-| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | GPT Image 2.5 Sunburst via OpenRouter | `OPENROUTER_API_KEY` |
-| `scripts/storyboard.mjs` | Compose-and-slice: one GPT Image 2.5 call generates an N-cell composite at the target video aspect ratio; ffmpeg slices into N individual panel images with provenance metadata. Engine layer for Path C (see `references/storyboard-workflow.md`). | Flare via OpenRouter, including `--ref`; upgrade with `--model sunburst` | `OPENROUTER_API_KEY` |
+| `scripts/make-character-sheet.mjs` | Photo → photo-body / sketch-head 16:9 character reference sheet (deterministic recovery shortcut for seedance's image-side filter; see `references/filter-retries.md`) | GPT Image 2.6 Sunburst via OpenRouter | `OPENROUTER_API_KEY` |
+| `scripts/storyboard.mjs` | Compose-and-slice: one GPT Image 2.6 call generates an N-cell composite at the target video aspect ratio; ffmpeg slices into N individual panel images with provenance metadata. Engine layer for Path C (see `references/storyboard-workflow.md`). | Flare via OpenRouter, including `--ref`; upgrade with `--model sunburst` | `OPENROUTER_API_KEY` |
 
 `generate_image.mjs` and `edit_image.mjs` share their output shape —
 a JSON object on stdout with `files`, `urls`, and `description`. They
@@ -262,18 +262,18 @@ stdout is just the output path.
 All scripts read their API keys from `process.env` or from a `.env`
 file in the skill directory.
 
-### Why GPT Image 2.5 matters for video work
+### Why GPT Image 2.6 matters for video work
 
-Image generation uses `openai/gpt-image-2.5-flare` via OpenRouter by default,
+Image generation uses `openai/gpt-image-2.6-flare` via OpenRouter by default,
 including new compositions guided by reference images. Add `--model sunburst`
 when generation needs tighter control. Edits of an existing image use
-`openai/gpt-image-2.5-sunburst`: `edit_image.mjs` selects it automatically;
+`openai/gpt-image-2.6-sunburst`: `edit_image.mjs` selects it automatically;
 with `generate_image.mjs --image-urls`, select `--model sunburst` explicitly
 when the task is an edit. Reference images alone do not select the model. Use
 the image scripts for:
 
 - **First / last frames**. Seedance's `from-image` and first-last-frame
-  video modes inherit the quality of their anchor images. GPT Image 2.5
+  video modes inherit the quality of their anchor images. GPT Image 2.6
   holds a specific aesthetic, character, and composition across paired
   calls — so the two frames actually look like they belong to the same
   shot, and the interpolated video doesn't need to fight a stylistic
@@ -289,7 +289,7 @@ the image scripts for:
   overlays.
 - **Multi-reference stitching via `--image-urls`**. Pass a character
   portrait plus an environment plate plus a style plate and
-  GPT Image 2.5 composes them coherently — a stronger control surface
+  GPT Image 2.6 composes them coherently — a stronger control surface
   for prompting first frames and character sheets than free-text alone.
 - **Reference-guided edits**. Pass the source via `--image-urls --model sunburst` and describe
   what to change and preserve. `edit_image.mjs --annotation` accepts a visual
@@ -337,7 +337,7 @@ node "<SKILL_DIR>/scripts/generate_image.mjs" \
   --output-dir assets/image --filename-prefix kitchen-3am
 
 # Reference-guided generation — pass URLs, data URIs, or local files.
-# Uses the same GPT Image 2.5 OpenRouter Images endpoint.
+# Uses the same GPT Image 2.6 OpenRouter Images endpoint.
 node "<SKILL_DIR>/scripts/generate_image.mjs" \
   "Same character, now at a neon-lit ramen counter, back to camera" \
   --image-urls https://example.com/character-ref.png \

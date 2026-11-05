@@ -21,7 +21,7 @@ an engine cannot do.
 
 ## OpenRouter image scripts
 
-Generate targets with GPT Image 2.5 Flare through OpenRouter. The shared script
+Generate targets with GPT Image 2.6 Flare through OpenRouter. The shared script
 reads `OPENROUTER_API_KEY` from the environment or `.env`; an agent-native image
 tool is not required. Add `--model sunburst` for a generation that needs tighter
 control. Edits of an existing scene or target use Sunburst explicitly.

@@ -8,8 +8,9 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const illustrateManifest: ModeManifest = {
   name: "illustrate",
-  version: "0.6.2",
+  version: "0.6.3",
   changelog: {
+    "0.6.3": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.6.2": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.6.1": ["Prompt guide drops quality-modifier padding, the icon example follows the identity playbook, manifest row rule matches the row lifecycle"],
     "0.6.0": ["Use GPT Image 2.5 Sunburst for generation and Flare for edits via OpenRouter; image tools require an OpenRouter API key"],
@@ -204,7 +205,7 @@ The user just opened the illustration workspace. You are ready to assist with AI
       },
     ],
     params: [
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation and editing", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.6 generation and editing", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (params) => ({
       ...params,

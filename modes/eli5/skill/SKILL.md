@@ -382,7 +382,7 @@ cd {SKILL_PATH} && node scripts/generate_image.mjs \
   wrote into the prompt. Write the style into the prompt and leave the flag
   alone.
 - Use OpenRouter with `OPENROUTER_API_KEY`. New illustrations default to
-  `gpt-image-2.5-flare`, with or without references. Add `--model sunburst`
+  `gpt-image-2.6-flare`, with or without references. Add `--model sunburst`
   to upgrade a generation or to edit an existing image with `--image-urls`;
   attaching references alone does not select the editing model.
 - `--output-dir` is always the explainer's own `assets/` directory. The page

@@ -97,7 +97,7 @@ brings that capacity to AIGC.
 
 The technique: **bake colored annotation overlays into the reference
 image itself**, using a fixed color vocabulary the model recognizes.
-GPT Image 2.5 will respect explicit "annotation" instructions in its
+GPT Image 2.6 will respect explicit "annotation" instructions in its
 prompt — colored arrows, dashes, dotted lines, callouts — and
 seedance's `reference` mode will read those annotations as
 directorial intent on top of the photographic content.
@@ -115,7 +115,7 @@ directorial intent on top of the photographic content.
 
 This isn't a universal AI standard — the model wasn't pre-trained on
 "red = body". The vocabulary works because **you state it explicitly
-in the generation prompt**, and GPT Image 2.5 carries that vocabulary
+in the generation prompt**, and GPT Image 2.6 carries that vocabulary
 into the rendered annotations. Then when the annotated image is
 passed to seedance, you reinforce the vocabulary in the seedance
 prompt: "the red arrows in the reference indicate body motion to
@@ -282,7 +282,7 @@ dilutes the active directives.
 
 FACS (Facial Action Coding System) is the academic vocabulary for
 naming individual facial muscle movements. AU1 = inner brow raise.
-AU4 = brow lowerer. AU12 = lip corner puller (smile). GPT Image 2.5
+AU4 = brow lowerer. AU12 = lip corner puller (smile). GPT Image 2.6
 and seedance both have enough exposure to FACS in their training to
 respect explicit AU specifications.
 

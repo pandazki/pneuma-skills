@@ -8,7 +8,7 @@ import { loadSite, saveSite } from "./domain.js";
 
 const webcraftManifest: ModeManifest = {
   name: "webcraft",
-  version: "1.10.0",
+  version: "1.10.1",
   displayName: {
     en: "WebCraft",
     "zh-CN": "WebCraft",
@@ -28,6 +28,7 @@ const webcraftManifest: ModeManifest = {
     de: "Webdesign mit Impeccable.style —— 22 KI-Designbefehle, responsive Vorschau und Export",
   },
   changelog: {
+    "1.10.1": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "1.10.0": [
       "Synced upstream Impeccable.style skill v4.3.1 to v4.8.0",
       "Each visitor mode now limits how far a direction's world reaches: working screens keep standard controls and get one signature move, docs keep a calm reading column inside a frame the world owns, and a landing page shows its action in working form",
@@ -303,7 +304,7 @@ The user just opened the workspace. You are ready to assist with web design and 
       },
     ],
     params: [
-      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.5 generation and editing; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "for GPT Image 2.6 generation and editing; leave blank to skip", type: "string", defaultValue: "", sensitive: true },
     ],
     deriveParams: (params) => ({
       ...params,

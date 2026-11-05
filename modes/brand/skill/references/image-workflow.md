@@ -14,8 +14,8 @@ graphic language, character (if used), and selected applications. Do not blindly
 copy a fixed checklist; choose the examples that answer this brand's actual needs.
 
 Prefer the bundled scripts through OpenRouter, even when the host also provides
-a native image tool. New images default to GPT Image 2.5 Flare, with or without
-references; `edit_image.mjs` defaults to GPT Image 2.5 Sunburst. Add
+a native image tool. New images default to GPT Image 2.6 Flare, with or without
+references; `edit_image.mjs` defaults to GPT Image 2.6 Sunburst. Add
 `--model sunburst` to upgrade a new generation or to edit through
 `generate_image.mjs --image-urls`. Reference attachment alone does not select
 the editing model. Read the current help before calling either script:

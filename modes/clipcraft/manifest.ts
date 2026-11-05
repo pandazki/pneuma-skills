@@ -13,8 +13,9 @@ import {
 
 const clipcraftManifest: ModeManifest = {
   name: "clipcraft",
-  version: "0.10.3",
+  version: "0.10.4",
   changelog: {
+    "0.10.4": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.10.3": ["Prefer OpenRouter for images: GPT Image 2.5 Flare for generation, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.10.2": ["Reference cap corrected to 9 image refs per seedance call, --generate-audio replaced by the real --no-audio contract, script count fixed to seven, audio-layering guidance written in present tense"],
     "0.10.1": ["Make skill discovery and guidance portable across Claude Code and Codex"],
@@ -179,7 +180,7 @@ The user just opened the workspace. You are ready to assist with AI-orchestrated
       {
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
-        description: "for GPT Image 2.5 images, edits, storyboards, and BGM generation",
+        description: "for GPT Image 2.6 images, edits, storyboards, and BGM generation",
         type: "string",
         defaultValue: "",
         sensitive: true,

@@ -5,7 +5,7 @@
  * (`character.purpose`): a game character, a picture brought to life, a
  * looping animation for a page, or a mascot for an app. The character is
  * designed once (or taken from the user's image); each motion's frames come
- * from a GPT Image 2.5 sheet, a chroma-green clip, a breathe of one still or a
+ * from a GPT Image 2.6 sheet, a chroma-green clip, a breathe of one still or a
  * mirror of another motion, and a deterministic pipeline turns them into
  * aligned frames, a packed atlas and GIF/WebP previews.
  *
@@ -22,8 +22,9 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.6.0",
+  version: "0.6.1",
   changelog: {
+    "0.6.1": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new pictures, Sunburst for edits; sheets still go on a white background and are cut out afterwards"],
     "0.6.0": [
       "Eight directions from one picture and one clip: the character is drawn once per facing on a 3×3 facing sheet, every state is one clip of all eight walking or idling in sync (a fast run is safer as a 4-way pack), and each facing becomes a motion of its own — the stage plays the whole compass at once",
       "Props for a game world: a props set draws every item on one sheet in one visual language, cuts each into a clean icon, and one clip brings them all to life — a flame along a blade, a glint on a ring",
@@ -341,7 +342,7 @@ The user just opened the sprite workspace. Greet them briefly (1-2 sentences) an
         name: "openrouterApiKey",
         label: "OpenRouter API Key",
         description:
-          "Required — GPT Image 2.5 draws every reference and every motion sheet through OpenRouter",
+          "Required — GPT Image 2.6 draws every reference and every motion sheet through OpenRouter",
         type: "string",
         defaultValue: "",
         sensitive: true,

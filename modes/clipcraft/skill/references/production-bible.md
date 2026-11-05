@@ -202,7 +202,7 @@ decks.
 Three things make this template work where shorter prompts fail:
 
 1. **Production triggers** — `CORE DIRECTIVE (NON-NEGOTIABLE)`,
-   `STRICT`, `MUST` — state the constraints GPT Image 2.5 should preserve
+   `STRICT`, `MUST` — state the constraints GPT Image 2.6 should preserve
    in the production board. See `references/direction-notation.md`
    for the full vocabulary.
 2. **Performance over pose** — "real actor caught mid-moment, NOT

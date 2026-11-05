@@ -220,9 +220,9 @@ for sections that should appear only when a param is set:
 {{#imageGenEnabled}}
 ### Image Generation
 `scripts/generate_image.mjs` — generate images through OpenRouter with
-GPT Image 2.5 Flare by default, with or without reference images. Add
+GPT Image 2.6 Flare by default, with or without reference images. Add
 `--model sunburst` for a generation upgrade or an edit through `--image-urls`.
-`scripts/edit_image.mjs` — edit an existing image with GPT Image 2.5 Sunburst.
+`scripts/edit_image.mjs` — edit an existing image with GPT Image 2.6 Sunburst.
 Opt in to each script through `skill.sharedScripts` and map
 `OPENROUTER_API_KEY` to the mode's OpenRouter init parameter. Prefer these
 OpenRouter paths when adding image generation or editing to a mode.
