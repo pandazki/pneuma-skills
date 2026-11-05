@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.61.1] - 2026-11-05
+
+### Changed
+- **Current models everywhere: Claude 5.5 and the GPT-6 tiers** — Nothing older than Claude Opus / Sonnet / Haiku 5.5 or GPT-6 Luna, GPT-6.1 Terra, GPT-6.1 Sol and GPT-6 Astra is chosen by default any more:
+  - WordTaste's hosted writer defaults to Claude Sonnet 5.5 (was Sonnet 5).
+  - Plotwise writes its screenplay, detour and question scenes and narration checks with GPT-6 Luna, at half the token price of GPT 5.6 Luna; in a side-by-side run on the seed course it kept every clip within its speech budget where GPT 5.6 Luna left three over it.
+  - Brand's vector assets always use the measured defaults (Sunburst, medium quality, GPT-6.1 Terra as the author), and the script refuses SVG authors before GPT-6, which broke or collapsed icon sets in measured runs.
+  - The WebCraft console seed lists the current models at their list prices.
+
+### Improved
+- **Lucid prices GPT-6 sessions** — The cost panel prices sessions run on GPT-6 Sol, Terra and Luna instead of showing them as unpriced; older GPT 5.6 sessions stay priced.
+
 ## [3.61.0] - 2026-11-05
 
 ### Added
