@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Generate and edit with GPT Image 2.5 via OpenRouter. Also the shared adapter for edit/storyboard. */
+/** Generate and edit with GPT Image 2.6 via OpenRouter. Also the shared adapter for edit/storyboard. */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,9 +7,15 @@ import { parseArgs } from "node:util";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-export const DEFAULT_IMAGE_MODEL = "openai/gpt-image-2.5-flare";
-export const DEFAULT_EDIT_IMAGE_MODEL = "openai/gpt-image-2.5-sunburst";
+export const DEFAULT_IMAGE_MODEL = "openai/gpt-image-2.6-flare";
+export const DEFAULT_EDIT_IMAGE_MODEL = "openai/gpt-image-2.6-sunburst";
 export const IMAGE_MODELS = [DEFAULT_IMAGE_MODEL, DEFAULT_EDIT_IMAGE_MODEL];
+/**
+ * GPT Image 2.5, accepted only when named: a craft record keeps the model
+ * that made an asset, and a retry re-sends it as recorded (anime-series
+ * `series.mjs retry`). Never a default, never an alias target.
+ */
+export const LEGACY_IMAGE_MODELS = ["openai/gpt-image-2.5-flare", "openai/gpt-image-2.5-sunburst"];
 export const IMAGE_QUALITIES = ["auto", "low", "medium", "high", "xhigh", "max"];
 export const IMAGE_ASPECTS = ["auto", "21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"];
 export const IMAGE_BACKGROUNDS = ["auto", "transparent", "opaque"];
@@ -76,7 +82,9 @@ export function resolveImageModel(model = DEFAULT_IMAGE_MODEL) {
   if (model === "flare") return DEFAULT_IMAGE_MODEL;
   if (model === "sunburst") return DEFAULT_EDIT_IMAGE_MODEL;
   const id = model.startsWith("openai/") ? model : `openai/${model}`;
-  if (!IMAGE_MODELS.includes(id)) throw new Error(`Invalid --model. Choices: ${IMAGE_MODELS.join(", ")}`);
+  if (!IMAGE_MODELS.includes(id) && !LEGACY_IMAGE_MODELS.includes(id)) {
+    throw new Error(`Invalid --model. Choices: flare, sunburst, ${IMAGE_MODELS.join(", ")} (legacy, re-sent as recorded: ${LEGACY_IMAGE_MODELS.join(", ")})`);
+  }
   return id;
 }
 
@@ -103,11 +111,17 @@ export function buildImageRequest({
       throw new Error(`--background transparent needs --output-format ${ALPHA_FORMATS.join(" or ")} (${outputFormat} has no alpha channel)`);
     }
   }
-  if (maskUrl) throw new Error("GPT Image 2.5 on OpenRouter does not expose mask edits. Use --model sunburst --image-urls with edit instructions, or --annotation for a visual guide.");
+  const resolvedModel = resolveImageModel(model);
+  // OpenRouter answered GPT Image 2.5 + transparent with a 400 (2026-09-09);
+  // 2.6 returns real alpha (2026-11-05).
+  if (background === "transparent" && LEGACY_IMAGE_MODELS.includes(resolvedModel)) {
+    throw new Error(`--background transparent needs GPT Image 2.6 (flare or sunburst); ${resolvedModel} on OpenRouter rejects it`);
+  }
+  if (maskUrl) throw new Error("GPT Image 2.6 on OpenRouter does not expose mask edits. Use --model sunburst --image-urls with edit instructions, or --annotation for a visual guide.");
   if (imageUrls.length > 16) throw new Error("At most 16 reference images are supported");
   // References can guide a new image, so their presence does not imply an edit.
   // Edit entry points choose DEFAULT_EDIT_IMAGE_MODEL explicitly.
-  const body = { model: resolveImageModel(model), prompt, n: numImages, quality, output_format: outputFormat };
+  const body = { model: resolvedModel, prompt, n: numImages, quality, output_format: outputFormat };
   // Omitted unless asked for: every caller that predates the flag keeps
   // sending byte-identical requests.
   if (background != null) body.background = background;
@@ -176,7 +190,7 @@ export function hasAlphaChannel(image) {
 export async function generateImage(options, { fetchImpl = fetch } = {}) {
   const { apiKey, outputDir = ".", filenamePrefix = "illustration", signal } = options;
   const body = buildImageRequest(options);
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not found. Add it to the skill .env or environment for GPT Image 2.5.");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY not found. Add it to the skill .env or environment for GPT Image 2.6.");
   console.error(`[openrouter:${body.model}] Sending request...`);
   const response = await fetchImpl(IMAGE_ENDPOINT, {
     method: "POST",
@@ -240,18 +254,19 @@ export async function main(args = process.argv.slice(2)) {
   if (values.help) {
     console.error(`Usage: generate_image.mjs <prompt> [options]
 
-  --model <name>             ${IMAGE_MODELS.join(", ")}
+  --model <name>             ${IMAGE_MODELS.join(", ")} (GPT Image 2.6)
                              Default: Flare, including reference-guided generation
                              Aliases: flare, sunburst; openai/ prefix optional
                              Use --model sunburst to upgrade generation or edit references
+                             GPT Image 2.5 ids are accepted when named, to re-send a recorded call
   --num-images <1-10>        Number of images (default: 1)
   --aspect-ratio <ratio>     ${IMAGE_ASPECTS.join(", ")} (default: 1:1; auto with references)
   --image-size <preset|WxH>  Explicit size; overrides --aspect-ratio
   --quality <level>         ${IMAGE_QUALITIES.join(", ")} (default: high)
   --output-format <fmt>     png, jpeg, webp (default: png)
   --background <mode>       ${IMAGE_BACKGROUNDS.join(", ")} (omitted unless passed)
-                            transparent requires --output-format png or webp; the
-                            JSON result then reports hasAlpha for what actually arrived
+                            transparent requires --output-format png or webp and a
+                            2.6 model; the JSON result reports hasAlpha for what arrived
   --image-urls <source>     Reference URL, data URI, or local path (repeatable, up to 16)
   --style <sketch|photo>    sketch appends line-art direction; defaults quality to low
   --output-dir <path>       Output directory (default: .)
@@ -265,7 +280,7 @@ JSON stdout reports the actual model and saved file paths; progress goes to stde
     return;
   }
   if (positionals.length !== 1) throw new Error("Usage: generate_image.mjs <prompt> [options] (prompt is positional)");
-  if (values.backend && values.backend !== "openrouter") throw new Error("GPT Image 2.5 uses --backend openrouter and OPENROUTER_API_KEY");
+  if (values.backend && values.backend !== "openrouter") throw new Error("GPT Image 2.6 uses --backend openrouter and OPENROUTER_API_KEY");
   if (!["photo", "sketch"].includes(values.style)) throw new Error("Invalid --style: expected sketch or photo");
   const sketch = values.style === "sketch";
   const prompt = sketch ? `${positionals[0]} in clean black-and-white pencil sketch style, line art, no shading, white background` : positionals[0];

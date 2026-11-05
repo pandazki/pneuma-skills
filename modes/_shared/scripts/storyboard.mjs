@@ -2,7 +2,7 @@
 /**
  * storyboard.mjs — compose-and-slice tool for ClipCraft Path C.
  *
- * Generates a composite N-cell storyboard image via GPT Image 2.5 on OpenRouter,
+ * Generates a composite N-cell storyboard image via GPT Image 2.6 on OpenRouter,
  * then slices it into N individual panel files via ffmpeg.
  *
  * See modes/clipcraft/skill/references/storyboard-workflow.md

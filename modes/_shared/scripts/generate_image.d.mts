@@ -1,7 +1,9 @@
-/** Importable surface of the shared GPT Image 2.5 adapter. */
+/** Importable surface of the shared GPT Image 2.6 adapter. */
 export const DEFAULT_IMAGE_MODEL: string;
 export const DEFAULT_EDIT_IMAGE_MODEL: string;
 export const IMAGE_MODELS: string[];
+/** GPT Image 2.5 ids, accepted only when named (re-sending a recorded call); never a default. */
+export const LEGACY_IMAGE_MODELS: string[];
 export const IMAGE_QUALITIES: string[];
 export const IMAGE_ASPECTS: string[];
 export const IMAGE_BACKGROUNDS: string[];

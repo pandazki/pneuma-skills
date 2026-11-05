@@ -2,11 +2,13 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildImageRequest, generateImage, hasAlphaChannel } from "../generate_image.mjs";
+import { buildImageRequest, generateImage, hasAlphaChannel, LEGACY_IMAGE_MODELS } from "../generate_image.mjs";
 import { generateComposite } from "../storyboard.mjs";
 
-const SUNBURST = "openai/gpt-image-2.5-sunburst";
-const FLARE = "openai/gpt-image-2.5-flare";
+const SUNBURST = "openai/gpt-image-2.6-sunburst";
+const FLARE = "openai/gpt-image-2.6-flare";
+const LEGACY_SUNBURST = "openai/gpt-image-2.5-sunburst";
+const LEGACY_FLARE = "openai/gpt-image-2.5-flare";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=", "base64");
 const workspace = mkdtempSync(join(tmpdir(), "pneuma-image-test-"));
 const reference = join(workspace, "reference.png");
@@ -40,7 +42,7 @@ function runCli(script: string, args: string[], withKey = true) {
   return { code: child.exitCode, out: child.stdout.toString(), err: child.stderr.toString(), request: existsSync(request) ? JSON.parse(readFileSync(request, "utf8")) : null };
 }
 
-describe("GPT Image 2.5 Images API", () => {
+describe("GPT Image 2.6 Images API", () => {
   test("text generation sends Flare and decodes separate base64 outputs", async () => {
     let captured: { url: string; options: RequestInit } | undefined;
     const result = await generateImage({ apiKey: "fixture-key", prompt: "Two distinct pictures", numImages: 2, outputDir: workspace, filenamePrefix: "variants" }, {
@@ -68,7 +70,7 @@ describe("GPT Image 2.5 Images API", () => {
     ]);
   });
 
-  test.each(["sunburst", "gpt-image-2.5-sunburst", SUNBURST])("generation can upgrade to %s, with or without references", (model) => {
+  test.each(["sunburst", "gpt-image-2.6-sunburst", SUNBURST])("generation can upgrade to %s, with or without references", (model) => {
     for (const imageUrls of [[], [reference]]) {
       const body = buildImageRequest({ prompt: "A detailed illustration", model, imageUrls, quality: "max" });
       expect(body.model).toBe(SUNBURST);
@@ -77,12 +79,31 @@ describe("GPT Image 2.5 Images API", () => {
   });
 
   test("model overrides accept a short slug and explicit size excludes competing aspect", () => {
-    const body = buildImageRequest({ prompt: "A portrait", model: "gpt-image-2.5-flare", quality: "xhigh", imageSize: "720x1280", aspectRatio: "1:1" });
+    const body = buildImageRequest({ prompt: "A portrait", model: "gpt-image-2.6-flare", quality: "xhigh", imageSize: "720x1280", aspectRatio: "1:1" });
     expect(body.model).toBe(FLARE);
     expect(body.quality).toBe("xhigh");
     expect(body.size).toBe("720x1280");
     expect(body).not.toHaveProperty("aspect_ratio");
     expect(body).not.toHaveProperty("resolution");
+  });
+
+  test("2.5 ids stay accepted by name for recorded calls, never as a default or alias", () => {
+    // A craft record keeps the model that made an asset, and a retry
+    // re-sends it as recorded (anime-series `series.mjs retry`).
+    expect(LEGACY_IMAGE_MODELS).toEqual([LEGACY_FLARE, LEGACY_SUNBURST]);
+    for (const model of [LEGACY_FLARE, "gpt-image-2.5-flare", LEGACY_SUNBURST, "gpt-image-2.5-sunburst"]) {
+      expect(buildImageRequest({ prompt: "A recorded call", model, imageUrls: [reference] }).model).toBe(model.startsWith("openai/") ? model : `openai/${model}`);
+    }
+    expect(buildImageRequest({ prompt: "x" }).model).toBe(FLARE);
+    expect(buildImageRequest({ prompt: "x", model: "flare" }).model).toBe(FLARE);
+    expect(buildImageRequest({ prompt: "x", model: "sunburst" }).model).toBe(SUNBURST);
+  });
+
+  test("a 2.5 id asking for a transparent background fails before a request", () => {
+    // OpenRouter answered 2.5 + transparent with a 400 (2026-09-09); 2.6 returns real alpha.
+    expect(() => buildImageRequest({ prompt: "A sprite", model: LEGACY_FLARE, background: "transparent" })).toThrow("2.6");
+    expect(buildImageRequest({ prompt: "A sprite", model: LEGACY_FLARE, background: "opaque" }).background).toBe("opaque");
+    expect(buildImageRequest({ prompt: "A sprite", model: "sunburst", background: "transparent" }).background).toBe("transparent");
   });
 
   test("invalid masks, counts and unsupported models fail before a request", () => {
@@ -237,7 +258,7 @@ function webpVp8x(alpha: boolean): Buffer {
 describe("transparent backgrounds", () => {
   test("a caller that never asks for a background omits it from the generation request", () => {
     expect(JSON.stringify(buildImageRequest({ prompt: "A tree" }))).toBe(
-      '{"model":"openai/gpt-image-2.5-flare","prompt":"A tree","n":1,"quality":"high","output_format":"png","aspect_ratio":"1:1"}',
+      '{"model":"openai/gpt-image-2.6-flare","prompt":"A tree","n":1,"quality":"high","output_format":"png","aspect_ratio":"1:1"}',
     );
     expect(buildImageRequest({ prompt: "A tree" })).not.toHaveProperty("background");
   });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Edit a local image with GPT Image 2.5, optionally guided by a highlighter annotation. */
+/** Edit a local image with GPT Image 2.6, optionally guided by a highlighter annotation. */
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
