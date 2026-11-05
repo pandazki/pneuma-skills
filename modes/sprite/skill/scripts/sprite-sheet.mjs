@@ -89,6 +89,7 @@ import { cellRects } from "./pack.mjs";
 import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } from "./mirror.mjs";
 import { CELL_MARGIN, alphaComponents, cutPoses, layoutPoses, locatePoses } from "./sheet-segment.mjs";
 import { SIZE_SPREAD_WARN, motionSize, sizeSpread, sizeWarning } from "./sizes.mjs";
+import { probeGifDelays } from "./gif-frames.mjs";
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;
@@ -5413,30 +5414,21 @@ function refuseGifClip(input, label) {
  * `-fps_mode passthrough` writes each decoded frame as it comes: no frame is
  * duplicated or dropped to fit a rate the GIF does not have. ffmpeg's GIF
  * decoder composites each frame with its disposal and keeps the GIF's own
- * (1-bit) transparency, so nothing is keyed. The delays come from the
- * packets, which carry each frame's own; a frame whose delay ffprobe cannot
- * read takes the median of the others, and says so.
+ * (1-bit) transparency, so nothing is keyed. The frames and their delays
+ * are counted by `gif-frames.mjs`, the rule `set-gif` lands a take by: one
+ * per packet, and a frame whose delay ffprobe cannot read takes the median
+ * of the others, and says so.
  */
 function decodeGifFrames(input, outDir, label) {
-  const probe = spawnSync(
-    "ffprobe",
-    ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=duration_time", "-of", "csv=p=0", input],
-    { encoding: "utf-8" },
-  );
-  if (probe.error || probe.status !== 0) fail(`${label}: ffprobe could not read ${input}: ${(probe.stderr || "").trim()}`);
-  const raw = String(probe.stdout).trim().split("\n").map((line) => line.trim().replace(/,$/, "")).filter(Boolean);
-  if (raw.length < 2) fail(`${label}: ${input} holds ${raw.length} frame(s) — an animation needs at least 2`);
-  if (raw.length > MAX_FRAMES) fail(`${label}: ${input} holds ${raw.length} frames, over the ${MAX_FRAMES}-frame limit (frame files are two digits)`);
-  const read = raw.map((value) => Math.round(Number(value) * 1000));
-  const known = read.filter((ms) => Number.isFinite(ms) && ms > 0);
-  if (!known.length) fail(`${label}: ${input} carries no frame delays ffprobe can read`);
-  const fallbackMs = median(known);
-  const notes = [];
-  const delaysMs = read.map((ms, i) => {
-    if (Number.isFinite(ms) && ms > 0) return ms;
-    notes.push(i);
-    return fallbackMs;
-  });
+  let probed;
+  try {
+    probed = probeGifDelays(input);
+  } catch (error) {
+    fail(`${label}: ${error.message}`);
+  }
+  const { delaysMs, unreadable: notes, fallbackMs } = probed;
+  if (delaysMs.length < 2) fail(`${label}: ${input} holds ${delaysMs.length} frame(s) — an animation needs at least 2`);
+  if (delaysMs.length > MAX_FRAMES) fail(`${label}: ${input} holds ${delaysMs.length} frames, over the ${MAX_FRAMES}-frame limit (frame files are two digits)`);
 
   resetFramesDir(outDir);
   ffmpeg([

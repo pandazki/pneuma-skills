@@ -45,6 +45,7 @@ import {
 // A breathe's default rate — the rate `add-motion --source breathe` records
 // until the run lands with its own (one authority, shared with sprite-sheet.mjs).
 import { BREATHE_FPS } from "./breathe.mjs";
+import { probeGifDelays } from "./gif-frames.mjs";
 // The colourway rules — one authority, shared with sprite-sheet.mjs (which
 // bakes them) and the viewer's loader (which reads them back).
 import { RecolorError, checkVariant, sameVariant, variantNameProblem } from "./recolor.mjs";
@@ -761,9 +762,10 @@ function videoMetadata(path) {
 
 /**
  * A GIF asset's measurements: canvas, frame count and the frame time, from
- * ffprobe's packets — the per-frame delays the GIF carries. A GIF that
- * ffprobe cannot read, or that holds fewer than two frames, is refused: it
- * is not an animation anything here can cut.
+ * ffprobe's packets — the per-frame delays the GIF carries, read by the same
+ * rule `from-gif` cuts by (`gif-frames.mjs`), so landing and cutting agree
+ * on the frame count. A GIF that ffprobe cannot read, or that holds fewer
+ * than two frames, is refused: it is not an animation anything here can cut.
  */
 function gifMetadata(path) {
   const head = Buffer.alloc(6);
@@ -777,9 +779,12 @@ function gifMetadata(path) {
   const signature = head.toString("latin1", 0, read);
   if (signature !== "GIF89a" && signature !== "GIF87a") fail(`${path} is not a GIF`);
   const size = imageMetadata(path, "--file");
-  const r = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=duration_time", "-of", "csv=p=0", path], { encoding: "utf-8" });
-  if (r.error || r.status !== 0) fail(`ffprobe could not read the frames of ${path}`);
-  const delays = String(r.stdout).trim().split("\n").map((l) => Math.round(Number(l.trim().replace(/,$/, "")) * 1000)).filter((ms) => Number.isFinite(ms));
+  let delays;
+  try {
+    delays = probeGifDelays(path).delaysMs;
+  } catch (error) {
+    fail(error.message);
+  }
   if (delays.length < 2) fail(`${path} holds ${delays.length} frame(s) — not an animation`);
   const total = delays.reduce((a, b) => a + b, 0);
   const uniform = delays.every((d) => d === delays[0]);

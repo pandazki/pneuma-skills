@@ -87,9 +87,10 @@ beforeAll(() => {
   sh(["-framerate", "10", "-i", join(src, "%02d.png"), "-vf", "format=rgb24,split[a][b];[a]palettegen[p];[b][p]paletteuse", opaqueGif]);
 });
 
-function run(script: string, argv: string[], stdin?: string, cwd = import.meta.dir) {
+function run(script: string, argv: string[], stdin?: string, cwd = import.meta.dir, env?: Record<string, string | undefined>) {
   const r = Bun.spawnSync([process.execPath, script, ...argv], {
     cwd,
+    ...(env ? { env } : {}),
     stdin: stdin === undefined ? "ignore" : new TextEncoder().encode(stdin),
     stdout: "pipe",
     stderr: "pipe",
@@ -352,6 +353,42 @@ describe.skipIf(!HAS_FFMPEG)("set-gif → from-gif → register-run", () => {
     // With nothing in flight, --supersede is refused rather than ignored.
     expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "failed", "--notes", "x"], undefined, ws).code).toBe(0);
     expect(reserve(ws, "motions/walk/gif-raw-3.gif", ["--supersede", "nothing to supersede"]).err).toContain("--supersede");
+  });
+
+  test("landing and cutting count the same frames when ffprobe cannot read one frame's delay", () => {
+    // ffprobe 8.0 fills in a delay for every real GIF tried (zero, missing
+    // and truncated ones alike), so the unreadable packet is a stub: the
+    // real ffprobe, with the second packet's duration reported as N/A.
+    const { ws, dir } = workspace();
+    const bin = join(ws, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "ffprobe"), `#!/bin/sh
+out=$("$REAL_FFPROBE" "$@") || exit $?
+case "$*" in
+  *packet=duration_time*) printf '%s\\n' "$out" | awk 'NR == 2 { print "N/A"; next } { print }' ;;
+  *) printf '%s\\n' "$out" ;;
+esac
+`, { mode: 0o755 });
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, REAL_FFPROBE: Bun.which("ffprobe")! };
+    const probed = spawnSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=duration_time", "-of", "csv=p=0", gif], { encoding: "utf-8", env });
+    expect(probed.stdout.trim().split("\n")[1]).toBe("N/A");
+
+    expect(reserve(ws).code).toBe(0);
+    mkdirSync(join(dir, "motions", "walk"), { recursive: true });
+    copyFileSync(gif, join(dir, "motions", "walk", "gif-raw-1.gif"));
+    const landed = run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--report", "-"], report(), ws, env);
+    expect(landed.err).toBe("");
+    expect(landed.code).toBe(0);
+    expect(assetOf(dir, "walk-gif-raw-1").metadata.frames).toBe(FRAMES);
+
+    const cut = run(SHEET, ["from-gif", "blob/motions/walk/gif-raw-1.gif", "--out", "blob/motions/walk", "--name", "walk", "--loop", "--json"], undefined, ws, env);
+    expect(cut.code).toBe(0);
+    const summary = JSON.parse(cut.out);
+    expect(summary.frameCount).toBe(FRAMES);
+    expect(summary.delaysMs).toEqual(Array(FRAMES).fill(90));
+    expect(summary.warnings.join("\n")).toContain("frame(s) 01 of the GIF carry no readable delay");
+    expect(run(PROJECT, ["register-run", "--dir", "blob", "--motion", "walk", "--run", "-"], cut.out, ws, env).code).toBe(0);
+    expect(read(dir).sprite.motions[0].frames).toHaveLength(FRAMES);
   });
 
   test("a GIF the user brought is an upload by the human", () => {
