@@ -1,4 +1,9 @@
-.brand-studio { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--color-cc-fg); background: var(--color-cc-bg); container-type: inline-size; font-size: 13px; }
+.brand-studio { height: 100%; min-height: 0; display: flex; flex-direction: column; color: var(--color-cc-fg); background: var(--color-cc-bg); container-type: inline-size; font-size: 13px;
+  /* Ground behind artwork, in both themes: a transparent asset drawn in dark
+     ink (a Forest icon set, an Ink mark) vanishes on the dark surface. Same
+     tone as the exported brand book's image ground. It sits behind the image's
+     own box only, so opaque images cover it and letterboxing keeps the surface. */
+  --brand-artwork-ground: #f1f2ed; --brand-thumb-ratio: 1.6; }
 .brand-studio button { font: inherit; cursor: pointer; color: inherit; border: 1px solid var(--color-cc-border); background: var(--color-cc-surface); border-radius: 6px; padding: 7px 11px; }
 .brand-studio button:hover { background: var(--color-cc-active); }
 .brand-studio button:focus-visible, .brand-studio summary:focus-visible { outline: 2px solid var(--color-cc-primary); outline-offset: 3px; }
@@ -32,12 +37,17 @@
 .brand-stage { margin-top: 26px; }
 .brand-stage h2 { margin: 0 0 12px; display: flex; align-items: baseline; gap: 12px; font-size: 15px; font-weight: 500; }
 .brand-stage h2 span { color: var(--color-cc-muted); font-size: 11px; font-weight: 400; }
-.brand-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 20px; }
+/* Cards are buttons, which centre their content vertically: without `start`,
+   a card beside a longer description drops its thumbnail below its neighbours'. */
+.brand-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 20px; align-items: start; }
 .brand-cards > .brand-work { text-align: left; padding: 0; border: 0; border-radius: 0; background: transparent; min-width: 0; max-width: 750px; }
 .brand-cards > .brand-work:hover { background: transparent; }
-.brand-thumb { position: relative; aspect-ratio: 16 / 10; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-cc-surface); border: 1px solid var(--color-cc-border); border-radius: 7px; color: var(--color-cc-muted); }
+.brand-thumb { position: relative; aspect-ratio: var(--brand-thumb-ratio); overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--color-cc-surface); border: 1px solid var(--color-cc-border); border-radius: 7px; color: var(--color-cc-muted); }
 .brand-work:hover .brand-thumb { border-color: var(--color-cc-primary); }
-.brand-thumb img { width: 100%; height: 100%; object-fit: contain; }
+/* The image box is the contained image itself (the viewer sets the natural
+   ratio on load), so the ground never shows in the letterbox and small vectors
+   still scale up to fill the card. */
+.brand-thumb img { width: calc(min(1, var(--brand-artwork-ratio, var(--brand-thumb-ratio)) / var(--brand-thumb-ratio)) * 100%); height: auto; max-height: 100%; background: var(--brand-artwork-ground); }
 .brand-thumb[data-missing]::after { content: attr(data-missing); position: absolute; }
 .brand-thumb .brand-live { position: absolute; bottom: 10px; left: 10px; padding: 5px 9px; border-radius: 4px; color: var(--color-cc-fg); background: var(--color-cc-bg); font-size: 11px; }
 .brand-work-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 11px; }
@@ -53,7 +63,7 @@
 .brand-preview-grid h3 { font-size: 12px; font-weight: 400; margin: 0 0 10px; color: var(--color-cc-muted); }
 .brand-media { display: flex; flex-direction: column; align-items: center; min-height: 150px; width: 100%; overflow: auto; background: var(--color-cc-surface); border-radius: 6px; }
 .brand-image-wrap { position: relative; width: 100%; line-height: 0; }
-.brand-image-wrap img { width: 100%; height: auto; display: block; }
+.brand-image-wrap img { width: 100%; height: auto; display: block; background: var(--brand-artwork-ground); }
 .brand-media iframe { max-width: 100%; border: 0; flex-shrink: 0; background: white; }
 .brand-region { position: absolute; border: 2px solid var(--color-cc-primary); box-shadow: 0 3px 12px var(--color-cc-border); pointer-events: none; }
 .brand-region span { position: absolute; top: 0; left: 0; padding: 5px; line-height: 1.2; background: var(--color-cc-bg); color: var(--color-cc-fg); }
