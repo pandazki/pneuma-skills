@@ -330,7 +330,7 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       other status is an error.
 
   gif-prompt --motion <motionId> --action "<the phase plan, by frame>" --frames ${GIF_FRAME_RANGE.min}-${GIF_FRAME_RANGE.max}
-             [--state ${[...SHEET_STATES, "generic"].join("|")}]
+             [--state ${[...SHEET_STATES, "generic"].join("|")}] [--supersede "<why>"]
       Build the prompt for a GIF motion in code and record it (motion.prompt,
       motion.promptParts, builder gif-prompt/1): the character's style
       sentence verbatim, one animation of --frames frames on one fixed
@@ -344,7 +344,11 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       yet) — and the references to attach, in order
       (the direction's anchor first, then the others). Refused on a loop,
       a transition, a breathe or a mirror, and on a pixel-art character
-      (its frames belong on the pixel lattice: draw them as sheets).
+      (its frames belong on the pixel lattice: draw them as sheets). Refused
+      too while the current take is still generating — its GIF is landed
+      against the recorded prompt: land or fail it first, or --supersede
+      "<why>" records it as failed, its outcome and billing unknown, and the
+      next reservation needs no --supersede.
 
   set-gif --motion <motionId> --status generating --file <path> --from <assetId,…> --model <id> --prompt <text> [--supersede "<why>"]
   set-gif --motion <motionId> --report <generate_gif.json|->
@@ -368,7 +372,10 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
       the request id, endpoint and returned model — or failed, with the
       reason the user reads and the request id when there was one
       (params.failure, billing unknown: a job that ran may be billed).
-      --uploaded registers a GIF the user brought (an 'upload' edge).
+      --uploaded registers a GIF the user brought (an 'upload' edge). A
+      failed take's GIF that arrives after all (one superseded while
+      generating) stays on that failed record: copy it to the next take's
+      file and upload that — the refusal prints both commands.
       Motion status: generating, then processing (or failed).
 
   set-keyframe --motion <motionId> --file <path> [--alpha <path>] [--model]
@@ -818,12 +825,43 @@ function gifTakes(doc, motionId) {
     .sort((a, b) => gifTakeNumber(motionId, a.id) - gifTakeNumber(motionId, b.id));
 }
 
-/** The next take's id and file: past every take on record and every file on disk. */
-function nextGifTake(doc, dir, motionId) {
+/**
+ * The next take's id and file: past every take on record and every file on
+ * disk. `own` is an upload's file: sitting at the next take's path, it is
+ * that take's file, not an occupant to step past.
+ */
+function nextGifTake(doc, dir, motionId, own) {
   const uriOf = (n) => `motions/${motionId}/gif-raw-${n}.gif`;
   let n = gifTakes(doc, motionId).reduce((max, a) => Math.max(max, gifTakeNumber(motionId, a.id)), 0) + 1;
-  while (existsSync(join(dir, uriOf(n))) || doc.assets.some((a) => a.uri === uriOf(n))) n += 1;
+  while ((uriOf(n) !== own && existsSync(join(dir, uriOf(n)))) || doc.assets.some((a) => a.uri === uriOf(n))) n += 1;
   return { id: `${motionId}-gif-raw-${n}`, uri: uriOf(n) };
+}
+
+/**
+ * Clear the way for a new take: a reservation, an upload, or the prompt a
+ * retake is drawn from. A take still generating is a call whose outcome is
+ * not on record — it may have run and been billed, and its GIF is landed
+ * against the prompt recorded for it — so it is never dropped or redescribed
+ * by accident. Without `supersede` the command is refused; with it, that take
+ * is recorded as failed, its outcome and billing unknown: craft's rule for a
+ * call replaced while still generating (docs/reference/craft-project-file.md,
+ * params.earlier), applied to the take's own record. Returns the superseded
+ * take's id and reason, or null.
+ */
+function supersedeGeneratingTake(doc, current, supersede, { command, now, owner }) {
+  if (current?.status !== "generating") {
+    if (supersede !== undefined) {
+      fail(`${command} --supersede: ${current ? `${current.id} is ${current.status}` : "no GIF take is registered"} — only a take still generating is superseded`);
+    }
+    return null;
+  }
+  const why = String(supersede ?? "").trim();
+  if (!why) {
+    fail(`${command}: ${current.id} (${current.uri}) is still generating — its fal job may have run and been billed, whether it finished is not on record, and its GIF is landed against the prompt recorded for it. If its GIF arrived, land it (set-gif --report <generate_gif.mjs --json output>); if the call failed, record that (set-gif --status failed --notes "<why>" --request-id <id>). To start another take anyway, add --supersede "<why>": ${current.id} is then recorded as failed, its outcome and billing unknown.`);
+  }
+  const reason = `superseded while generating — its outcome was never recorded (${why})`;
+  failGifTake(doc, current, { reason, now, owner });
+  return { id: current.id, reason };
 }
 
 /**
@@ -2518,6 +2556,7 @@ const OPTIONS = {
   },
   "gif-prompt": {
     motion: { type: "string" }, action: { type: "string" }, frames: { type: "string" }, state: { type: "string" },
+    supersede: { type: "string" },
   },
   "set-gif": {
     motion: { type: "string" }, file: { type: "string" }, from: { type: "string", multiple: true },
@@ -3578,6 +3617,14 @@ function main() {
       if (motion.source !== "gif") {
         notes.push(`note: ${motion.id} is declared --source ${motion.source ?? "sheet"}; register-run records gif when the GIF's frames land`);
       }
+      // The recorded prompt is what the take in flight is landed against.
+      const current = motion.gifRaw ? doc.assets.find((a) => a.id === motion.gifRaw) ?? null : null;
+      const superseded = supersedeGeneratingTake(doc, current, values.supersede, { command: "gif-prompt", now, owner: `motion '${motion.id}'` });
+      if (superseded) {
+        motion.status = "failed";
+        motion.notes = superseded.reason;
+        notes.push(`${motion.id}: ${superseded.id} superseded while generating — recorded as failed, its outcome and billing unknown`);
+      }
       recordPromptParts(motion, built.parts, built.prompt);
       saveProject(dir, doc);
 
@@ -3650,32 +3697,26 @@ function main() {
       }
 
       // A new take — a reservation or an upload — is its own asset at its own
-      // file (see gifTakes). The take in flight, if any, is a call whose
-      // outcome is not on record: it may have run and been billed, so it is
-      // never dropped by accident. Without --supersede the new take is
-      // refused; with it, that take is recorded as failed with its outcome
-      // and billing unknown — craft's rule for a call replaced while still
-      // generating (docs/reference/craft-project-file.md, params.earlier).
+      // file (see gifTakes), and the take in flight, if any, is superseded
+      // only on request (supersedeGeneratingTake).
       let superseded = null;
       const newTake = (uri) => {
-        const next = nextGifTake(doc, dir, motion.id);
+        const next = nextGifTake(doc, dir, motion.id, leg === "upload" ? uri : undefined);
         const holder = doc.assets.find((a) => a.uri === uri);
+        if (holder && leg === "upload" && holder.status === "failed") {
+          // A failed take's GIF arriving after all — typically one superseded
+          // while generating. Its record stays failed; the bytes become a new
+          // take at a file of their own.
+          const onDisk = (u) => (values.dir === undefined ? u : join(values.dir, u));
+          fail(`set-gif --uploaded: ${uri} is ${holder.id}'s file, and ${holder.id} is recorded as failed — that record stays as it is, since a take's record never describes another. If this is the GIF its call made, arriving late, record the bytes as a new take: cp ${onDisk(uri)} ${onDisk(next.uri)}, then set-gif${values.dir === undefined ? "" : ` --dir ${values.dir}`} --motion ${motion.id} --uploaded --file ${next.uri}`);
+        }
         if (holder) {
           fail(`set-gif --file: ${uri} is already ${holder.id}'s file — every take gets its own, so an earlier GIF (possibly paid for) is never replaced; use ${next.uri}, the path gif-prompt prints`);
         }
         if (leg === "reserve" && existsSync(join(dir, uri))) {
           fail(`set-gif --file: ${uri} already exists — a new take must not name a file that is there (generate_gif.mjs would refuse it, and it may be an earlier paid GIF); use ${next.uri}, the path gif-prompt prints`);
         }
-        if (current?.status === "generating") {
-          const why = String(values.supersede ?? "").trim();
-          if (!why) {
-            fail(`set-gif: ${current.id} (${current.uri}) is still generating — its fal job may have run and been billed, and whether it finished is not on record. If its GIF arrived, land it (--report <generate_gif.mjs --json output>); if the call failed, record that (--status failed --notes "<why>" --request-id <id>). To start another take anyway, add --supersede "<why>": ${current.id} is then recorded as failed, its outcome and billing unknown.`);
-          }
-          failGifTake(doc, current, { reason: `superseded while generating — its outcome was never recorded (${why})`, now, owner });
-          superseded = current.id;
-        } else if (values.supersede !== undefined) {
-          fail(`set-gif --supersede: ${current ? `${current.id} is ${current.status}` : "no GIF take is registered"} — only a take still generating is superseded`);
-        }
+        superseded = supersedeGeneratingTake(doc, current, values.supersede, { command: "set-gif", now, owner })?.id ?? null;
         return next.id;
       };
 

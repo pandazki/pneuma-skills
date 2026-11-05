@@ -937,10 +937,15 @@ call, so the stage shows it working.
    finished: `set-gif --motion <id> --status failed --notes "<why, with the
    URL>" --request-id <id>`, then tell the user — never a second take
    without asking. A GIF holding another number of frames than asked is a
-   failure too. A new take is refused while the last one is still
-   `generating`: land or fail it first; `--supersede "<why>"` exists for a
-   call whose outcome you cannot know (it was killed before printing
-   anything) and records that take as failed, billing unknown.
+   failure too. A new take — and its `gif-prompt`, since a take is landed
+   against the recorded prompt — is refused while the last one is still
+   `generating`: land or fail it first; `--supersede "<why>"` (on
+   `gif-prompt` or the reservation) exists for a call whose outcome you
+   cannot know (it was killed before printing anything) and records that
+   take as failed, billing unknown. If a superseded take's GIF turns up
+   later, its record stays failed: copy the file to the next take's path and
+   record it with `set-gif --uploaded --file <that path>` (the refusal
+   prints both commands).
    `--model sunburst` on both calls is the upgrade (`--model
    openai/gpt-image-2.6-sunburst` on the reservation); landing records the
    model that ran.

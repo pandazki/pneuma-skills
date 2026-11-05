@@ -875,10 +875,13 @@ brings it); its `fps` and `loop` are what `gif-prompt` turns into the frame
 delay and the ending, and `gif-prompt` prints the next take's file as
 `--output` (one no asset holds and nothing occupies). Its prompt parts carry
 `builder: "gif-prompt/1"` and a `frames:<n>` guard ahead of the sheet's
-conditional guards.
+conditional guards. `gif-prompt` is refused while the current take is still
+`generating`, because that take is landed against the recorded guard;
+`--supersede "<why>"` records the take as failed exactly as `set-gif
+--supersede` does (below), and the next reservation needs no override.
 
-`set-gif` is the only writer of the takes, in the craft lifecycle — record
-before send, land or fail:
+`set-gif` writes the takes (`gif-prompt --supersede` only fails the one in
+flight), in the craft lifecycle — record before send, land or fail:
 
 - `--status generating` reserves a new take (`status: "generating"`, empty
   `metadata`) with a `generate` edge holding `model`, `prompt` and, with two
@@ -896,7 +899,11 @@ before send, land or fail:
   when the job ran — fal reports no usage, so whether a failed job was
   billed is not knowable here. The motion goes `failed`.
 - `--uploaded --file` records a GIF the user brought as a new take: an
-  `upload` edge, `actor: "human"`, no parents, measured at once.
+  `upload` edge, `actor: "human"`, no parents, measured at once. A file
+  sitting at the next take's path takes that number. A failed take's own
+  file is refused: a superseded take's GIF that arrives after all keeps its
+  failed record (billing unknown), and the refusal prints how to copy the
+  bytes to the next take's path and upload them as a new take.
 
 A new take (a reservation or an upload) is refused while the current take
 is still `generating`: that call's outcome is not on record, and it may

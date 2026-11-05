@@ -355,6 +355,82 @@ describe.skipIf(!HAS_FFMPEG)("set-gif → from-gif → register-run", () => {
     expect(reserve(ws, "motions/walk/gif-raw-3.gif", ["--supersede", "nothing to supersede"]).err).toContain("--supersede");
   });
 
+  test("the prompt a take in flight is landed against is not rewritten: gif-prompt refuses, or --supersede records that take", () => {
+    const replan = (ws: string, extra: string[] = []) => run(PROJECT, ["gif-prompt", "--dir", "blob", "--motion", "walk",
+      "--action", "The box steps right, slower.", "--frames", "8", ...extra], undefined, ws);
+    // Take 1 is planned at the fixture's 12 frames and reserved; a retake is
+    // planned at 8 while it is still generating.
+    const { ws, dir } = workspace();
+    expect(reserve(ws, uriOf(nextOutput(ws))).code).toBe(0);
+    const before = readFileSync(join(dir, "project.json"), "utf-8");
+    const refused = replan(ws);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("walk-gif-raw-1");
+    expect(refused.err).toContain("still generating");
+    expect(refused.err).toContain("set-gif --report");
+    expect(refused.err).toContain("--supersede");
+    expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    // Take 1's correct GIF still lands against the 12 frames it was asked for.
+    expect(land(ws).code).toBe(0);
+    expect(assetOf(dir, "walk-gif-raw-1").status).toBe("ready");
+    // Once it has landed, the retake's prompt is written as usual.
+    expect(replan(ws).code).toBe(0);
+
+    // --supersede on gif-prompt records the take in flight as failed, its
+    // outcome and billing unknown; the reservation then needs no override.
+    const second = workspace();
+    expect(reserve(second.ws, uriOf(nextOutput(second.ws))).code).toBe(0);
+    const superseding = replan(second.ws, ["--supersede", "the generate call was killed before it printed a request id", "--json"]);
+    expect(superseding.code).toBe(0);
+    expect(JSON.parse(superseding.out).output).toBe("blob/motions/walk/gif-raw-2.gif");
+    expect(assetOf(second.dir, "walk-gif-raw-1").status).toBe("failed");
+    const failure = edgeOf(second.dir, "walk-gif-raw-1").operation.params.failure;
+    expect(failure.billing).toBe("unknown");
+    expect(failure.reason).toContain("outcome was never recorded");
+    expect(failure.reason).toContain("killed before it printed a request id");
+    expect(read(second.dir).sprite.motions[0].status).toBe("failed");
+    expect(read(second.dir).sprite.motions[0].promptParts.guards[0]).toBe("frames:8");
+    expect(reserve(second.ws, "motions/walk/gif-raw-2.gif").code).toBe(0);
+    // With nothing in flight, gif-prompt's --supersede is refused rather than ignored.
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "failed", "--notes", "x"], undefined, second.ws).code).toBe(0);
+    const idle = replan(second.ws, ["--supersede", "nothing to supersede"]);
+    expect(idle.code).toBe(1);
+    expect(idle.err).toContain("only a take still generating is superseded");
+  });
+
+  test("a superseded take's GIF that arrives later becomes a new take; the superseded record stays as it was", () => {
+    const { ws, dir } = workspace();
+    expect(reserve(ws).code).toBe(0);
+    expect(reserve(ws, "motions/walk/gif-raw-2.gif", ["--supersede", "the generate call was killed before it printed a request id"]).code).toBe(0);
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--status", "failed", "--notes", "fal downstream_service_error"], undefined, ws).code).toBe(0);
+    const take1 = { asset: assetOf(dir, "walk-gif-raw-1"), edge: edgeOf(dir, "walk-gif-raw-1") };
+    expect(take1.edge.operation.params.failure.billing).toBe("unknown");
+
+    // Take 1's call ran after all: its GIF turns up at the file it reserved.
+    mkdirSync(join(dir, "motions", "walk"), { recursive: true });
+    copyFileSync(gif, join(dir, "motions", "walk", "gif-raw-1.gif"));
+    // --report lands only the current take, and the superseded one's file is its own.
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--report", "-"], report(FRAMES, "motions/walk/gif-raw-1.gif"), ws).code).toBe(1);
+    const refused = run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--uploaded", "--file", "motions/walk/gif-raw-1.gif"], undefined, ws);
+    expect(refused.code).toBe(1);
+    // The refusal says exactly how to record the bytes as a new take.
+    expect(refused.err).toContain("cp blob/motions/walk/gif-raw-1.gif blob/motions/walk/gif-raw-3.gif");
+    expect(refused.err).toContain("set-gif --dir blob --motion walk --uploaded --file motions/walk/gif-raw-3.gif");
+
+    copyFileSync(join(dir, "motions", "walk", "gif-raw-1.gif"), join(dir, "motions", "walk", "gif-raw-3.gif"));
+    expect(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", "walk", "--uploaded", "--file", "motions/walk/gif-raw-3.gif"], undefined, ws).code).toBe(0);
+    expect(read(dir).sprite.motions[0].gifRaw).toBe("walk-gif-raw-3");
+    expect(assetOf(dir, "walk-gif-raw-3")).toMatchObject({ status: "ready", uri: "motions/walk/gif-raw-3.gif", metadata: { frames: FRAMES } });
+    expect(edgeOf(dir, "walk-gif-raw-3")).toMatchObject({ fromAssetId: null, operation: { type: "upload", actor: "human" } });
+    // The superseded take is still failed, billing unknown, exactly as recorded.
+    expect(assetOf(dir, "walk-gif-raw-1")).toEqual(take1.asset);
+    expect(edgeOf(dir, "walk-gif-raw-1")).toEqual(take1.edge);
+
+    expect(cutAndRegister(ws, "motions/walk/gif-raw-3.gif").code).toBe(0);
+    expect(frameParents(dir)).toEqual(Array(FRAMES).fill("walk-gif-raw-3"));
+    expect(nextOutput(ws)).toBe("blob/motions/walk/gif-raw-4.gif");
+  });
+
   test("landing and cutting count the same frames when ffprobe cannot read one frame's delay", () => {
     // ffprobe 8.0 fills in a delay for every real GIF tried (zero, missing
     // and truncated ones alike), so the unreadable packet is a stub: the
