@@ -63,6 +63,8 @@ describe("brand project", () => {
       await writeFile(join(root, "brand.json"), JSON.stringify(p));
       const html = await exportBrandSite(root);
       expect(html).toContain("data:image/webp;base64,");
+      // An SVG work (the seed wordmark) is embedded as an image, never inlined as markup.
+      expect(html).toContain("data:image/svg+xml;base64,");
       expect(html).toContain("&lt;script&gt;");
       expect(html).not.toContain('<script>alert("x")');
       expect(html).not.toContain("Private research");

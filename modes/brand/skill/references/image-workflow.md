@@ -43,5 +43,69 @@ transparent cutout, check alpha rather than assuming a checkerboard is transpare
 Store successful outputs locally. A failed or uncertain remote generation is not
 fixed by changing a JSON status, and undoing local files does not cancel charges.
 
+## Vector assets
+
+Choose SVG when a downstream maker must scale an asset to any size or recolour
+it: icon sets, pictograms, simple geometric marks or symbols, pattern tiles and
+graphic devices. Keep raster for characters, textures, scenes, photography and
+mockups. `generate_svg.mjs` sends one request to GPT Image 2.6 on fal: the image
+model renders a reference picture, then an author model writes the SVG markup.
+
+```sh
+bun "<SKILL_DIR>/scripts/generate_svg.mjs" --help
+bun "<SKILL_DIR>/scripts/generate_svg.mjs" "<vector brief>" --palette "<brand.json palette values>" --output-dir "<project>/assets" --filename-prefix icons-core
+```
+
+Pass the `brand.json` palette values as `--palette "#F57843,#254F42"`. Write a
+precise drawing brief: subject of each element, layout (for example six icons
+in a 3×2 grid), stroke weight, caps and corners, fill or outline, the palette
+hex values and the role of each, and "no background, no text, flat shapes"
+unless those belong to the asset. Keep the script's defaults (Sunburst, medium
+quality, the gpt-6.1-terra author): in measured runs (2026-11-05) they produced
+clean line and filled icon sets in 5 of 5 attempts.
+
+Know the limits before planning the work:
+
+- Lettering is unreliable. A requested wordmark came back with garbled letters
+  drawn as paths. Keep wordmarks set in real type, such as an HTML specimen
+  using the actual font, or a reviewed raster generation. Do not request words.
+- It takes no reference images, so it cannot trace or vectorise an approved
+  raster mark. Every result is a new drawing. If the approved mark is raster,
+  keep it as the master, and record that a designer must still redraw it as a
+  vector. Do not present a new SVG as the same mark.
+- One SVG per request, and it is slow: about a minute with the defaults
+  (around 50 s for a line set, up to about 80 s for a filled set). Tell the
+  user before starting. Faster settings exist (`--model flare --quality low
+  --author gpt-5.4`, about 20 s), but in measured runs they broke 2 of 4 line
+  sets and collapsed both filled sets into blobs, so do not trade the defaults
+  for speed. Each run is a paid request, so do not loop or resend after an
+  error or timeout. The printed request ID identifies a possibly billed job.
+- fal reports no usage for this endpoint. The script prints `cost: unknown`
+  with fal's list price; tell the user that rather than estimating a figure.
+
+Inspect before recording, even with the defaults: clean measured sets still
+placed an accent stroke oddly at times, and the report cannot see a drawing
+defect. Look at the rendered file at full size and at small icon size, and
+read the JSON `report`:
+
+- `vector.pure: false` means it embeds raster images; it is not a vector asset.
+- `text.elements` above zero means its lettering depends on installed fonts.
+- `offPalette` lists colours outside the palette you passed. Regenerate with
+  the palette in the brief, or record the deviation for the user to decide.
+- `background` names a full-canvas fill. A mark for any surface needs none.
+- Any `activeContent` count means the file must not be distributed as is.
+- `title` and `desc` state what the author model intended; compare them with what you see.
+
+Record a result as an `image` work whose `file` is the `.svg`, usually stage
+`assets`, or `identity` for a mark. Put the brief in `prompt`, and describe what
+may be recoloured or scaled. Mark it `ready` only after inspection. The viewer
+and the exported brand book show it like any other image.
+
+`FAL_KEY` comes from the session's configured environment (the fal.ai key in
+the launch settings); raster images do not need it. If the script reports that
+the key is missing, keep the vector work visibly planned and explain that SVG
+generation needs a fal.ai key. Never hand-write an SVG and present it as the
+generated asset.
+
 The original research workflow inspired this method; its pictures and wording are
 not distributed in this mode. Seeds are fictional original brand examples.

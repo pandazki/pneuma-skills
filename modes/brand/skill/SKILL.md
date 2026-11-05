@@ -52,6 +52,14 @@ brand decisions itself. Read-only sharing hides agent controls.
   to upgrade a generation. See the image workflow for the commands and key setup.
   Keep consistent anchors for character identity. Do not redraw a detailed mascot
   with approximate CSS geometry in downstream examples.
+- Generate vector assets with `generate_svg.mjs` (GPT Image 2.6 on fal) when
+  downstream makers must scale and recolour them: icon sets, pictograms, simple
+  geometric marks, pattern tiles and graphic devices. Each SVG is a new drawing
+  from a description: it takes no references, so it cannot vectorise an approved
+  raster mark, and its lettering is unreliable, so wordmarks stay in real type.
+  Render each result and look at it, then read the script's report before
+  recording the `.svg`; one run takes about a minute. Without a fal key, keep
+  that work planned; never hand-write an SVG and present it as the generated asset.
 - Keep core source assets separate from their application mockups. A character on
   a poster is not a transparent reusable cutout; a mockup is not a print-ready dieline.
 - Preserve versions when exploring. Stable IDs and `referenceIds` retain lineage.
@@ -113,4 +121,4 @@ brand decisions itself. Read-only sharing hides agent controls.
 |---|---|
 | Authoring or repairing project data | [Project format](references/project-format.md) |
 | Planning identity and applications | [Brand development](references/brand-development.md) |
-| Generating core assets and examples | [Image workflow](references/image-workflow.md) |
+| Generating core assets, vector assets and examples | [Image workflow](references/image-workflow.md) |

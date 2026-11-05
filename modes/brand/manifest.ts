@@ -3,11 +3,12 @@ import { loadStudio, saveStudio } from "./domain.js";
 
 const manifest: ModeManifest = {
   name: "brand",
-  version: "0.2.2",
+  version: "0.3.0",
   displayName: "Brand Studio",
   description: "Define a brand through visual rules, core assets and examples others can build on.",
   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="15" rx="2"/><path d="M9 18v3h12V7h-6M6 7h5M6 11h3"/></svg>`,
   changelog: {
+    "0.3.0": ["Vector assets: icon sets, pictograms, simple geometric marks and pattern tiles as real SVG through GPT Image 2.6 on fal (add a fal.ai key), with a report on raster, lettering and off-palette colours", "The workbench shows artwork on a light ground, so transparent dark-ink icons and marks stay legible; work cards in a row now align at the top"],
     "0.2.2": ["Images now use GPT Image 2.6 through OpenRouter at the same price: Flare for new images, Sunburst for edits, and transparent backgrounds now work"],
     "0.2.1": ["Prefer OpenRouter with GPT Image 2.5 Flare for new images, Sunburst for edits, and an explicit Sunburst generation upgrade"],
     "0.2.0": ["Export paginated brand books as PDF or PNG with the shared WebCraft export workbench"],
@@ -16,8 +17,10 @@ const manifest: ModeManifest = {
   skill: {
     sourceDir: "skill", installName: "pneuma-brand",
     mdScene: "You and the user are designing a brand in Pneuma. The brand itself is the deliverable: identity rules, core assets and representative visual applications. Help downstream makers understand and extend the system; application examples illustrate the brand rather than promise finished production materials.",
-    sharedScripts: ["generate_image.mjs", "edit_image.mjs"],
-    envMapping: { OPENROUTER_API_KEY: "openrouterApiKey" },
+    // A whitelist, and transitive: generate_svg.mjs drives fal through
+    // fal-queue.mjs, so that file is installed although the agent never runs it.
+    sharedScripts: ["generate_image.mjs", "edit_image.mjs", "generate_svg.mjs", "fal-queue.mjs"],
+    envMapping: { OPENROUTER_API_KEY: "openrouterApiKey", FAL_KEY: "falApiKey" },
   },
   viewer: {
     watchPatterns: ["**/brand.json", "**/*.html", "**/*.htm", "**/*.css", "**/*.js", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.webp", "**/*.svg", "**/*.gif", "**/*.avif"],
@@ -28,7 +31,10 @@ const manifest: ModeManifest = {
   init: {
     contentCheckPattern: "**/brand.json",
     seedFiles: { "modes/brand/seed/morrow/": "morrow/" },
-    params: [{ name: "openrouterApiKey", label: "OpenRouter API Key", description: "Preferred image generation and editing through OpenRouter (Flare / Sunburst).", type: "string", defaultValue: "", sensitive: true }],
+    params: [
+      { name: "openrouterApiKey", label: "OpenRouter API Key", description: "Preferred image generation and editing through OpenRouter (Flare / Sunburst).", type: "string", defaultValue: "", sensitive: true },
+      { name: "falApiKey", label: "fal.ai API Key", description: "Optional — enables vector (SVG) asset generation: icon sets, pictograms, simple marks and pattern tiles through GPT Image 2.6 on fal. Raster images do not need it.", type: "string", defaultValue: "", sensitive: true },
+    ],
   },
   viewerApi: {
     workspace: { type: "manifest", multiFile: true, ordered: true, hasActiveFile: true, manifestFile: "brand.json", supportsContentSets: true },

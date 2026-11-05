@@ -32,6 +32,7 @@ An item may serve multiple contexts, or none while still exploring.
 Kinds: `image` and `html`. HTML is for editable identity specimens or examples;
 the mode does not require implementing a product. `width` / `height` declare its
 preview dimensions (default 390 × 844). Images retain their intrinsic aspect ratio.
+An image file may be PNG, JPEG, WebP, GIF, AVIF or SVG.
 
 Status: `planned`, `generating`, `ready`, `failed`. Ready requires `file`; failed
 requires a meaningful `error`. `prompt` records the generation brief. `referenceIds`
