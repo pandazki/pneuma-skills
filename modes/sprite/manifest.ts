@@ -26,7 +26,7 @@ const spriteManifest: ModeManifest = {
   version: "0.7.0",
   changelog: {
     "0.7.0": [
-      "A fifth way to make a motion: one generated animated GIF, about twenty seconds, with the character's references attached and every frame kept exactly as drawn, already transparent and on one canvas; offered for idles and walks in outlined styles, while sheets stay the choice for attacks, poses and painterly looks",
+      "A fifth way to make a motion: one generated animated GIF, about twenty seconds, with the character's references attached and every frame kept as drawn, already transparent, on one canvas and at the character's own size beside its other motions; offered for idles and walks in outlined styles, while sheets stay the choice for attacks, poses and painterly looks",
       "A GIF is no longer cut as if it were a video, which repeated some drawings and skipped others",
       "Every generated GIF is recorded before it is paid for and kept as its own take, with its request, whether it lands or fails: a new take never replaces an earlier one, and a failed call is never sent again on its own",
     ],

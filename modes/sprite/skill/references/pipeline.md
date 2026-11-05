@@ -1153,6 +1153,27 @@ node {SKILL_PATH}/scripts/sprite-sheet.mjs from-gif <character>/motions/<id>/gif
 | `--no-clean`, `--threshold` | cleaning on, 16 | As in `run` |
 | `--anchor` `--cell` `--pad` `--smooth` `--scale` `--nearest` `--cols` `--width` `--no-webp` | as `run` | |
 
+**The figure lands at the character's height.** A GIF is drawn on a 512 px
+canvas whatever the character's cell, so cut as drawn it stood about twice
+as tall as a 256-cell character's sheet motions (the 2026-11-05 cold-start
+trial: Lumi's cheer 462 px beside idle 234.5 and attack 227). Cut into a
+character's motion directory (the nearest sprite `project.json` above
+`--out`), every cleaned cell is scaled by one factor — premultiply → area
+→ unpremultiply — and measured again before the chain runs, so the figure
+stands as tall as the character's other ready
+sprite motions ship: their median shipped height by the rule `sizes` reads
+(a looping motion's median frame, a one-shot's first frame), divided by
+`--scale` so a pack scale applied here still ships at that height. With no
+other motion ready, the GIF's canvas is taken as one declared cell (×0.5 for
+a 512 px GIF and a 256 cell), the frame a sheet's cell gives the model.
+Pixel art, a character whose purpose holds no cell (`animate`, `loop`) and a
+GIF cut outside a character are kept as drawn. Measured on the trial's GIFs
+beside the seeded Lumi: the cheer 462 → 232 px and a 12-frame attack GIF
+462 → 232 px; `sizes` then read idle 234.5, attack 227, both GIFs 232 —
+3.3 %, no warning (the remaining gap is the seeded idle and attack). A
+one-shot's within-motion `scaleDrift` (its squat and tucked jump) is
+unchanged: one factor scales every frame.
+
 **Refused:** a file without a GIF signature (a clip is cut with
 `from-video`); fewer than 2 or more than 100 frames; a GIF whose frames are
 mostly opaque — a GIF's plate is not keyed here, so it is generated with
@@ -1164,8 +1185,14 @@ The extra keys on top of `run`'s JSON:
 ```json
 { "source": "gif", "sourceGif": "<abs path to the GIF>", "frameCount": 12,
   "delaysMs": [90, 90, "…"], "duration": 1.08, "keyed": false,
-  "alphaCoverage": 0.29, "xFrom": "cell" }
+  "alphaCoverage": 0.29, "xFrom": "cell",
+  "bodyHeight": { "from": "motions", "measured": 462, "measuredFrom": "first",
+    "target": 230.75, "scale": 0.4995, "motions": { "idle": 234.5, "attack": 227 },
+    "frame": { "width": 256, "height": 256 } } }
 ```
+
+`bodyHeight` is absent when the GIF is kept as drawn; with `"from": "cell"`
+it carries `cell` instead of `motions`.
 
 `gif` stays the preview this run wrote, as in every run summary;
 `sourceGif` is the input. `register-run` requires the motion's current GIF

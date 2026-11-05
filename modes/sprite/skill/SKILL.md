@@ -311,7 +311,7 @@ message**, only what they have not said — with the character interview
 **The screen size sets the pack scale, before anything is drawn.** Frames
 come out at the size they were drawn — a character about 450–500 px tall.
 When the game shows it at half that or less, pack at half size (`--scale
-0.5` on `run` / `from-video`; never on pixel art): three motions at full size
+0.5` on `run` / `from-video` / `from-gif`; never on pixel art): three motions at full size
 made a 2376×4690 whole-character sheet, past the 4096 px many phones and
 WebGL contexts load as one texture. Full size afterwards is a **re-pack** —
 the motion's pipeline again at `--scale 1` (free), then export — never just
@@ -961,9 +961,14 @@ call, so the stage shows it working.
    frames share one canvas (`feet` pinned a stepping foot and added 7–20 px
    of head sway on the measured GIFs). `--x-from trend` only when the
    character slides across the canvas; `--y-from cell` for a jump that keeps
-   its height; `--scale 0.5` to pack at half size. Never `from-video` or
-   `contact` on a GIF: they refuse it — a GIF has no frame rate, and sampled
-   by time it repeats some drawings and skips others.
+   its height. The GIF is drawn on a 512 px canvas whatever the cell, so
+   `from-gif` brings the figure to the character's height itself — the
+   height its other ready motions ship at, or one declared cell per canvas
+   for the first motion — and says so in `bodyHeight`; pass `--scale` only
+   when the character's other motions are packed at one (the screen-size
+   rule above). Never `from-video` or `contact` on a GIF: they refuse it — a
+   GIF has no frame rate, and sampled by time it repeats some drawings and
+   skips others.
 6. **Look at the wrap and the props.** A looping GIF can end on a copy of
    frame 0 (`inspect` names a near-duplicate `07→00`), and a prop can vanish
    for a frame (measured: the lantern in 2 of 12 attack frames) — capture

@@ -88,7 +88,7 @@ import { DEFAULT_SAFE_MARGIN_RATIO, guideGeometry, guideRaster } from "./sheet-p
 import { cellRects } from "./pack.mjs";
 import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } from "./mirror.mjs";
 import { CELL_MARGIN, alphaComponents, cutPoses, layoutPoses, locatePoses } from "./sheet-segment.mjs";
-import { SIZE_SPREAD_WARN, motionSize, sizeSpread, sizeWarning } from "./sizes.mjs";
+import { SIZE_SPREAD_WARN, medianOf, motionSize, sizeSpread, sizeWarning } from "./sizes.mjs";
 import { probeGifDelays } from "./gif-frames.mjs";
 
 const DEFAULT_THRESHOLD = 16;
@@ -730,6 +730,17 @@ Every subcommand accepts --json (one JSON object on stdout) and --help.
       trend is the walk/run choice when the figure slides across the canvas,
       and --y-from cell keeps a jump's drawn height. The summary's 'sourceGif' is the GIF; 'gif' is the
       preview, as in every run. The GIF is only read.
+      The figure is brought to the character's height by default: cut into
+      a character's motion directory, every frame is scaled by one factor
+      (premultiplied, area) so the GIF stands as tall as the character's
+      other ready sprite motions stand as shipped — their median, by the
+      rule 'sizes' reads (a looping motion by its median frame, a one-shot by
+      its first) — divided by --scale, so the shipped sizes meet. With no
+      other motion ready, the GIF's canvas is taken as one declared cell (a
+      512 px GIF of a 256 cell character: ×0.5). Pixel art, a character
+      without a cell, or a GIF cut outside a character is kept as drawn. The
+      summary's 'bodyHeight' says which: { from: motions|cell, measured,
+      measuredFrom, target, scale, motions | cell, frame }.
       Every clip command (contact, from-video, pack-split, loop, transition,
       retime) refuses a GIF and points here: a GIF has no frame rate, and the
       one ffprobe guesses misplaces every sample.
@@ -5447,6 +5458,73 @@ function decodeGifFrames(input, outDir, label) {
   };
 }
 
+/** A rescale nearer 1 than this is left undone: it would only soften the GIF. */
+const GIF_RESCALE_MIN = 0.01;
+
+/**
+ * The height a GIF motion's figure should stand at, from the character it is
+ * cut for (the nearest sprite project.json above `--out`), or null when there
+ * is none to hold it to.
+ *
+ * A GIF is drawn on a 512 px canvas whatever the character's cell, so cut as
+ * drawn it stands about twice as tall as motions made from sheets of a 256
+ * cell (the 2026-11-05 cold-start trial: Lumi's cheer 462 px beside idle 234.5
+ * and attack 227). The character's height is what `sizes` reads: the median
+ * shipped standing height of its other ready sprite motions
+ * (`measureMotionSize`). A character with none yet has its declared cell
+ * instead, the GIF's canvas taken as one cell — the frame a sheet's cell gives
+ * the model, under the same clear-margin instruction. Pixel art is never
+ * resampled, and a picture brought to life or a UI loop holds no cell. A motion
+ * that cannot be measured is skipped and said. `height` is a shipped height.
+ */
+function establishedHeight(motionDir, name, canvas, threshold, warnings) {
+  const found = findCharacterAbove(motionDir, warnings);
+  if (!found) return null;
+  if (found.pixel) {
+    warnings.push("the character is pixel art: the GIF's frames are kept at its own size (a lattice is never resampled)");
+    return null;
+  }
+  const character = readCharacterProject(found.dir, "from-gif");
+  const shipped = {};
+  for (const motion of character.doc.sprite.motions) {
+    if (!motion || motion.id === name || motion.kind === "loop" || motion.kind === "transition" || motion.status !== "ready") continue;
+    try {
+      const { size } = measureMotionSize(character, motion, threshold, "from-gif");
+      if (size) shipped[motion.id] = size.shipped;
+    } catch (error) {
+      if (!(error instanceof SpriteSheetError)) throw error;
+      warnings.push(`${motion.id} is not measured for the character's height: ${error.message}`);
+    }
+  }
+  const heights = Object.values(shipped);
+  if (heights.length) return { from: "motions", height: Math.round(medianOf(heights) * 100) / 100, motions: shipped };
+  const { cell, purpose } = character.doc.sprite.character ?? {};
+  if (purpose === "animate" || purpose === "loop" || !(cell?.height > 0)) return null;
+  return { from: "cell", scale: cell.height / canvas.height, cell: { width: cell.width, height: cell.height } };
+}
+
+/**
+ * Every cell of a cut, resampled to `size` in one ffmpeg pass:
+ * premultiply → area → unpremultiply, the chain `loop` and `rive` scale with
+ * (straight alpha drags the colour under a transparent pixel into the edge).
+ */
+function rescaleCells(cellsDir, count, size, label) {
+  const work = mkdtempSync(join(dirname(cellsDir), ".cells-scaled-"));
+  try {
+    ffmpeg([
+      "-start_number", "0", "-i", join(cellsDir, "%02d.png"), "-frames:v", String(count),
+      "-vf", `format=rgba,premultiply=inplace=1,scale=${size.width}:${size.height}:flags=area,unpremultiply=inplace=1,format=rgba`,
+      "-start_number", "0", "--", join(work, "%02d.png"),
+    ], `${label} scale`);
+    for (let index = 0; index < count; index++) {
+      if (!existsSync(join(work, frameName(index)))) fail(`${label}: rescaling wrote no frame ${frameName(index)}`);
+    }
+    for (let index = 0; index < count; index++) renameSync(join(work, frameName(index)), join(cellsDir, frameName(index)));
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
 /**
  * The GIF source: a generated (or uploaded) animated GIF, every frame of it,
  * through the same clean -> align -> pack -> gif -> inspect chain `run` and
@@ -5482,9 +5560,9 @@ function stepFromGif(gif, options) {
   }
   const fps = options.fps ?? Math.max(1, ownFps);
 
-  const source = probeSize(join(cellsDir, frameName(0)), "from-gif");
+  let source = probeSize(join(cellsDir, frameName(0)), "from-gif");
   const cleanStats = [];
-  const measures = [];
+  let measures = [];
   const coverages = [];
   for (let index = 0; index < count; index++) {
     const path = join(cellsDir, frameName(index));
@@ -5509,6 +5587,44 @@ function stepFromGif(gif, options) {
   }
   const cleaned = options.clean ? cleanSummary(cleanStats) : null;
   if (cleaned) warnings.push(...cleaned.warnings);
+
+  // One character, one size: the figure is brought to the height the
+  // character already stands at, measured the way `sizes` measures it.
+  let bodyHeight = null;
+  const own = motionSize(measures.map((m) => m.bbox?.h ?? null), { loop: options.loop === true });
+  const established = own ? establishedHeight(motionDir, options.name, source, options.threshold, warnings) : null;
+  if (established) {
+    // The others are measured as they ship (× their pack scale), so this
+    // motion's frames stand at that height over its own --scale: the shipped
+    // sizes meet whether or not the character's pack scale is passed here too.
+    const scale = established.from === "cell" ? established.scale : established.height / options.scale / own.standing;
+    const frame = { width: Math.max(1, Math.round(source.width * scale)), height: Math.max(1, Math.round(source.height * scale)) };
+    if (Math.abs(scale - 1) >= GIF_RESCALE_MIN) {
+      rescaleCells(cellsDir, count, frame, "from-gif");
+      // unpremultiply brings colour back under the faintest alpha; the cells
+      // are zeroed and measured again, as the decode left them.
+      measures = [];
+      for (let index = 0; index < count; index++) {
+        const path = join(cellsDir, frameName(index));
+        const image = readRgba(path);
+        if (zeroKeyedRgb(image, options.threshold)) writeRgbaPng(path, image, `from-gif cell ${index}`);
+        measures.push(measureFrame(image, options.threshold));
+      }
+      source = probeSize(join(cellsDir, frameName(0)), "from-gif");
+      if (scale > 1) {
+        warnings.push(`the GIF's figure is scaled UP ×${round(scale, 2)} to the character's height (it stands ${own.standing} px as drawn) — the frames are softer than the GIF`);
+      }
+    }
+    bodyHeight = {
+      from: established.from,
+      target: Math.round(own.standing * scale * 100) / 100,
+      measured: own.standing,
+      measuredFrom: own.from,
+      scale: round(scale, 4),
+      ...(established.from === "cell" ? { cell: established.cell } : { motions: established.motions }),
+      frame: source,
+    };
+  }
 
   const { aligned, packed, preview, summary } = finishMotion(motionDir, cellsDir, { ...options, fps, keyColor: null }, {
     measures, sourceCell: source, warnings,
@@ -5542,6 +5658,7 @@ function stepFromGif(gif, options) {
     xFrom: aligned.xFrom,
     ...(aligned.lift ? { yFrom: aligned.yFrom, lift: aligned.lift } : {}),
     ...(aligned.drift ? { drift: aligned.drift } : {}),
+    ...(bodyHeight ? { bodyHeight } : {}),
     scale: options.scale,
     warnings,
   };
@@ -8521,11 +8638,7 @@ function stepSizes(characterDir, { motions: named, out, threshold }) {
   if (!chosen.length) fail(`${label}: ${character.name} has no ready sprite motion to measure`);
 
   const entries = chosen.map((motion) => {
-    const frames = registeredFrames(character, motion, label);
-    const facts = readAtlasFacts(character, motion, frames.paths.length, label);
-    const boxes = frames.paths.map((path) => computeBbox(readRgba(path), threshold).bbox);
-    const heights = boxes.map((b) => (b ? b.h : null));
-    const size = motionSize(heights, { scale: facts.scale, loop: facts.loop });
+    const { frames, facts, boxes, heights, size } = measureMotionSize(character, motion, threshold, label);
     // One logical pixel of pixel art, as shipped: the finest a height can differ.
     const block = (readAlignRecord(frames.dir)?.pixel?.scale ?? 0) * facts.scale;
     // The frame drawn for the motion: the one its size was read from.
@@ -8557,6 +8670,20 @@ function stepSizes(characterDir, { motions: named, out, threshold }) {
     skipped,
     warnings,
   };
+}
+
+/**
+ * How tall one ready sprite motion stands as it ships — `sizes.mjs::motionSize`
+ * over its registered frames' solid-alpha heights, at its atlas scale and by
+ * its atlas loop flag. The one measurement `sizes` compares and `from-gif`
+ * matches a new GIF to.
+ */
+function measureMotionSize(character, motion, threshold, label) {
+  const frames = registeredFrames(character, motion, label);
+  const facts = readAtlasFacts(character, motion, frames.paths.length, label);
+  const boxes = frames.paths.map((path) => computeBbox(readRgba(path), threshold).bbox);
+  const heights = boxes.map((b) => (b ? b.h : null));
+  return { frames, facts, boxes, heights, size: motionSize(heights, { scale: facts.scale, loop: facts.loop }) };
 }
 
 /** sizes.png: the shown frame of each motion at its shipped scale, cropped to
@@ -10340,8 +10467,10 @@ function main() {
         threshold,
         clean: !values["no-clean"],
       });
+      const height = out.bodyHeight;
       emit(values, out, [
         `${out.name}: all ${out.frameCount} frames of ${basename(out.sourceGif)} at ${out.fps}fps, ${out.cell.width}x${out.cell.height} → ${out.motionDir}`,
+        ...(height ? [`${out.name}: scaled ×${height.scale} to stand ${height.target} px (${height.measured} as drawn), ${height.from === "motions" ? `the height of ${Object.keys(height.motions).join(", ")}` : `the GIF's canvas as one declared cell of ${height.cell.height} px (no other motion is ready)`}`] : []),
         ...(out.warnings.length ? out.warnings : ["no warnings"]),
       ]);
       break;

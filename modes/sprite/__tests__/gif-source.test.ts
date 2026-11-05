@@ -61,6 +61,7 @@ function columns(path: string) {
 
 let root = "";
 let gif = "";
+let smallGif = "";
 let opaqueGif = "";
 let sourceMinX: number[] = [];
 
@@ -83,6 +84,21 @@ beforeAll(() => {
   gif = join(root, "walk.gif");
   sh(["-framerate", "100/9", "-i", join(src, "%02d.png"),
     "-filter_complex", "split[a][b];[a]palettegen=reserve_transparent=1[p];[b][p]paletteuse=alpha_threshold=128", gif]);
+  // The same canvas with the figure drawn at two thirds of the height (48 of
+  // 96 px against the walk's 72): a second motion the model framed smaller.
+  const smallSrc = join(root, "small-src");
+  mkdirSync(smallSrc);
+  for (let i = 0; i < 6; i++) {
+    sh([
+      "-f", "lavfi", "-i", `color=c=0x00000000:s=${W}x${H},format=rgba`,
+      "-f", "lavfi", "-i", "color=c=0x30a050:s=16x48,format=rgba",
+      "-filter_complex", `[0][1]overlay=x=${40 + i * 2}:y=40,format=rgba`,
+      "-frames:v", "1", join(smallSrc, `${String(i).padStart(2, "0")}.png`),
+    ]);
+  }
+  smallGif = join(root, "small.gif");
+  sh(["-framerate", "10", "-i", join(smallSrc, "%02d.png"),
+    "-filter_complex", "split[a][b];[a]palettegen=reserve_transparent=1[p];[b][p]paletteuse=alpha_threshold=128", smallGif]);
   opaqueGif = join(root, "opaque.gif");
   sh(["-framerate", "10", "-i", join(src, "%02d.png"), "-vf", "format=rgb24,split[a][b];[a]palettegen[p];[b][p]paletteuse", opaqueGif]);
 });
@@ -465,6 +481,58 @@ esac
     expect(summary.warnings.join("\n")).toContain("frame(s) 01 of the GIF carry no readable delay");
     expect(run(PROJECT, ["register-run", "--dir", "blob", "--motion", "walk", "--run", "-"], cut.out, ws, env).code).toBe(0);
     expect(read(dir).sprite.motions[0].frames).toHaveLength(FRAMES);
+  });
+
+  test("a GIF motion lands at the character's height: its other ready motions', else one declared cell per canvas", () => {
+    const { ws, dir } = workspace();
+    const ok = (r: ReturnType<typeof run>) => {
+      if (r.code !== 0) throw new Error(r.err);
+      return r;
+    };
+    /** Upload `source` as the motion's take, cut it and register the run; the from-gif summary. */
+    const cut = (motion: string, source: string, loop: boolean, extra: string[] = []) => {
+      mkdirSync(join(dir, "motions", motion), { recursive: true });
+      copyFileSync(source, join(dir, "motions", motion, "gif-raw-1.gif"));
+      ok(run(PROJECT, ["set-gif", "--dir", "blob", "--motion", motion, "--uploaded", "--file", `motions/${motion}/gif-raw-1.gif`], undefined, ws));
+      const r = ok(run(SHEET, ["from-gif", `blob/motions/${motion}/gif-raw-1.gif`, "--out", `blob/motions/${motion}`, "--name", motion,
+        loop ? "--loop" : "--no-loop", ...extra, "--json"], undefined, ws));
+      ok(run(PROJECT, ["register-run", "--dir", "blob", "--motion", motion, "--run", "-"], r.out, ws));
+      return JSON.parse(r.out);
+    };
+    const sizes = () => JSON.parse(ok(run(SHEET, ["sizes", "blob", "--out", join(ws, "sizes.png"), "--json"], undefined, ws)).out);
+
+    // The character's first motion has nothing to match: the GIF's canvas is
+    // drawn as one declared cell (64 of 96 px high), so the 48 px figure
+    // stands 32 px — as a sheet cell of 64 would hold it.
+    ok(run(PROJECT, ["add-motion", "--dir", "blob", "--id", "idle", "--label", "Idle", "--source", "gif", "--fps", "10", "--loop"], undefined, ws));
+    const idle = cut("idle", smallGif, true);
+    expect(idle.bodyHeight).toMatchObject({ from: "cell", measured: 48, target: 32 });
+    // (±1 px: an area resample leaves a partly covered edge row.)
+    const idleStands = sizes().motions[0].height.standing;
+    expect(Math.abs(idleStands - 32)).toBeLessThanOrEqual(1);
+
+    // The next one stands at the height the character already has, by the
+    // rule sizes reads (a one-shot by its first frame) — not at its own
+    // canvas's, which would put this 72 px figure at 48.
+    const walk = cut("walk", gif, false);
+    expect(walk.bodyHeight).toMatchObject({ from: "motions", measured: 72, measuredFrom: "first", target: idleStands });
+    expect(walk.bodyHeight.motions).toEqual({ idle: idleStands });
+    const measured = sizes();
+    expect(measured.motions.map((m: { id: string }) => m.id)).toEqual(["walk", "idle"]);
+    expect(measured.spread).toBeLessThanOrEqual(0.035);
+    expect(measured.warnings).toEqual([]);
+    // Every frame still came through, scaled once.
+    expect(walk.frameCount).toBe(FRAMES);
+    expect(walk.cell.height).toBeLessThan(H);
+
+    // A pack scale is applied on top, so what ships still meets: frames at
+    // twice the height, packed at half.
+    ok(run(PROJECT, ["add-motion", "--dir", "blob", "--id", "hop", "--label", "Hop", "--source", "gif", "--fps", "10", "--no-loop"], undefined, ws));
+    const hop = cut("hop", gif, false, ["--scale", "0.5"]);
+    expect(Math.abs(hop.bodyHeight.target - 2 * hop.bodyHeight.motions.idle)).toBeLessThanOrEqual(1);
+    const packed = sizes();
+    expect(packed.motions.find((m: { id: string }) => m.id === "hop").height.scale).toBe(0.5);
+    expect(packed.spread).toBeLessThanOrEqual(0.035);
   });
 
   test("a GIF the user brought is an upload by the human", () => {
