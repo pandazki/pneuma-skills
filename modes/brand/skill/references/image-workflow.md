@@ -80,13 +80,20 @@ Know the limits before planning the work:
   sets and collapsed both filled sets into blobs, so do not trade the defaults
   for speed. Each run is a paid request, so do not loop or resend after an
   error or timeout. The printed request ID identifies a possibly billed job.
+  Before each run, tell the user in the chat what it will make, that it takes
+  about a minute and that its cost cannot be quoted (below), and keep within
+  any budget they gave.
 - fal reports no usage for this endpoint. The script prints `cost: unknown`
   with fal's list price; tell the user that rather than estimating a figure.
 
 Inspect before recording, even with the defaults: clean measured sets still
 placed an accent stroke oddly at times, and the report cannot see a drawing
-defect. Look at the rendered file at full size and at small icon size, and
-read the JSON `report`:
+defect. Render into the project (for example `<project>/work/`, never `/tmp`,
+which the chat cannot preview) and look at the file at full size and at the
+size it will be used. A claim about legibility at a size needs a render at that
+size: a 24 px tab icon is judged on `rsvg-convert -w 24 icon.svg -o
+work/icon-24.png`, not on a 42 px or 96 px preview. Check that `rsvg-convert`
+is installed; do not assume Python PIL is. Then read the JSON `report`:
 
 - `vector.pure: false` means it embeds raster images; it is not a vector asset.
 - `text.elements` above zero means its lettering depends on installed fonts.

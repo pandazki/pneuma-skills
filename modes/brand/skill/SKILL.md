@@ -34,6 +34,16 @@ Use `navigate-to` with `{ address: { contentSet: "morrow", item: "brand-world" }
 Use `compare` for a work with references. Reuse the address in a viewer locator
 or framework `capture`. A region highlights that portion of the image; capture
 still shows the work with the highlighted region, not a cropped asset.
+
+A viewer locator is a card in your reply that takes the user to a work. Write it
+exactly in this form, with the address JSON in single quotes:
+
+```
+<viewer-locator label="Open the tab icons" address='{"contentSet":"morrow","item":"tab-icons"}' />
+```
+
+Any other form, such as JSON between `<viewer-locator>` tags, reaches the user
+as raw text.
 File changes update the viewer. The viewer does not generate images or write
 brand decisions itself. Read-only sharing hides agent controls.
 
@@ -60,6 +70,10 @@ brand decisions itself. Read-only sharing hides agent controls.
   Render each result and look at it, then read the script's report before
   recording the `.svg`; one run takes about a minute. Without a fal key, keep
   that work planned; never hand-write an SVG and present it as the generated asset.
+- Before each paid call, tell the user in the chat what it will make and about how
+  long it takes (an SVG about a minute). fal reports no cost for an SVG, so say
+  that none can be quoted rather than guessing a figure. Keep within any budget
+  the user gave: say how many calls you plan, and ask before making more.
 - Keep core source assets separate from their application mockups. A character on
   a poster is not a transparent reusable cutout; a mockup is not a print-ready dieline.
 - Preserve versions when exploring. Stable IDs and `referenceIds` retain lineage.
@@ -69,6 +83,9 @@ brand decisions itself. Read-only sharing hides agent controls.
   leaves remote completion uncertain; do not blindly repeat a paid request.
 - Paths are relative to the project. Keep assets local and do not depend on expiring
   URLs, absolute filesystem paths, or undocumented external rendering services.
+  Keep working files (renders, previews, split pieces) inside the project too, for
+  example in `work/`, never in `/tmp`: the chat cannot preview files outside the
+  workspace, so the user could not see what you looked at.
 
 ## Workflow
 
