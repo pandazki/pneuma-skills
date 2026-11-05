@@ -400,7 +400,6 @@ export function inspectSvg(input, { palette } = {}) {
 export function svgCost({ author = DEFAULT_SVG_AUTHOR } = {}) {
   return {
     usd: null,
-    estimate: true,
     basis: "unknown",
     note: `fal bills GPT Image 2.6 SVG by tokens — the reference picture plus the ${author} authoring pass — and reports no usage`,
     listPrice: { ...SVG_LIST_PRICE, unit: "USD per 1M tokens" },

@@ -87,8 +87,8 @@ export interface SvgReport {
 }
 
 export interface SvgCost {
+  /** Always null: fal reports no usage for this endpoint, so there is no figure to estimate. */
   usd: null;
-  estimate: true;
   basis: "unknown";
   note: string;
   listPrice: typeof SVG_LIST_PRICE & { unit: string };

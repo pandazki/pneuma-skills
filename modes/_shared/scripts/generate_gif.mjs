@@ -53,10 +53,11 @@
  * there without resubmitting.
  *
  * `--json` prints exactly one object on stdout:
- *   { backend, model, endpoint, requestId, files, frameCount,
- *     frameDurationMs, durationMs, size, background, cost }
- * `frameDurationMs` and `size` are read back out of the file, not echoed
- * from the request. fal bills GPT Image 2.6 by tokens and returns no usage,
+ *   { backend, model, endpoint, requestId, files, url, frameCount,
+ *     frameDurationMs, durationMs, size, background?, cost }
+ * `url` is fal's CDN copy of the GIF; `frameCount`, `frameDurationMs`,
+ * `durationMs` and `size` are read back out of the file, not echoed from
+ * the request; `background` is present only when it was asked for. fal bills GPT Image 2.6 by tokens and returns no usage,
  * so `cost.usd` is null and stderr carries `cost: unknown (…)` with fal's
  * per-token list price — a number is never invented.
  *
@@ -216,9 +217,7 @@ export function buildGifRequest({
  * ffmpeg; it is a structural reading, and it refuses anything that is not a
  * complete GIF (a wrong signature, a truncated block, no trailer).
  *
- * Returns `{ width, height, frames, delaysMs, transparent, loops }`;
- * `transparent` is true when any frame names a transparent palette index,
- * `loops` the NETSCAPE repeat count (0 = forever) or null.
+ * Returns `{ width, height, frames, delaysMs }`.
  */
 export function readGifInfo(bytes) {
   const b = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? []);
@@ -250,8 +249,6 @@ export function readGifInfo(bytes) {
 
   const delaysMs = [];
   let pendingDelay = null;
-  let transparent = false;
-  let loops = null;
   for (;;) {
     need(1, "a block");
     const introducer = b[p];
@@ -263,19 +260,9 @@ export function readGifInfo(bytes) {
       p += 1;
       if (label === 0xf9) {
         need(6, "a graphic control extension");
-        const packed = b[p + 1];
         pendingDelay = b.readUInt16LE(p + 2) * 10;
-        if (packed & 1) transparent = true;
         p += 1 + b[p];
         skipSubBlocks("a graphic control extension");
-      } else if (label === 0xff) {
-        need(1, "an application extension");
-        const size = b[p];
-        need(1 + size, "an application extension");
-        const id = b.toString("latin1", p + 1, p + 1 + size);
-        p += 1 + size;
-        if (id.startsWith("NETSCAPE2.0") && p + 4 <= b.length && b[p] >= 3 && b[p + 1] === 1) loops = b.readUInt16LE(p + 2);
-        skipSubBlocks("an application extension");
       } else {
         skipSubBlocks("an extension");
       }
@@ -300,7 +287,7 @@ export function readGifInfo(bytes) {
     throw new Error(`malformed GIF: unexpected block 0x${introducer.toString(16).padStart(2, "0")} at byte ${p - 1}`);
   }
   if (!delaysMs.length) throw new Error("the GIF holds no frames");
-  return { width, height, frames: delaysMs.length, delaysMs, transparent, loops };
+  return { width, height, frames: delaysMs.length, delaysMs };
 }
 
 /** What one request is known to have cost: never a number fal did not report. */
@@ -441,7 +428,6 @@ export async function generateGif(options, { runJob = runFalJob, download = down
     durationMs,
     size: { width: info.width, height: info.height },
     ...(body.background ? { background: body.background } : {}),
-    hasTransparency: info.transparent,
     cost: gifCost(),
   };
 }

@@ -88,10 +88,6 @@ export interface GifInfo {
   frames: number;
   /** Each frame's delay from its Graphic Control Extension, in ms (0 when absent). */
   delaysMs: number[];
-  /** Any frame names a transparent palette index. */
-  transparent: boolean;
-  /** NETSCAPE repeat count (0 = forever), or null when the file has none. */
-  loops: number | null;
 }
 
 /** Read a GIF's block structure; throws for anything that is not a complete GIF. */
@@ -126,7 +122,6 @@ export interface GifResult {
   /** The file's logical screen. */
   size: { width: number; height: number };
   background?: string;
-  hasTransparency: boolean;
   cost: GifCost;
 }
 

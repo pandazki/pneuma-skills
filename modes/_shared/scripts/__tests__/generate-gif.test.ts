@@ -58,7 +58,7 @@ function gif(frames: number, { delayCs = 9, width = 512, height = 512 } = {}): B
 describe("readGifInfo", () => {
   test("counts every frame and reads each delay and the canvas from the structure", () => {
     const info = readGifInfo(gif(12, { delayCs: 9 }));
-    expect(info).toEqual({ width: 512, height: 512, frames: 12, delaysMs: Array(12).fill(90), transparent: true, loops: 0 });
+    expect(info).toEqual({ width: 512, height: 512, frames: 12, delaysMs: Array(12).fill(90) });
   });
 
   test("refuses bytes that are not a whole GIF", () => {
@@ -151,7 +151,6 @@ describe("generateGif", () => {
       durationMs: 1080,
       size: { width: 512, height: 512 },
       background: "transparent",
-      hasTransparency: true,
     });
     expect(result.cost.usd).toBeNull();
   });
