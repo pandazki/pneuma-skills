@@ -108,3 +108,16 @@ test("direction packs retain explicit asymmetry alongside custom effects", () =>
   expect(prompt).toContain("Emit sparks from the blue marking, then fade away.");
   expect(pinned).toBe(false);
 });
+
+
+test("disappearance and requested shadow, text and smear subjects survive final negatives", () => {
+  const character = { description: "A shadow creature shaped like the word GO.", style: "Painterly game art", cell: { width: 64, height: 64 } };
+  const action = "Leave a motion blur smear and ground shadow, then dissolve completely until invisible.";
+  for (const { prompt } of [buildSheetPrompt({ character, motion: { ...motion, loop: false }, action }), buildGifPrompt({ character, motion: { ...motion, loop: false }, action, frames: 8 })]) {
+    expect(prompt).toContain(action);
+    expect(prompt).toContain("allowing disappearance explicitly requested by the action");
+    expect(prompt).toContain("unless they are explicitly part of the described subject or requested action");
+    expect(prompt).not.toContain("whole subject exactly once");
+    expect(prompt).not.toMatch(/no (text|drop shadow|ground shadow|motion blur)/i);
+  }
+});

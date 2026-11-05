@@ -157,7 +157,7 @@ export function facingSheetPrompt({ character, layout: given = "8" }) {
     }
   }
   text.push("The references and description own the subject identity, structure and materials, including intentional translucency or emission; preserve its defining details and change only the facing.");
-  text.push("No grid lines drawn. A flat solid pure white background, no gradient, no floor, no ground shadow, no text, no labels, no arrows.");
+  text.push("No grid lines drawn. A flat solid pure white background, no gradient, no added floor, ground shadow, text, labels or arrows unless part of the described subject.");
   return { prompt: text.join(" "), layout, builder: PACK_PROMPT_BUILDER };
 }
 
@@ -217,7 +217,7 @@ export function packClipPrompt({ character, pack, action = null }) {
     text.push(`These details are side-specific and never flip or change sides throughout the clip: ${closed(character.asymmetric)}`);
   }
   if (VIEW_TEXT[character?.view] && !items) text.push(VIEW_TEXT[character.view]);
-  text.push(`All ${n} ${items ? "items" : "copies"} ${doing}.`);
+  text.push(`All ${n} ${items ? "items" : "copies"} ${doing}. Allow disappearance when explicitly requested by the action.`);
   if (!items) {
     text.push("Every copy keeps facing exactly the direction it faces in the first frame for the whole clip — no copy turns, rotates or changes direction — and stays in its own cell at the same reference position and scale, allowing the deformation and material changes requested by the action, never moving across the screen and never crossing into a neighbouring cell.");
     // Measured (0.6.0, Pip's run): a fast state turned all four diagonal
@@ -229,7 +229,7 @@ export function packClipPrompt({ character, pack, action = null }) {
   } else {
     text.push("Every item stays centred in its own cell and never crosses into a neighbouring cell; keep all requested motion and effects inside the cell.");
   }
-  text.push("Camera completely locked: no pan, no tilt, no zoom, no parallax, no reframing, no cut. Preserve the subject identity and described structure and materials; allow the shape, colour, size and opacity changes requested by the action. Do not invent anatomy. Crisp, clean frames with no motion blur.");
+  text.push("Camera completely locked: no pan, no tilt, no zoom, no parallax, no reframing, no cut. Preserve the subject identity and described structure and materials; allow the shape, colour, size and opacity changes requested by the action. Do not invent anatomy. Crisp, clean frames; include trails, smears or motion blur only when requested by the action.");
   text.push("The background stays a flat solid pure chroma-key green fill for the whole clip, evenly lit, no gradient: no floor, no ground line, no background shadows or reflections, and no green light spilling onto the subjects. Requested particles, glow, smoke and other effects belong to the subjects and remain inside their cells.");
   if (pinned) {
     text.push("The last frame returns to the exact picture of the first frame.");
@@ -290,6 +290,6 @@ export function itemSheetPrompt({ character, items, cols, rows }) {
   text.push("Every item is one complete subject seen from the same three-quarter angle, with the same light from the upper left, the same outline weight and the same level of detail, centred in its cell at a similar visual size, filling about 65 percent of the cell, with clear empty margin on every side; nothing crosses a cell boundary and no item touches another.");
   text.push("Preserve the described structure and materials, including intentional translucency or emission; do not add anatomy absent from the description.");
   text.push("Inventory-icon readability: strong silhouette, clear shapes, rich but limited palette.");
-  text.push("No grid lines drawn. A flat solid pure white background, no gradient, no floor, no cast shadow, no text, no labels, no numbers, no frames or slots behind the items.");
+  text.push("No grid lines drawn. A flat solid pure white background, no gradient, no added floor, cast shadow, text, labels or numbers unless part of the described items; no frames or slots behind the items.");
   return { prompt: text.join(" "), builder: PACK_PROMPT_BUILDER };
 }

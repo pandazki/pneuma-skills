@@ -44,6 +44,7 @@ import {
   renameSync, rmSync, statSync, unlinkSync, writeFileSync, lstatSync, realpathSync, rmdirSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { assertStaticPng } from "./static-png.mjs";
 import { runCompare } from "./compare.mjs";
 import { cleanAlphaHaze } from "./alpha-clean.mjs";
 import { diagnoseAnimation } from "./animation-diagnostics.mjs";
@@ -3254,12 +3255,7 @@ function stepAlphaClean(inputPath, outPath, options) {
     if (lstatSync(entry.path).isSymbolicLink() || extname(entry.path).toLowerCase() !== ".png") fail("alpha-clean: only regular PNG files are supported; symlink frames are refused");
     if (!statSync(entry.path).isFile()) fail("alpha-clean: input must be a regular PNG file");
     const bytes = readFileSync(entry.path);
-    if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) fail("alpha-clean: input must have a PNG signature");
-    if (bytes.length >= 25 && bytes[24] === 16) fail("alpha-clean: 16-bit PNG is unsupported; cleanup preserves decoded RGBA8 pixels only");
-    for (let offset = 8; offset + 12 <= bytes.length;) {
-      if (bytes.toString("ascii", offset + 4, offset + 8) === "acTL") fail("alpha-clean: animated PNG is unsupported; provide its decoded frames directory");
-      offset += bytes.readUInt32BE(offset) + 12;
-    }
+    try { assertStaticPng(bytes); } catch (error) { fail(`alpha-clean: ${error.message}`); }
   }
   const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
   const hashes = entries.map((entry) => hash(entry.path));
@@ -3290,7 +3286,6 @@ function lstatExists(path) {
   try { lstatSync(path); return true; } catch (error) { if (error.code === "ENOENT") return false; throw error; }
 }
 
-/** Measure a motion while leaving intent and applicability to its author. */
 function stepInspect(motionDir, { anchor, threshold, cellsDir, cellBoxes, write = true, keyColor, extraWarnings = [] }) {
   const dir = resolve(motionDir);
   const framesDir = existsSync(join(dir, "frames")) ? join(dir, "frames") : dir;

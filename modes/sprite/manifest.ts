@@ -23,8 +23,14 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.7.0",
+  version: "0.8.0",
   changelog: {
+    "0.8.0": [
+      "Motion prompts follow the described subject, including people, animals, props, icons, effects and abstract animation, without inventing anatomy or forbidding requested disappearance",
+      "Animation diagnostics report drawing changes, timed holds and alpha changes without treating intentional pauses or transparency as failures",
+      "Optional alpha cleanup writes a separate copy and protects the original edges",
+      "Compare final PNG, atlas and animated GIF candidates with playback metadata, pixel evidence and a narrow cleanup check, while artistic quality stays for review",
+    ],
     "0.7.0": [
       "A fifth way to make a motion: one generated animated GIF, about twenty seconds, with the character's references attached and every frame kept as drawn, already transparent, on one canvas and at the character's own size beside its other motions; offered for idles and walks in outlined styles, while sheets stay the choice for attacks, poses and painterly looks",
       "A GIF is no longer cut as if it were a video, which repeated some drawings and skipped others",

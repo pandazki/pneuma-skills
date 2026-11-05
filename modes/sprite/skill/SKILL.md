@@ -50,11 +50,48 @@ player running the selected motion at its own rate beside its GIF, clip,
 packed atlas and an Export tab. What you make depends on what the user is
 making — a move set for a game, a loop for a web page, a mascot for an app,
 or their own picture brought to life (**Pick the route**, below) — but the
-shape is always the same: a character designed once, or taken from their
-image, then each motion turned into aligned frames, previews they can watch
-and files their tools load. A motion can also be a **loop**: one seamless
+shape is always the same: a subject designed once, or taken from their
+image, then each motion turned into frames, previews they can watch
+and files their tools load. Subjects include humans, animals, limbless creatures,
+props, icons, smoke and glow effects, and abstract shapes. The existing
+`character.description` records structure and materials; the motion action
+records what changes. Do not infer two legs, ground contact, opaque materials
+or a fixed silhouette from the word "character" in the file format. A motion can also be a **loop**: one seamless
 transparent animation for a UI. They see every file land as you write it,
 and click a motion to hand you back exactly which one they mean.
+
+## Subject intent and review tools
+
+Describe the actual subject and action before generation. A human can "raise her
+left hand while holding a lantern in her right"; a fox can "trot on four paws";
+a serpent can "coil and uncoil"; a glass bottle icon can "bubble and change
+colour"; smoke can "expand and fade completely"; abstract ribbons can "change
+shape and dissolve". Keep explicit anatomy and asymmetry where supplied.
+Custom actions own their phases, effects and disappearance. Fixed camera and
+containment still apply to the visible subject and its requested effects.
+
+Use `node {SKILL_PATH}/scripts/sprite-sheet.mjs inspect <motionDir|gif> --json`
+for drawing-change, hold and alpha-mass observations. Exact holds require usable
+final-artifact timing. Holds may be intentional, and alpha changes may be smoke,
+glow, glass or disappearance. These measurements cannot certify identity,
+anatomy, ghosting or artistic quality. Legacy geometry names do not prove the
+subject has feet or a head. Use contact alignment only when the action has
+contacts. Read `references/quality.md` for interpretation and timing limits.
+
+Only when cleanup is deliberately requested, run
+`node {SKILL_PATH}/scripts/sprite-sheet.mjs alpha-clean <png|framesDir> --out <newDirectory> --max-alpha 15 --keep-edge 2 --json`.
+It writes an isolated copy, preserves original stronger alpha and its edge band,
+and can still remove intentional faint particles. Never enable it automatically
+or use it as proof of better art.
+
+Compare delivered files with
+`node {SKILL_PATH}/scripts/sprite-sheet.mjs compare <baseline> --candidate <candidate> --out <newDirectory> --json`.
+Supported inputs are static RGBA8 PNG, Pneuma atlas JSON with its actual sheet,
+and GIF with exact delays. Optional `--alpha-clean --max-alpha 15 --keep-edge 2`
+checks only that narrow cleanup contract. Read `references/comparison.md` for
+refusals and evidence. Inspect the preview tiles and the final animation against
+the requested intent before choosing a candidate. Neither command registers,
+adopts or replaces it, and artistic quality remains unknown.
 
 ## Core rules
 

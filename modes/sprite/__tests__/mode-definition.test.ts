@@ -532,7 +532,7 @@ describe("the definition and the manifest agree", () => {
   });
 
   test("0.7.0 is the GIF source release, in the user's words, and ships the GIF script", () => {
-    expect(spriteManifest.version).toBe("0.7.0");
+    expect(spriteManifest.version).toBe("0.8.0");
     const notes = spriteManifest.changelog!["0.7.0"];
     expect(notes.length).toBeGreaterThanOrEqual(1);
     for (const note of notes) {

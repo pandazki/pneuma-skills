@@ -1,3 +1,4 @@
+import { assertStaticPng } from "./static-png.mjs";
 import {
   readFileSync,
   realpathSync,
@@ -134,17 +135,6 @@ function gifMetadata(bytes) {
   }
   throw Error("GIF trailer missing");
 }
-function animatedPng(bytes) {
-  let at = 8;
-  while (at + 12 <= bytes.length) {
-    const size = bytes.readUInt32BE(at),
-      type = bytes.subarray(at + 4, at + 8).toString();
-    if (type === "acTL") return true;
-    at += 12 + size;
-    if (type === "IEND") return false;
-  }
-  return false;
-}
 
 /** Load only final artifacts. Codec callbacks must decode without resizing. */
 export function loadFinalArtifact(path, codecs, records = []) {
@@ -152,14 +142,7 @@ export function loadFinalArtifact(path, codecs, records = []) {
   const extension = extname(path).toLowerCase();
   let frames, durationsMs, loop, pivots, order, sheet, rectangles = null;
   if (extension === ".png") {
-    if (
-      !bytes
-        .subarray(0, 8)
-        .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-    )
-      throw Error("PNG signature mismatch");
-    if (bytes.length >= 25 && bytes[24] === 16) throw Error("16-bit PNG is unsupported; comparison requires RGBA8 precision");
-    if (animatedPng(bytes)) throw Error("Animated PNG is unsupported");
+    assertStaticPng(bytes);
     frames = [imageValid(codecs.readRgba(record.realPath))];
     durationsMs = null;
     loop = null;
@@ -231,8 +214,7 @@ export function loadFinalArtifact(path, codecs, records = []) {
         .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
     )
       throw Error("Atlas sheet must be PNG");
-    if (sheetInput.bytes.length >= 25 && sheetInput.bytes[24] === 16) throw Error("16-bit PNG is unsupported; comparison requires RGBA8 precision");
-    if (animatedPng(sheetInput.bytes)) throw Error("Animated PNG is unsupported");
+    assertStaticPng(sheetInput.bytes);
     sheet = imageValid(codecs.readRgba(sheetInput.record.realPath));
     if (!equal(doc.meta.size, { w: sheet.width, h: sheet.height }))
       throw Error("Atlas sheet dimensions disagree");
@@ -409,15 +391,17 @@ export function compareFinalArtifacts(
   };
 }
 function contact(frames) {
-  const cell = 256, columns = Math.min(8, frames.length);
-  const width = columns * cell, height = Math.ceil(frames.length / columns) * cell;
+  const selected = frames.length <= 64 ? frames.map((_, index) => index) : Array.from({ length: 64 }, (_, index) => Math.round(index * (frames.length - 1) / 63));
+  const cell = 256, columns = Math.min(8, selected.length);
+  const width = columns * cell, height = Math.ceil(selected.length / columns) * cell;
   const data = Buffer.alloc(width * height * 4), mapping = [];
-  frames.forEach((f, index) => {
+  selected.forEach((frameIndex, index) => {
+    const f = frames[frameIndex];
     const scale = Math.min(1, cell / f.width, cell / f.height);
     const w = Math.max(1, Math.round(f.width * scale));
     const h = Math.max(1, Math.round(f.height * scale));
     const x = (index % columns) * cell, y = Math.floor(index / columns) * cell;
-    mapping.push({ frame: index, x, y, width: w, height: h, sourceWidth: f.width, sourceHeight: f.height });
+    mapping.push({ frame: frameIndex, x, y, width: w, height: h, sourceWidth: f.width, sourceHeight: f.height });
     for (let row = 0; row < h; row++) {
       for (let col = 0; col < w; col++) {
         const source = (Math.min(f.height - 1, Math.floor(row / scale)) * f.width + Math.min(f.width - 1, Math.floor(col / scale))) * 4;
@@ -448,6 +432,8 @@ export function runCompare({ baseline, candidate, out, alphaClean }, codecs) {
       alphaClean,
       cleanAlphaHaze: codecs.cleanAlphaHaze,
     });
+    const describe = (artifact) => ({ format: artifact.format, frameCount: artifact.frames.length, canvases: artifact.frames.map(({ width, height }) => ({ width, height })), durationsMs: artifact.durationsMs, loop: artifact.loop, pivots: artifact.pivots, frameOrder: artifact.order, rectangles: artifact.rectangles });
+    report.artifacts = { baseline: describe(a), candidate: describe(b) };
     report.inputs = {
       baseline: {
         files: a.files,
@@ -472,22 +458,24 @@ export function runCompare({ baseline, candidate, out, alphaClean }, codecs) {
       "compare candidate",
     );
     if (!report.changedProtectedProperties.includes("geometry")) {
-      const frames = a.frames.map((f, i) => ({
-        width: f.width,
-        height: f.height,
-        data: Buffer.from(
-          f.data.map((v, p) =>
-            p % 4 === 3 ? 255 : Math.max(Math.abs(v - b.frames[i].data[p]), Math.abs(f.data[Math.floor(p / 4) * 4 + 3] - b.frames[i].data[Math.floor(p / 4) * 4 + 3])),
-          ),
-        ),
-      }));
+      const frames = a.frames.map((frame, index) => {
+        const other = b.frames[index].data, data = Buffer.alloc(frame.data.length);
+        for (let pixel = 0; pixel < data.length; pixel += 4) {
+          const alphaDelta = Math.abs(frame.data[pixel + 3] - other[pixel + 3]);
+          const alphaDisplay = alphaDelta ? Math.max(64, alphaDelta) : 0;
+          for (let channel = 0; channel < 3; channel++)
+            data[pixel + channel] = Math.max(alphaDisplay, Math.abs(frame.data[pixel + channel] - other[pixel + channel]));
+          data[pixel + 3] = 255;
+        }
+        return { width: frame.width, height: frame.height, data };
+      });
       codecs.writeRgbaPng(
         join(stage, "difference.png"),
         contact(frames).image,
         "compare difference",
       );
     }
-    report.previews = { sampling: "nearest-neighbour; measurements use full-resolution pixels", baseline: baselinePreview.mapping, candidate: candidatePreview.mapping, difference: "RGB channels show max of RGB difference and alpha difference" };
+    report.previews = { sampling: "nearest-neighbour; measurements use full-resolution pixels", baseline: baselinePreview.mapping, candidate: candidatePreview.mapping, difference: "RGB channels show max of RGB difference and alpha difference; nonzero alpha difference has display floor 64" };
     verify(records);
     writeFileSync(
       join(stage, "comparison.json"),

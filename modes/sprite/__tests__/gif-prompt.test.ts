@@ -2,12 +2,6 @@
  * The code-built GIF prompt (`sheet-prompt.mjs` `buildGifPrompt`,
  * `sprite-project.mjs gif-prompt`).
  *
- * The text is pinned word for word under `gif-prompt/2`, as the sheet text is
- * under `sheet-prompt/3`: a recorded `promptParts.builder` must keep meaning
- * the words it produced. The state guards are the sheet's own sentences said
- * of frames (`gifWording`); every state and facing is rendered here so a new
- * sheet sentence that names a cell fails in this file, not in a paid call.
- *
  * Pure, plus the real CLI on a character with no references — neither needs
  * ffmpeg.
  */
@@ -41,9 +35,8 @@ const BLOB: SheetCharacter = {
 const IDLE: SheetMotion = { id: "idle", label: "Idle", grid: { rows: 1, cols: 1 }, loop: true };
 const ACTION = "Frames 1-4 the blob swells, frames 5-8 it settles back.";
 
-/** `gif-prompt/2` for BLOB's 8-frame idle, word for word. */
 const GOLDEN_IDLE =
-  "Flat vector blob, thick outline. One animated GIF of 8 frames on one fixed canvas: the whole subject exactly once in every frame, at a consistent reference scale, allowing the size changes requested by the action, with a clear margin of empty background on every side — all requested motion and effects included — and nothing cut off by the edge of the frame. The same subject in every frame, matching the attached references exactly. A round test blob with one antenna. Preserve the described materials, including intentional translucency, emission and pale details; transparency outside the subject is the background. The subject faces right. Fixed camera: consistent reference scale and camera distance in every frame, and any ground contacts specified by the action share one baseline. The references and description own the subject's identity and structure. Preserve its defining details and side-specific features while allowing the changes of shape, colour, size and opacity requested by the action. Do not invent features absent from the subject. The motion (8 frames, looping): Frames 1-4 the blob swells, frames 5-8 it settles back. This is an idle motion: follow the explicit action and the described subject structure, using only features the subject actually has. The action determines the phases, deformation, materials and effects; do not add anatomy or movements from the state name. Frame 8 leads smoothly into frame 1 on the next beat, with compatible movement direction and without an extra hold: it is the pose just before frame 1, not a copy of it. Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration. A fully transparent background in every frame. No floor, no ground line, no drop shadow, no ground shadow, no scenery, no text, no motion blur.";
+  "Flat vector blob, thick outline. One animated GIF of 8 frames on one fixed canvas: one instance of the subject where visible, allowing disappearance explicitly requested by the action, at a consistent reference scale, allowing the size changes requested by the action, with a clear margin of empty background on every side — all requested motion and effects included — and nothing cut off by the edge of the frame. Where visible, the subject matches the attached references. A round test blob with one antenna. Preserve the described materials, including intentional translucency, emission and pale details; transparency outside the subject is the background. The subject faces right. Fixed camera: consistent reference scale and camera distance in every frame, and any ground contacts specified by the action share one baseline. The references and description own the subject's identity and structure. Preserve its defining details and side-specific features while allowing the changes of shape, colour, size and opacity requested by the action. Do not invent features absent from the subject. The motion (8 frames, looping): Frames 1-4 the blob swells, frames 5-8 it settles back. This is an idle motion: follow the explicit action and the described subject structure, using only features the subject actually has. The action determines the phases, deformation, materials and effects; do not add anatomy or movements from the state name. Frame 8 leads smoothly into frame 1 on the next beat, with compatible movement direction and without an extra hold: it is the pose just before frame 1, not a copy of it. Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration. A fully transparent background in every frame. Add no floor, ground line, scenery, text, shadows or motion blur unless they are explicitly part of the described subject or requested action.";
 
 describe("sheet-prompt.mjs — the GIF prompt", () => {
   test("gif-prompt/2 text is pinned, and the recorded parts render the same text", () => {
@@ -68,7 +61,7 @@ describe("sheet-prompt.mjs — the GIF prompt", () => {
       build({ character: BLOB, motion: { id: "attack", grid: { rows: 2, cols: 4 }, loop: false }, action: "Swing.", frames: 8 } as never).prompt;
     const sheetGuard = attack(buildSheetPrompt).match(/This is an attack[^]*?state name\./)![0];
     expect(attack(buildGifPrompt)).toContain(gifWording(sheetGuard));
-    expect(attack(buildGifPrompt)).toContain("the whole subject exactly once in every frame");
+    expect(attack(buildGifPrompt)).toContain("one instance of the subject where visible");
   });
 
   test("a sentence the wording does not cover is refused rather than sent", () => {

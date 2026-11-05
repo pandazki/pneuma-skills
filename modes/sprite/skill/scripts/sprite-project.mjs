@@ -332,7 +332,7 @@ object on stdout; --at <ms> pins every timestamp (tests and replays).
   gif-prompt --motion <motionId> --action "<the phase plan, by frame>" --frames ${GIF_FRAME_RANGE.min}-${GIF_FRAME_RANGE.max}
              [--state ${[...SHEET_STATES, "generic"].join("|")}] [--supersede "<why>"]
       Build the prompt for a GIF motion in code and record it (motion.prompt,
-      motion.promptParts, builder gif-prompt/1): the character's style
+      motion.promptParts, builder gif-prompt/2): the character's style
       sentence verbatim, one animation of --frames frames on one fixed
       canvas, identity over motion, the facing, the asymmetry lock, the
       state's guards (the sheet's, said of frames), the loop closure or

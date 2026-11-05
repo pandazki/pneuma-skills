@@ -40,9 +40,9 @@ silhouette. View the motion before changing alignment or shape.
 ## Deliberately requested cleanup
 
 ```sh
-bun <skill-dir>/scripts/sprite-sheet.mjs alpha-clean native-alpha.png \
+node {SKILL_PATH}/scripts/sprite-sheet.mjs alpha-clean native-alpha.png \
   --out cleaned-copy --max-alpha 15 --keep-edge 2 --json
-bun <skill-dir>/scripts/sprite-sheet.mjs alpha-clean motion/frames \
+node {SKILL_PATH}/scripts/sprite-sheet.mjs alpha-clean motion/frames \
   --out cleaned-frames --max-alpha 15 --keep-edge 2 --json
 ```
 

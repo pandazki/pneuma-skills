@@ -12,6 +12,24 @@ holds nothing for this mode is a complete outcome that changes nothing here.
 Upstream moves fast (260 commits in its first six weeks); counting commits
 past the pin measures its pace, not a debt of ours.
 
+## New adaptations at 0.8.0
+
+The older ports and inspirations below remain pinned to `fbd1a08`. This round
+separately draws on `aldegad/sprite-gen` at
+`4f5ccd55c7cf06685a41f954acc1e476b7772ece`:
+
+- `skill/scripts/alpha-clean.mjs` adapts `sprite_gen/frames/alpha_floor.py`
+  under Apache-2.0. It uses an inclusive alpha ceiling, an immutable original
+  support mask and edge band, and skips images with no stronger support.
+- Subject-aware prompting takes inspiration from upstream body-plan guidance.
+  Our description and action remain authoritative; no body-plan taxonomy or
+  upstream implementation is copied.
+
+Animation diagnostics and final-artifact comparison are mode-owned additions.
+They do not import upstream quality scores or certify artistic improvement.
+The old no-detached-effects prompt restriction listed below is historical;
+current prompts allow effects requested by the description or action.
+
 ## Upstream
 
 - **Name**: sprite-gen (`aldegad/sprite-gen`)

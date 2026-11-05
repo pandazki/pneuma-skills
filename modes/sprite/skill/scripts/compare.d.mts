@@ -49,6 +49,16 @@ export interface Comparison {
   alphaClean: { status: string; parameters?: AlphaClean };
   improvement: "unknown";
   note: string;
+  artifacts?: {
+    baseline: ArtifactDescriptor;
+    candidate: ArtifactDescriptor;
+  };
+  previews?: {
+    sampling: string;
+    baseline: PreviewTile[];
+    candidate: PreviewTile[];
+    difference: string;
+  };
   inputs?: {
     baseline: {
       files: InputDigest[];
@@ -84,3 +94,23 @@ export declare function runCompare(
   },
   codecs: CompareCodecs,
 ): Comparison & { out: string };
+
+export interface ArtifactDescriptor {
+  format: string;
+  frameCount: number;
+  canvases: { width: number; height: number }[];
+  durationsMs: number[] | null;
+  loop: FinalArtifact["loop"];
+  pivots: FinalArtifact["pivots"];
+  frameOrder: FinalArtifact["order"];
+  rectangles: FinalArtifact["rectangles"];
+}
+export interface PreviewTile {
+  frame: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sourceWidth: number;
+  sourceHeight: number;
+}

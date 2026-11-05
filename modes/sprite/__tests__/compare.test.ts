@@ -132,24 +132,14 @@ describe("final artifact comparison", () => {
     fixture((r, c) => {
       const a = loadFinalArtifact(png(r, "a.png"), c),
         params = { maxAlpha: 15, keepEdge: 2 };
-      const cleanAlphaHaze = () => ({ image: image(0), report: {} });
-      expect(
-        compareFinalArtifacts(
-          a,
-          { ...a, frames: [image(0)] },
-          { alphaClean: params, cleanAlphaHaze },
-        ).alphaClean.status,
-      ).toBe("verified");
-      expect(
-        compareFinalArtifacts(a, a, { alphaClean: params, cleanAlphaHaze })
-          .alphaClean.status,
-      ).toBe("violated");
-      expect(
-        compareFinalArtifacts(a, a, {
-          alphaClean: params,
-          cleanAlphaHaze: (f) => ({ image: f, report: {} }),
-        }).alphaClean.status,
-      ).toBe("no-op");
+      const source = { width: 3, height: 1, data: Uint8Array.from([25, 50, 75, 255, 0, 0, 0, 0, 9, 8, 7, 10]) };
+      const baseline = { ...a, frames: [source] };
+      const cleaned = cleanAlphaHaze(source, { ...params, keepEdge: 0 }).image;
+      const options = { alphaClean: { ...params, keepEdge: 0 }, cleanAlphaHaze };
+      expect(compareFinalArtifacts(baseline, { ...a, frames: [cleaned] }, options).alphaClean.status).toBe("verified");
+      expect(compareFinalArtifacts(baseline, baseline, options).alphaClean.status).toBe("violated");
+      const noOp = { ...a, frames: [cleaned] };
+      expect(compareFinalArtifacts(noOp, noOp, options).alphaClean.status).toBe("no-op");
     }));
   test("rejects decode-time mutation with input digest and no partial output", () =>
     fixture((r, c) => {
@@ -293,5 +283,5 @@ test("alpha-only black pixel changes are visible in tiled difference evidence", 
     const a = png(r, "a.png"), b = png(r, "b.png");
     c.readRgba = (p) => ({ width: 1, height: 1, data: Buffer.from([0, 0, 0, p.endsWith("/a.png") ? 15 : 0]) });
     runCompare({ baseline: a, candidate: b, out: join(r, "out") }, c);
-    expect([...readFileSync(join(r, "out", "difference.png")).subarray(0, 4)]).toEqual([15, 15, 15, 255]);
+    expect([...readFileSync(join(r, "out", "difference.png")).subarray(0, 4)]).toEqual([64, 64, 64, 255]);
   }));

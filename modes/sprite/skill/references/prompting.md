@@ -73,19 +73,20 @@ is the style.
    contacts, trajectories and follow-through that connect them. Add individual
    pose details where needed; phase boundaries need not follow grid rows.
 5. **Negative constraints.** A flat solid pure white background filling every
-   cell, no gradient, no cell borders, no numbers, no drop shadow, no ground
-   shadow, no motion blur, no effects leaving the cell. The white plate is
+   cell, no gradient, cell borders or guide labels, and no effects leaving the
+   cell. Exclude added text, floor, shadows or blur unless they are part of the
+   described subject or requested action. Explicit disappearance is permitted. The white plate is
    asked for here and cut off afterwards by the keying step — a *drawn* floor
    or a gradient is what makes that cut hard, so name them as negatives.
 
 ## The five clauses that make the cut clean
 
-These are not style choices; they are what the keying and alignment steps need
-in order to work at all. Every sheet prompt carries all five.
+These constraints help keying and alignment. Apply them to the background and
+unrequested decoration; do not negate an intentionally described subject.
 
-- **No floor, no cast shadow.** A shadow is opaque, so it lands in the alpha
-  and the aligner treats it as part of the character — the silhouette grows a
-  smear that moves with the pose, and the anchor moves with it.
+- **No added floor or cast shadow.** A shadow can land in the alpha and affect
+  alignment. If the shadow is the subject or an intended effect, retain it and
+  review its placement rather than applying a foot-contact assumption.
 - **Preserve intended materials and pale details.** A white highlight on a
   solid prop is not a hole; glass, smoke and glow may be translucent. Describe
   that distinction rather than asking every subject to be fully opaque. A colour
@@ -446,7 +447,7 @@ Four constraints then do the mechanical work, and each one pays for itself:
 - **A flat solid pure white background**, asked for in the prompt, with
   `--background opaque` on the call. The alpha comes from
   `remove-background.mjs` afterwards, exactly as a sheet's does.
-- **No floor, no cast or contact shadow, no reflection, no vignette, no text.**
+- **No added floor, cast or contact shadow, reflection, vignette or text unless requested as part of the subject.**
   A shadow and a reflection are opaque, so they land inside the alpha and then
   sway along with the subject — a UI icon with a shadow attached to it is the
   single most common way a loop comes back unusable. A vignette makes the plate

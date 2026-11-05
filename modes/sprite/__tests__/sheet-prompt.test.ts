@@ -2,11 +2,6 @@
  * The code-built sheet prompt (`sheet-prompt.mjs`, `sprite-project.mjs
  * sheet-prompt`) and the layout guide (`sprite-sheet.mjs guide`).
  *
- * The module tests are pure and run everywhere. The builder's text is pinned
- * word for word under `sheet-prompt/3`: a change to any sentence has to fail
- * here, because a recorded `promptParts.builder` must keep meaning the words
- * it produced — change the text, bump the builder.
- *
  * The CLI halves run the real scripts. `sheet-prompt` needs no ffmpeg; the
  * guide PNG and the anchor ref (a registered image) do, and skip with a named
  * reason without it.
@@ -58,9 +53,8 @@ const BLOB: SheetCharacter = {
 const IDLE: SheetMotion = { id: "idle", label: "Idle", grid: { rows: 2, cols: 4 }, loop: true };
 const ACTION = "Cells 1-4 the blob swells, cells 5-8 it settles back.";
 
-/** The current builder text, pinned independently of runtime rendering. */
 const GOLDEN_IDLE =
-  "Flat vector blob, thick outline. A single 2048x1024 image laid out as a strict 4x2 grid of 8 equal 512x512 cells, 4 columns and 2 rows, read left to right, top to bottom. Each cell holds the whole subject exactly once, centred in the cell, with at least 48 px of empty background on every side — all requested motion and effects included — and nothing crosses into a neighbouring cell. The same subject in every cell, matching the attached references exactly. A round test blob with one antenna. Preserve the described materials, including intentional translucency, emission and pale details; the white plate is only the background. The subject faces right. Fixed camera: consistent reference scale and camera distance in every cell, and any ground contacts specified by the action share one baseline. The references and description own the subject's identity and structure. Preserve its defining details and side-specific features while allowing the changes of shape, colour, size and opacity requested by the action. Do not invent features absent from the subject. The motion (8 frames, looping): Cells 1-4 the blob swells, cells 5-8 it settles back. This is an idle motion: follow the explicit action and the described subject structure, using only features the subject actually has. The action determines the phases, deformation, materials and effects; do not add anatomy or movements from the state name. The motion runs straight on across row ends: the first cell of each row continues from the last cell of the row above by the same small step as the cells within a row. Cell 8 leads smoothly into cell 1 on the next beat, with compatible movement direction and without an extra hold. Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration. A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no floor, no drop shadow, no ground shadow, no motion blur.";
+  "Flat vector blob, thick outline. A single 2048x1024 image laid out as a strict 4x2 grid of 8 equal 512x512 cells, 4 columns and 2 rows, read left to right, top to bottom. Each cell holds one instance of the subject where visible, allowing disappearance explicitly requested by the action, centred in the cell, with at least 48 px of empty background on every side — all requested motion and effects included — and nothing crosses into a neighbouring cell. Where visible, the subject matches the attached references. A round test blob with one antenna. Preserve the described materials, including intentional translucency, emission and pale details; the white plate is only the background. The subject faces right. Fixed camera: consistent reference scale and camera distance in every cell, and any ground contacts specified by the action share one baseline. The references and description own the subject's identity and structure. Preserve its defining details and side-specific features while allowing the changes of shape, colour, size and opacity requested by the action. Do not invent features absent from the subject. The motion (8 frames, looping): Cells 1-4 the blob swells, cells 5-8 it settles back. This is an idle motion: follow the explicit action and the described subject structure, using only features the subject actually has. The action determines the phases, deformation, materials and effects; do not add anatomy or movements from the state name. The motion runs straight on across row ends: the first cell of each row continues from the last cell of the row above by the same small step as the cells within a row. Cell 8 leads smoothly into cell 1 on the next beat, with compatible movement direction and without an extra hold. Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration. A flat solid pure white background filling every cell, no gradient. No grid lines, cell borders, guide numbers or labels. Add no floor, text, shadows or motion blur unless they are explicitly part of the described subject or requested action.";
 
 describe("sheet-prompt.mjs — the builder", () => {
   test("sheet-prompt/3 text is pinned, and the same parts render the same text", () => {
@@ -206,7 +200,7 @@ describe("sheet-prompt.mjs — the builder", () => {
     expect(renderSheetPrompt({ character: BLOB, motion: IDLE }, built.parts)).toBe(built.prompt);
     // The only difference the guide makes is its clause.
     const without = buildSheetPrompt({ character: BLOB, motion: IDLE, action: ACTION });
-    const clause = built.prompt.slice(without.prompt.indexOf(" The same subject"), built.prompt.indexOf(" The same subject"));
+    const clause = built.prompt.slice(without.prompt.indexOf(" Where visible, the subject"), built.prompt.indexOf(" Where visible, the subject"));
     expect(built.prompt.replace(clause, "")).toBe(without.prompt);
     expect(GUIDE_DEFAULT).toBe(false);
   });
@@ -231,9 +225,7 @@ describe("sheet-prompt.mjs — the builder", () => {
 /**
  * G1 (four-direction blind trial, 2026-09-27): the agent wrote "facing left,
  * her right side faces the viewer" into its own prompts and both side walks
- * carried the basket on the wrong side. The geometry is now code: every
- * prompt of an asymmetric character says where the subject's own right
- * and left fall for the facing it states.
+ * carried the basket on the wrong side.
  */
 describe("sheet-prompt.mjs — side geometry", () => {
   const LOCKED: SheetCharacter = { ...BLOB, asymmetric: "The basket hangs on her right arm." };

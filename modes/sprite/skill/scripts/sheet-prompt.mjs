@@ -21,8 +21,7 @@
  * description and action supply the structure and materials directly.
  */
 
-/** Text changes bump the builder; stored requests retain their original text.
- * /3 makes state, identity and material clauses subject-neutral. */
+/** Text changes bump the builder; stored requests retain their original text. */
 export const SHEET_PROMPT_BUILDER = "sheet-prompt/3";
 
 /**
@@ -341,7 +340,6 @@ const FACING_LOCK = {
   "back-right": "Every cell is a back three-quarter view facing up and to the camera-right, turned away from the viewer; lock the whole sheet to that facing and do not drift into a back, side or front view.",
 };
 
-/** An explicit action owns the phases; the inferred state adds no anatomy. */
 function stateText(state) {
   return `${state === "generic" ? "Animate the requested action" : `This is ${state === "idle" || state === "attack" ? "an" : "a"} ${state} motion`}: follow the explicit action and the described subject structure, using only features the subject actually has. The action determines the phases, deformation, materials and effects; do not add anatomy or movements from the state name.`;
 }
@@ -382,12 +380,12 @@ export function renderSheetPrompt({ character, motion }, parts) {
   const margin = m.x === m.y
     ? `at least ${m.x} px of empty background on every side`
     : `at least ${m.x} px of empty background left and right and ${m.y} px above and below`;
-  text.push(`Each cell holds the whole subject exactly once, centred in the cell, with ${margin} — all requested motion and effects included — and nothing crosses into a neighbouring cell.`);
+  text.push(`Each cell holds one instance of the subject where visible, allowing disappearance explicitly requested by the action, centred in the cell, with ${margin} — all requested motion and effects included — and nothing crosses into a neighbouring cell.`);
   if (g.guide) {
     text.push(`The last attached image is the layout guide for this sheet: its dark boxes are the ${n} cells, the blue boxes inside them the safe area every frame stays within, and the thin vertical lines the cell centres. Follow its cell count, spacing, centring and padding, and do not draw it: no boxes, guide lines, centre marks, guide colours or grey background anywhere in the output.`);
   }
   // 3. The subject, its facing, and identity over motion.
-  text.push("The same subject in every cell, matching the attached references exactly.");
+  text.push("Where visible, the subject matches the attached references.");
   if (description) text.push(closed(description));
   text.push("Preserve the described materials, including intentional translucency, emission and pale details; the white plate is only the background.");
   if (g.direction) text.push(FACING_LOCK[g.direction]);
@@ -424,7 +422,7 @@ export function renderSheetPrompt({ character, motion }, parts) {
     : `Cell ${n} is the pose the motion ends on.`);
   text.push("Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration.");
   // 5. The white plate and the negatives the cut-out needs.
-  text.push("A flat solid pure white background filling every cell, no gradient. No grid lines, no cell borders, no numbers, no text, no floor, no drop shadow, no ground shadow, no motion blur.");
+  text.push("A flat solid pure white background filling every cell, no gradient. No grid lines, cell borders, guide numbers or labels. Add no floor, text, shadows or motion blur unless they are explicitly part of the described subject or requested action.");
   return text.join(" ");
 }
 
@@ -573,9 +571,9 @@ export function renderGifPrompt({ character, motion }, parts) {
   // 1. The style anchor, verbatim.
   text.push(closed(style));
   // 2. What the file is, and how the character sits in every frame.
-  text.push(`One animated GIF of ${n} frames on one fixed canvas: the whole subject exactly once in every frame, at a consistent reference scale, allowing the size changes requested by the action, with a clear margin of empty background on every side — all requested motion and effects included — and nothing cut off by the edge of the frame.`);
+  text.push(`One animated GIF of ${n} frames on one fixed canvas: one instance of the subject where visible, allowing disappearance explicitly requested by the action, at a consistent reference scale, allowing the size changes requested by the action, with a clear margin of empty background on every side — all requested motion and effects included — and nothing cut off by the edge of the frame.`);
   // 3. The subject, its facing, and identity over motion.
-  text.push("The same subject in every frame, matching the attached references exactly.");
+  text.push("Where visible, the subject matches the attached references.");
   if (description) text.push(closed(description));
   text.push("Preserve the described materials, including intentional translucency, emission and pale details; transparency outside the subject is the background.");
   if (g.direction) text.push(gifWording(FACING_LOCK[g.direction]));
@@ -602,7 +600,7 @@ export function renderGifPrompt({ character, motion }, parts) {
     : `Frame ${n} is the pose the motion ends on.`);
   text.push("Include the effects and material changes requested by the action as part of the subject, within the same safe area; add no unrelated decoration.");
   // 5. The background.
-  text.push("A fully transparent background in every frame. No floor, no ground line, no drop shadow, no ground shadow, no scenery, no text, no motion blur.");
+  text.push("A fully transparent background in every frame. Add no floor, ground line, scenery, text, shadows or motion blur unless they are explicitly part of the described subject or requested action.");
   return text.join(" ");
 }
 

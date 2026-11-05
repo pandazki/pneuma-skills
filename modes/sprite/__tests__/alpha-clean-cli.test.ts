@@ -71,7 +71,7 @@ describe.skipIf(!HAS_MEDIA)("alpha cleanup real CLI", () => {
     const before = readFileSync(source);
     const result = run("alpha-clean", source, "--out", join(dir, "copy"));
     expect(result.code).toBe(1);
-    expect(result.err).toContain("animated PNG is unsupported");
+    expect(result.err).toContain("Animated PNG is unsupported");
     expect(existsSync(join(dir, "copy"))).toBe(false);
     expect(readFileSync(source)).toEqual(before);
   });
@@ -132,5 +132,44 @@ describe.skipIf(!HAS_MEDIA)("alpha cleanup real CLI", () => {
     expect(human.stdout.toString()).toContain("timing unknown");
     expect(human.stdout.toString()).not.toContain("null ms");
     expect(readFileSync(gif)).toEqual(before);
+  });
+});
+
+describe.skipIf(!HAS_MEDIA)("final comparison real CLI", () => {
+  test("binds a real cleanup to source pixels and exposes alpha-only difference evidence", () => {
+    const dir = fresh(), source = join(dir, "source.png"), clean = join(dir, "clean");
+    writePng(source, [255, 0, 8]);
+    const before = readFileSync(source);
+    expect(run("alpha-clean", source, "--out", clean, "--keep-edge", "0").code).toBe(0);
+    const evidence = join(dir, "evidence");
+    const result = run("compare", source, "--candidate", join(clean, "source.png"), "--out", evidence, "--alpha-clean", "--keep-edge", "0");
+    expect(result.code).toBe(0);
+    const report = JSON.parse(result.out);
+    expect(report.alphaClean.status).toBe("verified");
+    expect(report.artifacts.baseline.canvases).toEqual([{ width: 3, height: 1 }]);
+    expect(report.previews.baseline[0].frame).toBe(0);
+    expect(decode(join(evidence, "difference.png"))[8]).toBeGreaterThan(0);
+    expect(readFileSync(source)).toEqual(before);
+  });
+  test("refuses real APNG sheets and real 16-bit low-bit differences without flattening or quantizing", () => {
+    const dir = fresh(), source = join(dir, "sheet.png"), second = join(dir, "other.png");
+    const raw = Buffer.alloc(8); raw.writeUInt16BE(32768, 0); raw.writeUInt16BE(65535, 6);
+    ffmpeg(["-f", "rawvideo", "-pix_fmt", "rgba64be", "-s", "1x1", "-i", "-", "-frames:v", "1", source], raw);
+    raw.writeUInt16BE(32769, 0);
+    ffmpeg(["-f", "rawvideo", "-pix_fmt", "rgba64be", "-s", "1x1", "-i", "-", "-frames:v", "1", second], raw);
+    expect(readFileSync(source)[24]).toBe(16);
+    expect(decode(source)).toEqual(decode(second));
+    const rejected = run("compare", source, "--candidate", second, "--out", join(dir, "quantized"));
+    expect(rejected.code).toBe(1); expect(rejected.err).toContain("16-bit PNG");
+    expect(existsSync(join(dir, "quantized"))).toBe(false);
+    const atlas = join(dir, "atlas.json");
+    writeFileSync(atlas, JSON.stringify({ meta: { app: "pneuma-sprite", image: "sheet.png" }, frames: {} }));
+    expect(run("compare", atlas, "--candidate", atlas, "--out", join(dir, "atlas-high")).err).toContain("16-bit PNG");
+    const frames = join(dir, "frames"); mkdirSync(frames);
+    writePng(join(frames, "00.png"), [255]); writePng(join(frames, "01.png"), [127]);
+    ffmpeg(["-framerate", "2", "-i", join(frames, "%02d.png"), "-plays", "0", "-f", "apng", source]);
+    const apng = run("compare", atlas, "--candidate", atlas, "--out", join(dir, "animated"));
+    expect(apng.code).toBe(1); expect(apng.err).toContain("Animated PNG");
+    expect(existsSync(join(dir, "animated"))).toBe(false);
   });
 });
