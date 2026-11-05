@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.62.0] - 2026-11-06
+
+### Added
+- **Sprite review tools** report drawing changes, holds and alpha changes with timing tied to the actual artifact. Optional edge-protected alpha cleanup writes a separate copy. Final PNG, atlas and GIF comparison produces pixel evidence and playback metadata without replacing the original or claiming artistic improvement.
+
+### Improved
+- **Sprite subjects beyond characters** use their descriptions and actions for structure, materials and motion. Prompts support people, animals, props, icons, effects and abstract animation, including requested trails, translucency and disappearance, while preserving recorded generation requests.
+
 ## [3.61.1] - 2026-11-05
 
 ### Changed
