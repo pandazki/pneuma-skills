@@ -27,7 +27,8 @@ import type { ViewerActionRequest, ViewerActionResult, ViewerLocator, ViewerNoti
 import { findSticker, loadPack, type StickerPack } from "../domain.js";
 import manifest from "../manifest.js";
 import { filesOf, finishedWorkspace, richWorkspace } from "./pack-workspace.js";
-import { addTake, packFrom } from "./sticker-fixture.js";
+import { englishIn } from "./message-samples.js";
+import { addTake, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
 
 let win: Window;
 let restore: () => void;
@@ -338,6 +339,69 @@ describe("read-only and editing", () => {
     expect(notes[1].type).toBe("sticker-command:export-check");
     expect(notes[1].message).toContain("platform: line");
     await m.unmount();
+  });
+});
+
+/** An element's text, one text node at a time — `textContent` runs "50 KB" into the next span's "s07…". */
+function spoken(el: Element): string {
+  const parts: string[] = [];
+  const walk = (node: Node) => {
+    if (node.nodeType === 3) parts.push(node.textContent ?? "");
+    node.childNodes.forEach(walk);
+  };
+  walk(el);
+  return parts.join(" ");
+}
+
+describe("what the rules say, to whom", () => {
+  /** Every sticker and art ready, nothing exported: every file row carries `sticker.mjs export`. */
+  function unexported(): StickerPack {
+    const raw = rawPack();
+    return loadPack(filesOf(raw, readyDoc(packFrom(raw))));
+  }
+
+  test("read-only: rows, the next step and their tooltips say what is wrong, never what to type", async () => {
+    const m = await mount(unexported(), { editing: false, onNotifyAgent: () => {} });
+    expect(m.q("[data-next-step]")?.getAttribute("data-next-step")).toBe("export");
+    expect(m.q("[data-next-step]")?.textContent).toContain("Export the WeChat files");
+    await m.click(m.q('[data-segment="view:submit"]'));
+    expect(m.q('[data-check="sticker-s01"] [data-check-detail]')?.textContent).toBe("not exported yet");
+    expect(m.q('[data-check="zip"] [data-check-detail]')?.textContent).toBe("waits until every file is exported and current");
+    expect(m.all("[data-check-command]")).toEqual([]);
+    for (const leak of ["sticker.mjs", "--platform", "pack.json", "listing.wechat."]) expect(m.host.innerHTML).not.toContain(leak);
+    await m.unmount();
+  });
+
+  test("editing: a row's command shows beside its meaning, and the step's in its tooltip", async () => {
+    const m = await mount(unexported(), { editing: true, onNotifyAgent: () => {} });
+    expect(m.q("[data-next-step] [title]")?.getAttribute("title")).toBe("Export the WeChat files — sticker.mjs export --platform wechat");
+    await m.click(m.q('[data-segment="view:submit"]'));
+    expect(m.q('[data-check="sticker-s01"] [data-check-detail]')?.textContent).toBe("not exported yetsticker.mjs export --platform wechat");
+    expect(m.q('[data-check="sticker-s01"] [data-check-command]')?.textContent).toBe("sticker.mjs export --platform wechat");
+    await m.unmount();
+  });
+
+  test("Chinese and Japanese: stale reasons, checklist rows, file reasons and the next step in the user's language", async () => {
+    for (const [locale, stale, step] of [
+      ["zh-CN", "配字改了", "补齐还没出图的：s06、s08；s05 要重画得另外确认"],
+      ["ja", "文字が変わりました", "足りないスタンプを作る：s06、s08（s05 の描き直しは別に確認）"],
+    ] as const) {
+      const m = await mount(rich(), { locale, editing: false });
+      expect(m.q("[data-next-step]")?.textContent).toContain(step);
+      await m.click(m.q('[data-sticker="s03"]'));
+      expect(m.all("[data-stale-reason]").map((r) => r.textContent)).toEqual([stale]);
+      await m.click(m.q('[data-segment="view:submit"]'));
+      for (const platform of ["wechat", "telegram", "line"]) {
+        await m.click(m.q(`[data-segment="platform:${platform}"]`));
+        const rows = m.all("[data-check]").filter((r) => !["rights", "listing-copyright", "listing-title", "listing-creator", "listing-description", "listing-shortName"].includes(r.getAttribute("data-check")!));
+        expect(rows.length).toBeGreaterThan(5);
+        for (const r of rows) expect({ row: r.getAttribute("data-check"), english: englishIn(spoken(r)) }).toEqual({ row: r.getAttribute("data-check"), english: [] });
+        for (const f of m.all("[data-not-exported] [data-export], [data-files] figure")) {
+          expect({ file: f.getAttribute("data-export"), english: englishIn(spoken(f)) }).toEqual({ file: f.getAttribute("data-export"), english: [] });
+        }
+      }
+      await m.unmount();
+    }
   });
 });
 

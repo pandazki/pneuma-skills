@@ -5,7 +5,8 @@
  *
  * Writes are DECISIONS only — a picked take, anchor or art, an edited word,
  * caption, emoji or action — and go through the domain's pure edits into
- * pack.json. Statuses and reasons are the domain's (sticker-state.mjs).
+ * pack.json. Statuses and reasons are the domain's (sticker-state.mjs),
+ * reasons said in the user's language (`t.say`).
  */
 
 import type { ReactNode } from "react";
@@ -102,9 +103,9 @@ function StatusBlock({ value, sticker, t, now, canCommand }: { value: StickerPac
         <Notice tone="warning" icon={<Icon.Alert size={12} />}>
           <div data-stale-headline className="font-semibold">{t.staleHeadline}</div>
           <ul className="m-0 mt-0.5 list-none p-0 text-cc-fg/80">
-            {(state.reasons ?? [state.reason ?? ""]).map((r) => (
-              <li key={r} data-stale-reason>
-                {r}
+            {state.messages.map((m, i) => (
+              <li key={i} data-stale-reason>
+                {t.say(m)}
               </li>
             ))}
           </ul>
@@ -114,7 +115,7 @@ function StatusBlock({ value, sticker, t, now, canCommand }: { value: StickerPac
       return (
         <Notice tone="primary" icon={<Icon.Spark size={12} />}>
           <div className="font-semibold">{t.pickHeadline(state.ready.length)}</div>
-          <div className="text-cc-fg/70">{state.reason}</div>
+          <div className="text-cc-fg/70">{state.messages.map(t.say).join(" · ")}</div>
         </Notice>
       );
     case "generating": {
@@ -122,7 +123,7 @@ function StatusBlock({ value, sticker, t, now, canCommand }: { value: StickerPac
       return (
         <Notice tone="primary" icon={<span className="block h-2.5 w-2.5 rounded-full border-[1.5px] border-current border-t-transparent motion-safe:animate-spin" />}>
           <div className="font-semibold">{t.generatingHeadline(elapsedOf(t, now, busy?.submittedAt ?? null))}</div>
-          <div className="text-cc-fg/70">{state.reason}</div>
+          <div className="text-cc-fg/70">{state.messages.map(t.say).join(" · ")}</div>
         </Notice>
       );
     }
@@ -342,7 +343,7 @@ function TakeDetail({ take, t, canWrite, onPick }: { take: TakeView; t: StickerS
           <BillingLine take={take} t={t} />
         </div>
       ) : null}
-      {take.staleness?.stale && !take.picked ? <div className="mt-1 text-[10.5px] text-cc-warning">{take.staleness.reasons.join("; ")}</div> : null}
+      {take.staleness?.stale && !take.picked ? <div className="mt-1 text-[10.5px] text-cc-warning">{take.staleness.messages.map(t.say).join(" · ")}</div> : null}
       {canWrite && take.status === "ready" && !take.picked ? (
         <div className="mt-2">
           <Btn primary small data-action="pick-take" onClick={onPick}>
@@ -571,9 +572,9 @@ export function CharacterInspector({
             </span>
           )}
         </Plate>
-        {character.anchor.reason && character.anchor.anchor ? (
+        {character.anchor.message && character.anchor.anchor ? (
           <Notice tone="warning" icon={<Icon.Alert size={12} />}>
-            {character.anchor.reason}
+            {t.say(character.anchor.message)}
           </Notice>
         ) : null}
         {character.candidates.length ? (
@@ -706,7 +707,7 @@ export function ArtInspector({
                     className="flex items-center gap-2 rounded-lg border border-cc-border bg-cc-bg/35 px-2.5 py-1.5 text-left transition-colors hover:border-cc-primary/40 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
                   >
                     <span className="text-[11.5px] font-medium text-cc-fg">{PLATFORM_PROFILES[b.platform].label}</span>
-                    <span className="truncate text-[11px] text-cc-muted">{b.label}</span>
+                    <span className="truncate text-[11px] text-cc-muted">{t.deliverableLabel(b.platform, b.deliverable)}</span>
                     <span className="font-mono text-[10.5px] text-cc-muted">{spec ? `${spec.width}×${spec.height}` : ""}</span>
                     {item ? (
                       <span className="ml-auto">

@@ -3,6 +3,11 @@
  * the same rows `sticker.mjs check` prints), the exported files at native
  * size on the chat plate (`exportState` says which are current), and the
  * listing text with the platform's own character count.
+ *
+ * Every row detail and file reason is the module's message, said in the
+ * user's language (`t.say`). A row's CLI command (`sticker.mjs export …`)
+ * shows only while the viewer can write: a read-only page — a share link —
+ * says what is wrong, not what to type.
  */
 
 import { useEffect, useRef, type ReactNode } from "react";
@@ -35,7 +40,26 @@ function rowFocus(row: CheckRow): Focus | null {
   return null;
 }
 
-function CheckRowView({ row, t, focus, words, onRow, quiet }: { row: CheckRow; t: StickerStrings; focus: Focus | null; words: Map<string, string>; onRow: (focus: Focus) => void; quiet?: boolean }) {
+function CheckRowView({
+  row,
+  platform,
+  t,
+  focus,
+  words,
+  commands,
+  onRow,
+  quiet,
+}: {
+  row: CheckRow;
+  platform: Platform;
+  t: StickerStrings;
+  focus: Focus | null;
+  words: Map<string, string>;
+  /** Show the row's sticker.mjs command (editing only). */
+  commands: boolean;
+  onRow: (focus: Focus) => void;
+  quiet?: boolean;
+}) {
   const target = rowFocus(row);
   const on = !!target && !!focus && JSON.stringify(target) === JSON.stringify(focus);
   const style = LEVEL_STYLE[row.level];
@@ -47,10 +71,17 @@ function CheckRowView({ row, t, focus, words, onRow, quiet }: { row: CheckRow; t
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[12px] font-medium text-cc-fg">
-          {t.rowLabel(row.id, row.label)}
+          {t.rowLabel(platform, row)}
           {word ? <span className="ml-1.5 font-normal text-cc-fg/70">{word}</span> : null}
         </span>
-        <span className={`block break-words text-[11px] leading-[1.5] text-cc-muted ${quiet ? "line-clamp-1" : ""}`}>{row.detail}</span>
+        <span data-check-detail className={`block break-words text-[11px] leading-[1.5] text-cc-muted ${quiet ? "line-clamp-1" : ""}`}>
+          {t.say(row.message)}
+          {commands && row.message.command ? (
+            <code data-check-command className="ml-1.5 rounded bg-cc-bg/60 px-1 py-[1px] font-mono text-[10.5px] text-cc-fg/75">
+              {row.message.command}
+            </code>
+          ) : null}
+        </span>
       </span>
     </>
   );
@@ -71,7 +102,7 @@ function CheckRowView({ row, t, focus, words, onRow, quiet }: { row: CheckRow; t
  * fails or warns first, what passes below. A row that names a sticker or
  * an art kind points at its file.
  */
-function Checklist({ value, view, t, focus, onRow }: { value: StickerPack; view: PlatformView; t: StickerStrings; focus: Focus | null; onRow: (focus: Focus) => void }) {
+function Checklist({ value, view, t, focus, commands, onRow }: { value: StickerPack; view: PlatformView; t: StickerStrings; focus: Focus | null; commands: boolean; onRow: (focus: Focus) => void }) {
   const words = new Map(value.stickers.map((s) => [s.id, s.sticker.word]));
   const attention = view.rows.filter((r) => r.level !== "pass");
   const passing = view.rows.filter((r) => r.level === "pass");
@@ -90,7 +121,7 @@ function Checklist({ value, view, t, focus, onRow }: { value: StickerPack; view:
           <div className="mb-1 text-[11px] font-medium text-cc-fg/80">{t.needsAttention(attention.length)}</div>
           <div className="overflow-hidden rounded-[12px] border border-cc-border bg-cc-bg/35">
             {attention.map((row) => (
-              <CheckRowView key={row.id} row={row} t={t} focus={focus} words={words} onRow={onRow} />
+              <CheckRowView key={row.id} row={row} platform={view.platform} t={t} focus={focus} words={words} commands={commands} onRow={onRow} />
             ))}
           </div>
         </div>
@@ -107,7 +138,7 @@ function Checklist({ value, view, t, focus, onRow }: { value: StickerPack; view:
           <div className="mb-1 text-[11px] font-medium text-cc-fg/80">{t.passing(passing.length)}</div>
           <div className="overflow-hidden rounded-[12px] border border-cc-border bg-cc-bg/25">
             {passing.map((row) => (
-              <CheckRowView key={row.id} row={row} t={t} focus={focus} words={words} onRow={onRow} quiet />
+              <CheckRowView key={row.id} row={row} platform={view.platform} t={t} focus={focus} words={words} commands={commands} onRow={onRow} quiet />
             ))}
           </div>
         </div>
@@ -146,7 +177,7 @@ function ExportMedia({ value, view, item, base, plate, t }: { value: StickerPack
         className="grid max-w-full place-items-center rounded-md border-[1.5px] border-dashed px-3 text-center text-[11px] leading-[1.45]"
         style={{ width, aspectRatio: `${width} / ${height}`, borderColor: `${plateInk(plate)}55`, color: plateInk(plate) }}
       >
-        {item.reason ?? t.exportState[item.state]}
+        {item.message ? t.say(item.message) : t.exportState[item.state]}
       </div>
     );
   }
@@ -167,8 +198,8 @@ function ExportTile({ value, view, item, base, plate, t, highlighted }: { value:
     if (highlighted) ref.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }, [highlighted]);
   const m = item.measure;
-  const spec = item.kind === "sticker" ? null : view.profile.deliverables[item.deliverable];
-  const label = item.kind === "sticker" ? `${item.name} · ${item.sticker}` : spec?.label ?? item.deliverable;
+  const label = item.kind === "sticker" ? `${item.name} · ${item.sticker}` : t.deliverableLabel(view.platform, item.deliverable);
+  const reason = item.message ? t.say(item.message) : undefined;
   return (
     <figure
       ref={ref}
@@ -182,11 +213,11 @@ function ExportTile({ value, view, item, base, plate, t, highlighted }: { value:
       <figcaption className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 px-0.5">
         <span className="truncate text-[11.5px] font-medium text-cc-fg">{label}</span>
         {word ? <span className="truncate text-[11px] text-cc-fg/70">{word}</span> : null}
-        {item.state !== "current" ? <Chip tone={STATE_TONE[item.state]} title={item.reason ?? undefined}>{t.exportState[item.state]}</Chip> : null}
+        {item.state !== "current" ? <Chip tone={STATE_TONE[item.state]} title={reason}>{t.exportState[item.state]}</Chip> : null}
         {m ? <span className="font-mono text-[10.5px] text-cc-muted">{`${m.width}×${m.height} · ${fmtBytes(m.bytes)}`}</span> : null}
         {scale < 1 ? <span className="font-mono text-[10.5px] text-cc-muted">· {t.shownAt(Math.round(scale * 100))}</span> : null}
       </figcaption>
-      {item.state === "stale" && item.reason ? <div className="px-0.5 text-[10.5px] leading-[1.45] text-cc-warning">{item.reason}</div> : null}
+      {item.state === "stale" && reason ? <div className="px-0.5 text-[10.5px] leading-[1.45] text-cc-warning">{reason}</div> : null}
     </figure>
   );
 }
@@ -196,16 +227,16 @@ function Missing({ items, value, view, t, focus }: { items: ExportItem[]; value:
   return (
     <div data-not-exported className="overflow-hidden rounded-[12px] border border-dashed border-cc-border">
       {items.map((item) => {
-        const spec = item.kind === "sticker" ? null : view.profile.deliverables[item.deliverable];
+        const reason = item.message ? t.say(item.message) : undefined;
         const word = item.kind === "sticker" ? value.stickers.find((s) => s.id === item.sticker)?.sticker.word : undefined;
         const on = !!focus && ((focus.type === "sticker" && item.sticker === focus.id) || (focus.type === "art" && item.art === focus.kind));
         return (
           <div key={item.assetId} data-export={item.assetId} data-state={item.state} className={`flex items-baseline gap-2 border-b border-dashed border-cc-border px-2.5 py-1.5 last:border-b-0 ${on ? "bg-cc-primary/10" : ""}`}>
-            <span className="shrink-0 text-[11.5px] font-medium text-cc-fg">{item.kind === "sticker" ? `${item.name} · ${item.sticker}` : spec?.label ?? item.deliverable}</span>
+            <span className="shrink-0 text-[11.5px] font-medium text-cc-fg">{item.kind === "sticker" ? `${item.name} · ${item.sticker}` : t.deliverableLabel(view.platform, item.deliverable)}</span>
             {word ? <span className="shrink-0 text-[11px] text-cc-fg/70">{word}</span> : null}
             <Chip tone={STATE_TONE[item.state]}>{t.exportState[item.state]}</Chip>
-            <span className="min-w-0 truncate text-[10.5px] text-cc-muted" title={item.reason ?? undefined}>
-              {item.reason}
+            <span className="min-w-0 truncate text-[10.5px] text-cc-muted" title={reason}>
+              {reason}
             </span>
           </div>
         );
@@ -269,10 +300,11 @@ function Listing({ view, t, canWrite, listing, onListing }: { view: PlatformView
           const text = listing[field] ?? "";
           const length = spec.asianWidth ? asianWidthLength(text) : charLength(text);
           const over = (spec.max !== undefined && length > spec.max) || (spec.min !== undefined && text && length < spec.min);
+          const name = t.listingLabel(view.platform, field);
           return (
             <label key={field} className="flex flex-col gap-1">
               <span className="flex items-baseline gap-2">
-                <span className="text-[11.5px] font-medium text-cc-fg">{spec.label}</span>
+                <span className="text-[11.5px] font-medium text-cc-fg">{name}</span>
                 <span className="text-[10.5px] text-cc-muted">{spec.required ? t.required : t.optional}</span>
                 {spec.max !== undefined ? (
                   <span data-counter={field} className={`ml-auto font-mono text-[10.5px] tabular-nums ${over ? "text-cc-error" : "text-cc-muted"}`} title={spec.asianWidth ? t.asianWidth : undefined}>
@@ -282,7 +314,7 @@ function Listing({ view, t, canWrite, listing, onListing }: { view: PlatformView
                 ) : null}
               </span>
               {canWrite ? (
-                <DraftField label={spec.label} dataField={`listing-${field}`} value={text} multiline={(spec.max ?? 0) > 60} onCommit={(next) => onListing(field, next)} />
+                <DraftField label={name} dataField={`listing-${field}`} value={text} multiline={(spec.max ?? 0) > 60} onCommit={(next) => onListing(field, next)} />
               ) : (
                 <ReadField value={text} empty={t.emptyValue} />
               )}
@@ -434,7 +466,7 @@ export function SubmitView({
       {unread ? null : (
         <div className="grid items-start gap-4" style={{ gridTemplateColumns: wide ? "minmax(0, 0.95fr) minmax(0, 1.05fr)" : "minmax(0, 1fr)" }}>
           <div className="flex min-w-0 flex-col gap-4">
-            <Checklist value={value} view={view} t={t} focus={focus} onRow={onRow} />
+            <Checklist value={value} view={view} t={t} focus={focus} commands={canWrite} onRow={onRow} />
             {wide ? <Listing view={view} t={t} canWrite={canWrite} listing={listing} onListing={(f, text) => onListing(view.platform, f, text)} /> : null}
           </div>
           <Files value={value} view={view} base={base} plate={position.plate} t={t} focus={focus} />

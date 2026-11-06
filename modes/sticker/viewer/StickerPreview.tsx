@@ -110,12 +110,6 @@ function Swatch({ plate }: { plate: Plate }) {
   return <span className="h-3 w-3 rounded-[4px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]" style={{ backgroundColor: PLATE_COLORS[plate] }} />;
 }
 
-/** "WeChat" out of the module's own `--platform wechat` for a next step that names one. */
-function stepPlatform(value: StickerPack, command: string | undefined): string | null {
-  const id = command ? /--platform (\w+)/.exec(command)?.[1] : undefined;
-  return id ? value.platforms.find((p) => p.platform === id)?.profile.label ?? null : null;
-}
-
 export default function StickerPreview(props: ViewerPreviewProps) {
   const { value, write } = useSource(props.sources.pack as Source<StickerPack> | undefined);
   const staticPlayer = useStore((s) => s.staticPlayer);
@@ -521,7 +515,8 @@ export default function StickerPreview(props: ViewerPreviewProps) {
   const ready = value.stickers.filter((s) => s.state.status === "ready").length;
   const next = value.next;
   const missing = (value.gen?.targets.length ?? 0) > 0;
-  const nextPlatform = next ? stepPlatform(value, next.command) : null;
+  // The step in the user's words; the CLI command only where someone can act on it.
+  const nextText = next ? t.say(next.message) : "";
 
   // Layout by the viewer's own width.
   const inspectorOpen = position.view === "panel" && position.focus !== null;
@@ -618,7 +613,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
           {value.stickers.length ? (
             <StickerGrid value={value} position={position} base={base} t={t} now={now} columns={columns} onFocus={focusOn} />
           ) : (
-            <Centered title={t.nextStep({ id: "stickers", line: "", message: { code: "next.stickers", params: {} } })} body={next?.line} />
+            <Centered title={t.noStickers} body={nextText || undefined} />
           )}
         </div>
         {inspector && inspectorMode === "column" ? (
@@ -676,9 +671,8 @@ export default function StickerPreview(props: ViewerPreviewProps) {
       {next ? (
         <div data-next-step={next.id} className="flex shrink-0 items-center gap-2.5 border-b border-cc-border bg-cc-primary/[0.035] px-4 py-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-cc-primary">{t.next}</span>
-          <span className="min-w-0 truncate text-[12px] font-medium text-cc-fg" title={next.line}>
-            {t.nextStep(next)}
-            {nextPlatform ? ` · ${nextPlatform}` : ""}
+          <span className="min-w-0 truncate text-[12px] font-medium text-cc-fg" title={canWrite && next.command ? `${nextText} — ${next.command}` : nextText}>
+            {nextText}
           </span>
           <span className="ml-auto" />
           {canCommand && missing ? (

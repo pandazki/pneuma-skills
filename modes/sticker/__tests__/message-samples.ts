@@ -137,3 +137,15 @@ export function allMessages(message: StateMessage): StateMessage[] {
   visit(message.params);
   return out;
 }
+
+/**
+ * English left in Chinese or Japanese text once ids, file names and the
+ * format, platform and browser names every language writes the same are
+ * taken out.
+ */
+export function englishIn(text: string): string[] {
+  const neutral = text
+    .replace(/\b(?:s\d{2,3}(?:-take-\d+)?|character-\d+|art-[a-z]+(?:-[a-z]+)?-\d+|exports\/\w+\.zip|\w+\.png)\b/g, "")
+    .replace(/\b(?:gif|apng|webm|vp9|vp8|png|jpg|wechat|telegram|line|chrome|firefox|safari|fps|emoji|kb|mb|zip|px)\b/gi, "");
+  return neutral.match(/[A-Za-z]{3,}/g) ?? [];
+}
