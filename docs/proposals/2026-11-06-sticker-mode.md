@@ -29,6 +29,7 @@ checklist.
 | D3 | Hosted player | Yes — a finished pack is shareable as a read-only link |
 | D4 | Seed | The anime-series 牛马 mascot redrawn as a flat outlined sticker character, "打工牛马", 8 stickers |
 | D5 | Attribution | No `inspiredBy`, no NOTICE: the owner judged the reference repo's ideas common; nothing is copied |
+| D6 | Seed size | Ship the seed stopped before export (13.65 MB instead of 31.6 MB with every platform's exports and zips); `export` rebuilds them free in ~26 s, byte-identical to the run's own. Owner decision 2026-11-06, superseding TASK-3 item 3's "all three platform exports" |
 
 Product-owner direction: "核心还是依赖 gpt-image 2.6 的能力" — the mode is built
 around what GPT Image 2.6 does natively; the rest follows Pneuma practice.
