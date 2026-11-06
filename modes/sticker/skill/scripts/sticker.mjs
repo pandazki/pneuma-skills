@@ -1391,19 +1391,21 @@ async function cmdCheck(v) {
   const out = {};
   const lines = [];
   const mark = { pass: "PASS", warn: "WARN", fail: "FAIL" };
-  // The files the record vouches for must still be the files on disk.
+  // The files the record vouches for — every current deliverable and the
+  // upload archive — must still be the files on disk (present, same size).
   const disk = [];
+  const changed = (rel, bytes) => !existsSync(ws.abs(rel)) || statSync(ws.abs(rel)).size !== bytes;
   for (const platform of platforms) {
     const rows = S.checkPack(pack, doc, platform);
     const tally = S.tally(rows);
-    for (const item of S.exportState(pack, doc, platform).items) {
-      if (item.state === "current" && (!existsSync(ws.abs(item.file)) || statSync(ws.abs(item.file)).size !== item.measure.bytes)) disk.push(item.file);
-    }
+    const state = S.exportState(pack, doc, platform);
+    for (const item of state.items) if (item.state === "current" && changed(item.file, item.measure.bytes)) disk.push(item.file);
+    if (state.archive.state === "current" && changed(state.archive.uri, state.archive.measure.bytes)) disk.push(state.archive.uri);
     out[platform] = { rows, tally };
     lines.push(`${S.PLATFORM_PROFILES[platform].label} (rules checked ${S.PLATFORM_PROFILES[platform].checked}): ${tally.pass} pass · ${tally.warn} warn · ${tally.fail} fail`);
     for (const r of rows) lines.push(`  ${mark[r.level]}  ${r.label}: ${r.detail}`);
   }
-  for (const file of disk) note(`WARN: ${file} is missing or changed on disk since it was exported — run sticker.mjs export again`);
+  for (const file of disk) lines.push(`FAIL  ${file} is missing or changed on disk since it was exported — run sticker.mjs export again`);
   const failed = Object.values(out).some((o) => o.tally.fail > 0) || disk.length > 0;
   if (failed) process.exitCode = 1;
   emit(v, { command: "check", platforms: out, diskMismatch: disk }, lines);

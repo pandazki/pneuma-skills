@@ -255,6 +255,24 @@ describe.skipIf(!MEDIA)("sticker export on real media", () => {
     expect(check.code).toBe(0);
   });
 
+  test("check holds the upload zip to its record: a truncated or missing zip fails, in the JSON and the exit status", () => {
+    const file = join(ws, "exports", "wechat.zip");
+    const bytes = readFileSync(file);
+    try {
+      writeFileSync(file, bytes.subarray(0, 100));
+      const truncated = run(ws, ["check", "--json"]);
+      expect(truncated.code).toBe(1);
+      expect(JSON.parse(truncated.out).diskMismatch).toEqual(["exports/wechat.zip"]);
+      rmSync(file);
+      const missing = run(ws, ["check"]);
+      expect(missing.code).toBe(1);
+      expect(missing.out).toContain("exports/wechat.zip is missing or changed on disk since it was exported");
+    } finally {
+      writeFileSync(file, bytes);
+    }
+    expect(run(ws, ["check"]).code).toBe(0);
+  });
+
   test("idempotent and deterministic: a rerun writes nothing; re-deriving gives the same bytes", () => {
     const before = hashes(ws);
     const projectBefore = readFileSync(join(ws, "project.json"), "utf-8");
