@@ -22,6 +22,8 @@
  *    the hosted player (`staticPlayer`) hide every write and every command;
  *    everything still plays. Nothing here calls `/api/*` — media is
  *    `/content/<uri>`, which the player's service worker also answers.
+ *    Only page requests reach that worker: in the player an archive
+ *    download is fetched and saved (`saveFetched`), never navigated to.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,6 +62,33 @@ const SELECTION_SETTLE_MS = 300;
 const FRAME_ARRIVAL_TIMEOUT_MS = 5000;
 const SIDEBAR_W = 248;
 const GAP = 16;
+/** How long a saved file's object URL lives — the download must have started by then. */
+const OBJECT_URL_TTL_MS = 40_000;
+
+/**
+ * Save a `/content/*` file by fetching it. In the hosted player only the
+ * content service worker can answer `/content/*`, and a browser hands an
+ * `<a download>` click to its download manager, which does not ask the
+ * worker: on the player harness Chrome 156 saved the static host's 404 body
+ * as "wechat.txt" (then cancelled) and WebKit 26 kept it as "line.zip.txt".
+ * A page `fetch()` goes through the worker, so the bytes are fetched here
+ * and saved from an object URL. Rejects on any non-2xx answer, so a missing
+ * file is reported instead of saved.
+ */
+async function saveFetched(url: string, name: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoking at once can cancel the download before the browser has read it.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), OBJECT_URL_TTL_MS);
+}
 
 function Centered({ title, body, children }: { title: string; body?: string; children?: React.ReactNode }) {
   return (
@@ -397,6 +426,14 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     [notify],
   );
 
+  // ── Downloads (hosted player only; the app's server answers the link) ────
+  const saveArchive = useCallback(
+    (url: string, name: string) => {
+      saveFetched(url, name).catch((error: unknown) => setNotice({ text: t.downloadFailed(error instanceof Error ? error.message : String(error)), tone: "error" }));
+    },
+    [t],
+  );
+
   // ── Handlers ─────────────────────────────────────────────────────────────
   const focusOn = useCallback(
     (focus: Focus) => {
@@ -544,6 +581,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
           onRow={(focus) => apply({ ...posRef.current, focus })}
           onListing={(platform, field, text) => commit((v) => setListingField(v, platform, field, text))}
           onExport={exportCheck}
+          onDownload={staticPlayer ? saveArchive : undefined}
         />
       </div>
     );

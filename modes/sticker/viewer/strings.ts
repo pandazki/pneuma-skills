@@ -139,6 +139,7 @@ export interface StickerStrings {
   archiveFiles: (n: number) => string;
   archiveState: (state: ExportItemState) => string;
   download: string;
+  downloadFailed: (error: string) => string;
   checklist: string;
   needsAttention: (n: number) => string;
   passing: (n: number) => string;
@@ -314,6 +315,7 @@ const EN: StickerStrings = {
   archiveFiles: (n) => `${n} file${n === 1 ? "" : "s"}`,
   archiveState: (s) => ({ current: "ready", stale: "stale", missing: "not made yet", blocked: "waits for every file" })[s],
   download: "Download",
+  downloadFailed: (e) => `Download failed: ${e}`,
   checklist: "Checklist",
   needsAttention: (n) => `Needs attention · ${n}`,
   passing: (n) => `Passing · ${n}`,
@@ -493,6 +495,7 @@ const ZH: StickerStrings = {
   archiveFiles: (n) => `${n} 个文件`,
   archiveState: (s) => ({ current: "已就绪", stale: "已过期", missing: "还没生成", blocked: "等所有文件就绪" })[s],
   download: "下载",
+  downloadFailed: (e) => `下载失败：${e}`,
   checklist: "检查清单",
   needsAttention: (n) => `需要处理 · ${n}`,
   passing: (n) => `已通过 · ${n}`,
@@ -672,6 +675,7 @@ const JA: StickerStrings = {
   archiveFiles: (n) => `${n} ファイル`,
   archiveState: (s) => ({ current: "準備完了", stale: "古い", missing: "未作成", blocked: "全ファイル待ち" })[s],
   download: "ダウンロード",
+  downloadFailed: (e) => `ダウンロードできませんでした：${e}`,
   checklist: "チェックリスト",
   needsAttention: (n) => `対応が必要 · ${n}`,
   passing: (n) => `合格 · ${n}`,

@@ -307,6 +307,7 @@ export function SubmitView({
   onRow,
   onListing,
   onExport,
+  onDownload,
 }: {
   value: StickerPack;
   position: Position;
@@ -319,6 +320,9 @@ export function SubmitView({
   onRow: (focus: Focus) => void;
   onListing: (platform: Platform, field: string, text: string) => void;
   onExport: (platform: Platform) => void;
+  /** When set, the archive link hands its URL and file name here instead of
+   *  letting the browser download it (the hosted player — see StickerPreview). */
+  onDownload?: (url: string, name: string) => void;
 }) {
   const view = value.platforms.find((p) => p.platform === position.platform) ?? value.platforms[0];
   if (!view) return <p className="p-8 text-center text-[12.5px] text-cc-muted">{t.noPlatforms}</p>;
@@ -386,6 +390,14 @@ export function SubmitView({
                 data-download={archive.uri}
                 href={fileUrl(base, archive.uri, archive.measure.at)}
                 download
+                onClick={
+                  onDownload
+                    ? (event) => {
+                        event.preventDefault();
+                        onDownload(event.currentTarget.getAttribute("href") ?? "", archive.uri.split("/").pop() ?? archive.uri);
+                      }
+                    : undefined
+                }
                 className="inline-flex items-center gap-1 rounded-md border border-cc-border px-1.5 py-0.5 text-[11px] text-cc-fg transition-colors hover:border-cc-primary/40 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
               >
                 <Icon.Download size={11} />
