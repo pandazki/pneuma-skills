@@ -8,12 +8,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ASSET_STATUSES, dropAssets, failAsset, statusOf } from "../../_shared/scripts/craft-project.mjs";
+import { ASSET_STATUSES, dropAssets, failAsset, statusOf, summarizeCosts } from "../../_shared/scripts/craft-project.mjs";
 import * as S from "../skill/scripts/sticker-state.mjs";
 import type { CheckRow, Measure, Platform } from "../skill/scripts/sticker-state.mjs";
 import { allMessages, SAMPLE_PARAMS, sampleMessages } from "./message-samples.js";
 import { finishedWorkspace, richWorkspace } from "./pack-workspace.js";
-import { addImage, addTake, emptyDoc, exportAll, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
+import { addImage, addTake, emptyDoc, exportAll, packFrom, rawPack, readyDoc, recoverTake } from "./sticker-fixture.js";
 
 const rowOf = (rows: CheckRow[], id: string) => {
   const found = rows.find((r) => r.id === id);
@@ -529,19 +529,54 @@ describe("checks", () => {
     expect(Object.entries(S.PLATFORM_PROFILES).flatMap(([p, prof]) => Object.entries(prof.deliverables).filter(([, d]) => d.noWhiteOutline).map(([k]) => `${p}.${k}`))).toEqual(["wechat.cover"]);
   });
 
-  test("the Telegram thumbnail is optional; LINE's tab and WeChat's cover are not", () => {
+  test("without portrait art the Telegram thumbnail is made from the first sticker's first kept frame; LINE's tab and WeChat's cover still need their art", () => {
     const raw = rawPack();
     delete raw.art.portrait;
     delete raw.art.head;
-    const pack = packFrom(raw);
+    let pack = packFrom(raw);
     const doc = readyDoc(pack);
+    const thumbOf = (p = pack) => S.exportState(p, doc, "telegram").items.find((i) => i.deliverable === "thumb")!;
+    // Before export it is owed, not optional-and-absent: the archive waits for it.
+    expect(thumbOf()).toMatchObject({ state: "missing", derivedFrom: { sticker: "s01", frame: 0 } });
+    expect(S.deliverableSource(pack, doc, thumbOf())).toMatchObject({ asset: { id: "s01-take-1" }, frame: 0, sticker: "s01" });
     for (const p of pack.platforms) exportAll(doc, pack, p);
-    expect(rowOf(S.checkPack(pack, doc, "telegram"), "thumb")).toMatchObject({ level: "pass" });
-    expect(rowOf(S.checkPack(pack, doc, "telegram"), "thumb").detail).toContain("Telegram uses the first sticker");
+    const row = rowOf(S.checkPack(pack, doc, "telegram"), "thumb");
+    expect(row.level).toBe("pass");
+    expect(row.message).toMatchObject({ code: "export.measured", params: { summary: { code: "summary.still-from-sticker", params: { sticker: "s01", frame: 0, width: 100, height: 100 } } } });
+    expect(row.detail).toBe("100×100 PNG · 8 KB · made from s01, frame 0 (no portrait art picked)");
+    expect(S.exportState(pack, doc, "telegram").archive.measure?.entries).toContain("thumb.png");
     expect(rowOf(S.checkPack(pack, doc, "telegram"), "zip").level).toBe("pass");
+    // A trim moves the frame it is made from, so the thumbnail is made again.
+    raw.stickers[0].keepFrames = [3, 4, 5, 6, 7];
+    pack = packFrom(raw);
+    expect(thumbOf()).toMatchObject({ state: "stale", derivedFrom: { sticker: "s01", frame: 3 } });
+    // The art still decides where it has none to fall back on.
     expect(rowOf(S.checkPack(pack, doc, "line"), "tab")).toMatchObject({ level: "fail", detail: "art.head is not picked" });
     expect(rowOf(S.checkPack(pack, doc, "wechat"), "cover").level).toBe("fail");
     expect(rowOf(S.checkPack(pack, doc, "wechat"), "zip").detail).toContain("waits for every deliverable");
+  });
+
+  test("a picked portrait is the thumbnail, keyed exactly as before; with no sticker take either, the thumbnail stays optional", () => {
+    const pack = packFrom(rawPack());
+    const doc = readyDoc(pack);
+    const thumb = S.platformDeliverables(pack, "telegram").find((i) => i.deliverable === "thumb")!;
+    const source = S.deliverableSource(pack, doc, thumb);
+    expect(source.asset?.id).toBe("art-portrait-1");
+    expect("frame" in source).toBe(false);
+    expect(S.exportKey(pack, doc, "telegram", thumb)).toBe(S.hashValue({
+      recipe: S.EXPORT_RECIPES.telegram, platform: "telegram", deliverable: "thumb", name: "thumb",
+      source: "art-portrait-1", sourceAt: doc.assets.find((a) => a.id === "art-portrait-1")!.createdAt, keepFrames: null,
+      rules: S.PLATFORM_PROFILES.telegram.deliverables.thumb,
+    }));
+    const bare = rawPack();
+    delete bare.art.portrait;
+    bare.stickers.forEach((s: { take: string | null }) => (s.take = null));
+    const empty = packFrom(bare);
+    const none = emptyDoc();
+    addImage(none, "character-1", "character/anchor-1.png");
+    const row = rowOf(S.checkPack(empty, none, "telegram"), "thumb");
+    expect(row.level).toBe("pass");
+    expect(row.detail).toContain("Telegram uses the first sticker");
   });
 
   test("text rules: WeChat counts characters, LINE counts Asian characters twice", () => {
@@ -632,7 +667,7 @@ describe("what gen makes", () => {
     const { pack, doc } = mixed();
     const plan = S.genTargets(pack, doc);
     expect(plan.targets.map((t) => t.id)).toEqual(["s01", "s03", "s05"]);
-    expect(plan.uncertain).toEqual([{ id: "s02", take: "s02-take-1", reason: "upstream error" }]);
+    expect(plan.uncertain).toEqual([{ id: "s02", take: "s02-take-1", reason: "upstream error", requestId: null, recoverable: false }]);
     expect(plan.skipped.map((s) => [s.id, s.status])).toEqual([["s04", "pick"], ["s06", "pick"], ["s07", "pick"], ["s08", "pick"]]);
   });
 
@@ -644,6 +679,46 @@ describe("what gen makes", () => {
     expect(named.skipped.map((s) => s.id)).toEqual(["s04"]);
     expect(S.genTargets(pack, doc, { redo: true }).targets.map((t) => t.id)).toEqual(pack.stickers.map((s) => s.id));
     expect(() => S.genTargets(pack, doc, { only: ["s09"] })).toThrow("--only: no sticker 's09' in pack.json");
+  });
+
+  test("a take fal accepted but never delivered is fetched by its request first — free, before anything paid — and a named gen does not resend it", () => {
+    const { pack, doc } = mixed();
+    addTake(doc, pack, "s01", 1, { status: "failed", requestId: "req-s01", reason: "the GIF was generated but its download failed (fetch failed)" });
+    const plan = S.genTargets(pack, doc);
+    expect(plan.targets.map((t) => t.id)).toEqual(["s03", "s05"]);
+    expect(plan.uncertain).toEqual([
+      { id: "s01", take: "s01-take-1", reason: "the GIF was generated but its download failed (fetch failed)", requestId: "req-s01", recoverable: true },
+      { id: "s02", take: "s02-take-1", reason: "upstream error", requestId: null, recoverable: false },
+    ]);
+    // Fetching comes before making the missing ones: it costs nothing and may complete the pack.
+    const step = S.nextStep(pack, doc);
+    expect(step).toMatchObject({ id: "recover", command: "sticker.mjs recover --only s01", stickers: ["s01"], message: { code: "next.recover", params: { stickers: ["s01"] } } });
+    expect(step.line).toContain("nothing is sent again");
+    // Naming it is not a resend while it can be fetched; --redo is a new paid take on purpose.
+    expect(S.genTargets(pack, doc, { only: ["s01"] })).toMatchObject({ targets: [], uncertain: [{ id: "s01", recoverable: true }] });
+    expect(S.genTargets(pack, doc, { only: ["s01"], redo: true }).targets.map((t) => t.id)).toEqual(["s01"]);
+  });
+
+  test("a fetch that landed counts the job once; a fetch that failed leaves an ordinary retry, asked for by name", () => {
+    const raw = rawPack();
+    raw.stickers.forEach((s: { take: string | null }) => (s.take = null));
+    const pack = packFrom(raw);
+    const doc = emptyDoc();
+    addImage(doc, "character-1", "character/anchor-1.png");
+    for (const s of pack.stickers) addTake(doc, pack, s.id, 1, s.id === "s01" || s.id === "s02" ? { status: "failed", requestId: `req-${s.id}` } : {});
+    expect(S.nextStep(pack, doc)).toMatchObject({ id: "recover", command: "sticker.mjs recover", stickers: ["s01", "s02"] });
+    recoverTake(doc, "s01-take-1", "landed");
+    recoverTake(doc, "s02-take-1", "failed");
+    // Landed: the same take, made by fal under its first request, counted once.
+    expect(S.stickerState(pack, doc, "s01").status).toBe("pick");
+    const costs = summarizeCosts(doc);
+    expect(costs.reconciled).toEqual(["s01-take-1#1", "s02-take-1#1"]);
+    expect(costs.uncertain).toEqual(["s02-take-1"]);
+    expect(costs.total).toBeCloseTo(0.8, 6);
+    // Failed: tried once under that request — now a retry, the user's call, and gen --only resends it.
+    expect(S.genTargets(pack, doc).uncertain).toEqual([{ id: "s02", take: "s02-take-1", reason: "fal.ai status HTTP 404", requestId: "req-s02", recoverable: false }]);
+    expect(S.nextStep(pack, doc)).toMatchObject({ id: "retry", command: "sticker.mjs gen --only s02" });
+    expect(S.genTargets(pack, doc, { only: ["s02"] }).targets.map((t) => t.id)).toEqual(["s02"]);
   });
 
   test("next step agrees with gen: it names what gen would make, then asks before an uncertain retry", () => {
@@ -689,10 +764,33 @@ describe("next step", () => {
     const full = readyDoc(pack);
     expect(S.nextStep(pack, full)).toMatchObject({ id: "export", command: "sticker.mjs export --platform wechat" });
     for (const p of pack.platforms) exportAll(full, pack, p);
-    expect(S.nextStep(pack, full).id).toBe("done");
+    // LINE's unconfirmed ZIP names are a warning that never turns green: not "done".
+    expect(S.nextStep(pack, full)).toMatchObject({ id: "confirm", message: { code: "next.confirm", params: { rows: [{ platform: "line", id: "zip-naming", label: "ZIP file names" }] } } });
     const noIntro = rawPack();
     noIntro.listing.wechat.intro = "";
     expect(S.nextStep(packFrom(noIntro), full)).toMatchObject({ id: "check", command: "sticker.mjs check --platform wechat" });
+  });
+});
+
+describe("ready to submit", () => {
+  test("no failing row and nothing to confirm is done; a warning anywhere is said as something to confirm by hand, never as done", () => {
+    const raw = rawPack();
+    raw.platforms = ["wechat", "telegram"];
+    delete raw.listing.line;
+    const pack = packFrom(raw);
+    const doc = readyDoc(pack);
+    for (const p of pack.platforms) exportAll(doc, pack, p);
+    const done = S.nextStep(pack, doc);
+    expect(done).toMatchObject({ id: "done", message: { code: "next.done" } });
+    expect(done.line).toContain("ready to submit");
+    // A long WeChat name is a warning: nothing fails, one thing to confirm.
+    raw.listing.wechat.name = "打工牛马日常";
+    const named = packFrom(raw);
+    const warned = S.nextStep(named, doc);
+    expect(warned).toMatchObject({ id: "confirm", message: { code: "next.confirm", params: { rows: [{ platform: "wechat", id: "listing-name" }] } } });
+    expect(warned.line).toStartWith("No check fails");
+    expect(warned.line).not.toContain("ready to submit");
+    expect(S.tally(S.checkPack(named, doc, "wechat"))).toMatchObject({ fail: 0, warn: 1 });
   });
 });
 

@@ -131,7 +131,9 @@ export const PLATFORM_PROFILES = Object.freeze({
     count: Object.freeze({ min: 1, max: 50, setMax: 120 }),
     sticker: Object.freeze({ format: "webm", ext: "webm", codec: "vp9", edge: 512, maxDurationMs: 3000, fps: 30, maxBytes: 256 * KB, audio: false }),
     deliverables: Object.freeze({
-      thumb: Object.freeze({ label: "set thumbnail", from: "portrait", formats: Object.freeze(["png"]), width: 100, height: 100, maxBytes: 128 * KB, alpha: "transparent", fit: "pad", optional: true }),
+      // Without portrait art it is made from the first sticker's first kept
+      // frame (free), so the set's icon is always there to send the bot.
+      thumb: Object.freeze({ label: "set thumbnail", from: "portrait", fallback: "first-sticker", formats: Object.freeze(["png"]), width: 100, height: 100, maxBytes: 128 * KB, alpha: "transparent", fit: "pad", optional: true }),
     }),
     text: Object.freeze({
       title: Object.freeze({ label: "set title", required: true }),
@@ -347,6 +349,7 @@ const MESSAGES = Object.freeze({
   "summary.telegram": (p) => `${p.width}×${p.height} WEBM VP9${p.alpha ? "+alpha" : ""} · ${fmtBytes(p.bytes)} · ${fmtSeconds(p.ms)} at ${p.fps} fps`,
   "summary.line": (p) => `${p.width}×${p.height} APNG · ${fmtBytes(p.bytes)} · ${p.frames} frames · ${fmtSeconds(p.ms)} × ${p.plays} play(s)`,
   "summary.still": (p) => `${p.width}×${p.height} ${String(p.format).toUpperCase()} · ${fmtBytes(p.bytes)}`,
+  "summary.still-from-sticker": (p) => `${p.width}×${p.height} ${String(p.format).toUpperCase()} · ${fmtBytes(p.bytes)} · made from ${p.sticker}, frame ${p.frame} (no portrait art picked)`,
   // checklist rows
   "rights.ok": (p) => `${p.basis}, confirmed ${p.confirmedAt}${p.note ? ` — ${p.note}` : ""}`,
   "rights.missing": () => "rights is not recorded in pack.json — required before any paid step and any submission",
@@ -387,13 +390,15 @@ const MESSAGES = Object.freeze({
   "next.stickers": () => "Add stickers to pack.json (id, word, caption, emoji, action).",
   "next.generate": (p) =>
     `Generate takes for ${list(p.stickers)}.${p.uncertain.length ? ` Not included: ${list(p.uncertain)} (${charged}; retry only with the user's yes: sticker.mjs gen --only ${p.uncertain.join(",")}).` : ""}`,
+  "next.recover": (p) => `${list(p.stickers)}: fal accepted these takes but they never reached this workspace — fetch them by their recorded request (free; nothing is sent again).`,
   "next.retry": (p) => `${list(p.stickers)}: ${charged}. A plain gen does not send it again; ask the user before retrying.`,
   "next.generating": (p) => `Wait for ${list(p.stickers)} to land.`,
   "next.pick": (p) => `Pick a take for ${list(p.stickers)} (stickers[].take in pack.json).`,
   "next.reroll": (p, say) => `Re-roll stale takes: ${p.stale.map((s) => `${s.sticker} (${s.why.map(say).join("; ")})`).join("; ")}.`,
   "next.export": (p) => `Export for ${PLATFORM_PROFILES[p.platform].label}.`,
   "next.check": (p) => `${PLATFORM_PROFILES[p.platform].label}: ${p.rows.length} check(s) fail — ${p.rows.map((r) => r.label).join(", ")}.`,
-  "next.done": () => "Every chosen platform's checklist passes; the zips are ready to submit.",
+  "next.confirm": (p) => `No check fails. ${p.rows.length} item(s) to confirm by hand before submitting — say what each means to the user: ${p.rows.map((r) => `${PLATFORM_PROFILES[r.platform].label} ${r.label}`).join(", ")}.`,
+  "next.done": () => "Every chosen platform's checklist passes with nothing to confirm; the zips are ready to submit.",
 });
 
 /** Every message code the rules can say. */
@@ -924,6 +929,26 @@ export function stickerStates(pack, project) {
 }
 
 /**
+ * Whether a failed take can be fetched instead of sent again: fal accepted
+ * its job (a request id is on record, billing unknown) and nobody has asked
+ * fal about that request since. `sticker.mjs recover` re-attaches to the
+ * request — no new job — and lands the same take under the same id and
+ * request id, so the cost reading counts that job once (craft's
+ * "reconciled"). One try per request: a fetch that failed records the same
+ * request id again with the failed attempt in `params.earlier`, and the take
+ * becomes an ordinary retry.
+ */
+export function recoverable(project, takeId) {
+  const asset = assetOf(project, takeId);
+  if (assetStatus(asset) !== "failed") return false;
+  const p = edgeOf(project, takeId)?.operation?.params ?? {};
+  if (p.provider !== "fal" || p.failure?.billing !== "unknown") return false;
+  if (typeof p.requestId !== "string" || !p.requestId) return false;
+  const earlier = Array.isArray(p.earlier) ? p.earlier : [];
+  return !earlier.some((e) => e?.requestId === p.requestId);
+}
+
+/**
  * What `sticker.mjs gen` makes — the one rule gen, quote and `nextStep` read.
  *
  *   default    every sticker with no take, and every sticker whose takes all
@@ -932,12 +957,14 @@ export function stickerStates(pack, project) {
  *              `unknown` may already have been charged: it goes to
  *              `uncertain`, and a plain gen does not send it again.
  *   only       the named stickers that are empty or failed. Naming an
- *              uncertain sticker is the explicit retry.
+ *              uncertain sticker is the explicit retry — unless its take is
+ *              `recoverable`: fal has the job, fetching it is free, so it
+ *              stays in `uncertain` and `sticker.mjs recover` fetches it.
  *   redo       every chosen sticker gets a new take, whatever its state.
  *
  * Returns `{ targets: [{ id, status }], skipped: [{ id, status }],
- * uncertain: [{ id, take, reason }] }` in pack order. An unknown `only` id
- * throws.
+ * uncertain: [{ id, take, reason, requestId, recoverable }] }` in pack
+ * order. An unknown `only` id throws.
  */
 export function genTargets(pack, project, { only = [], redo = false } = {}) {
   for (const id of only) {
@@ -958,9 +985,11 @@ export function genTargets(pack, project, { only = [], redo = false } = {}) {
       continue;
     }
     const latest = takesOf(project, sticker.id).at(-1);
-    const failure = latest?.edge?.operation?.params?.failure ?? null;
-    if (failure?.billing === "none" || only.length) targets.push({ id: sticker.id, status: state.status });
-    else uncertain.push({ id: sticker.id, take: latest?.id ?? null, reason: failure?.reason ?? "no failure recorded" });
+    const params = latest?.edge?.operation?.params ?? {};
+    const failure = params.failure ?? null;
+    const fetchable = latest ? recoverable(project, latest.id) : false;
+    if (failure?.billing === "none" || (only.length && !fetchable)) targets.push({ id: sticker.id, status: state.status });
+    else uncertain.push({ id: sticker.id, take: latest?.id ?? null, reason: failure?.reason ?? "no failure recorded", requestId: typeof params.requestId === "string" && params.requestId ? params.requestId : null, recoverable: fetchable });
   }
   return { targets, skipped, uncertain };
 }
@@ -1016,13 +1045,20 @@ export function platformDeliverables(pack, platform) {
     if (spec.from === "sticker") {
       out.push({ deliverable: name, kind: "main", assetId: ids.exported(platform, name), name, ext: "png", sticker: lineMainSticker(pack), art: null });
     } else {
-      out.push({ deliverable: name, kind: "art", assetId: ids.exported(platform, name), name, ext: null, sticker: null, art: spec.from, optional: Boolean(spec.optional) });
+      const item = { deliverable: name, kind: "art", assetId: ids.exported(platform, name), name, ext: null, sticker: null, art: spec.from, optional: Boolean(spec.optional) };
+      if (spec.fallback === "first-sticker") item.fallbackSticker = pack.stickers[0]?.id ?? null;
+      out.push(item);
     }
   }
   return out;
 }
 
-/** The source asset an export derives from, or null with why not. */
+/**
+ * The source asset an export derives from, or null with why not. An art
+ * deliverable with a `fallbackSticker` (Telegram's thumbnail) and no picked
+ * art comes from that sticker's picked take, at its first kept frame:
+ * `{ asset, sticker, frame }`.
+ */
 export function deliverableSource(pack, project, item) {
   const none = (message) => ({ asset: null, reason: messageText(message), message });
   if (item.kind === "sticker" || item.kind === "main") {
@@ -1032,6 +1068,13 @@ export function deliverableSource(pack, project, item) {
     return { asset: assetOf(project, state.effective), reason: null, message: null };
   }
   const picked = pack.art[item.art] ?? null;
+  if (!picked && item.fallbackSticker) {
+    const state = stickerState(pack, project, item.fallbackSticker);
+    if (state.effective) {
+      const frame = findSticker(pack, item.fallbackSticker)?.keepFrames?.[0] ?? 0;
+      return { asset: assetOf(project, state.effective), sticker: item.fallbackSticker, frame, reason: null, message: null };
+    }
+  }
   if (!picked) return none(msg("source.art-unpicked", { art: item.art }));
   const asset = assetOf(project, picked);
   if (assetStatus(asset) !== "ready") return none(msg("source.art-not-ready", { art: item.art, asset: picked, status: assetStatus(asset) ?? null }));
@@ -1057,6 +1100,8 @@ export function exportKey(pack, project, platform, item) {
     source: source.asset.id,
     sourceAt: source.asset.createdAt ?? null,
     keepFrames: sticker?.keepFrames ?? null,
+    // Only a still made from a sticker's frame says which; art keys are unchanged.
+    ...(source.frame !== undefined ? { frame: source.frame } : {}),
     rules: item.kind === "sticker" ? profile.sticker : profile.deliverables[item.deliverable],
   });
 }
@@ -1113,7 +1158,7 @@ export function exportState(pack, project, platform) {
     // A measurement describes a recorded file. One left behind for an export
     // the project no longer records (a craft `drop`) describes nothing.
     const measure = asset ? sidecar.measures[item.assetId] ?? null : null;
-    const base = { ...item, file: asset?.uri ?? null, measure };
+    const base = { ...item, file: asset?.uri ?? null, measure, derivedFrom: source.frame !== undefined ? { sticker: source.sticker, frame: source.frame } : null };
     const why = (message) => ({ reason: messageText(message), message });
     if (!source.asset) return { ...base, key: null, state: "blocked", reason: source.reason, message: source.message };
     const key = exportKey(pack, project, platform, item);
@@ -1252,7 +1297,11 @@ function deliverableRow(platform, item, takeState) {
   const problems = item.kind === "sticker" ? stickerExportProblems(platform, m) : item.kind === "main" ? [...artExportProblems(spec, m), ...lineMainTiming(m)] : artExportProblems(spec, m);
   if (takeState?.status === "stale") problems.push(["warn", msg("file.take-stale", { why: takeState.messages })]);
   const level = worst(problems.map(([l]) => l));
-  const summary = item.kind === "sticker" ? stickerExportSummary(platform, m) : msg("summary.still", { width: m.width, height: m.height, format: m.format, bytes: m.bytes });
+  const summary = item.kind === "sticker"
+    ? stickerExportSummary(platform, m)
+    : item.derivedFrom
+      ? msg("summary.still-from-sticker", { width: m.width, height: m.height, format: m.format, bytes: m.bytes, sticker: item.derivedFrom.sticker, frame: item.derivedFrom.frame })
+      : msg("summary.still", { width: m.width, height: m.height, format: m.format, bytes: m.bytes });
   return row(id, label, level, msg("export.measured", { problems: problems.map(([, said]) => said), summary }), address);
 }
 
@@ -1359,7 +1408,8 @@ export function tally(rows) {
 
 /**
  * The one next step for this pack, in the order the work goes: rights,
- * character, stickers, takes, picks, re-rolls, exports, checks.
+ * character, stickers, takes (a fetch of what fal already has first), picks,
+ * re-rolls, exports, checks, then what is left to confirm by hand.
  * `{ id, line, message, command?, stickers? }` — `line` is `message` in
  * English.
  */
@@ -1380,6 +1430,12 @@ export function nextStep(pack, project) {
   // Exactly what a plain `gen` would make (genTargets), then the stickers it leaves alone.
   const plan = genTargets(pack, project);
   const missing = plan.targets.map((t) => t.id);
+  // Takes fal accepted and may have finished: fetching them is free and comes first.
+  const fetchable = plan.uncertain.filter((u) => u.recoverable).map((u) => u.id);
+  if (fetchable.length) {
+    const everyOne = plan.uncertain.every((u) => u.recoverable);
+    return step("recover", msg("next.recover", { stickers: fetchable }), { command: `sticker.mjs recover${everyOne ? "" : ` --only ${fetchable.join(",")}`}`, stickers: fetchable });
+  }
   const uncertain = plan.uncertain.map((u) => u.id);
   if (missing.length) {
     return step("generate", msg("next.generate", { stickers: missing, uncertain }), { command: `sticker.mjs gen${missing.length === states.length ? "" : ` --only ${missing.join(",")}`}`, stickers: missing });
@@ -1401,10 +1457,14 @@ export function nextStep(pack, project) {
     const state = exportState(pack, project, platform);
     if (state.stale) return step("export", msg("next.export", { platform }), { command: `sticker.mjs export --platform ${platform}` });
   }
-  for (const platform of pack.platforms) {
-    const rows = checkPack(pack, project, platform);
+  const checked = pack.platforms.map((platform) => ({ platform, rows: checkPack(pack, project, platform) }));
+  for (const { platform, rows } of checked) {
     const failing = rows.filter((r) => r.level === "fail");
     if (failing.length) return step("check", msg("next.check", { platform, rows: failing.map((r) => ({ id: r.id, label: r.label })) }), { command: `sticker.mjs check --platform ${platform}` });
   }
+  // Nothing fails. A warning — a rule no official page states, a weak store
+  // still, a long name — is the person's to confirm, so it is never "done".
+  const confirm = checked.flatMap(({ platform, rows }) => rows.filter((r) => r.level === "warn").map((r) => ({ platform, id: r.id, label: r.label })));
+  if (confirm.length) return step("confirm", msg("next.confirm", { rows: confirm }), { command: "sticker.mjs check" });
   return step("done", msg("next.done"));
 }

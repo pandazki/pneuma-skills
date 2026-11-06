@@ -896,15 +896,19 @@ export function exportLineMain(source, keepFrames) {
 }
 
 /**
- * A still deliverable from a piece of art. Transparent kinds get the alpha
- * step (`cleanStillAlpha`) and stay RGBA PNG (palette PNG when over the
- * limit); opaque kinds are PNG, then JPEG where the platform allows it.
+ * A still deliverable from a piece of art — or, with `frame`, from that
+ * frame (0-based) of a sticker's take (Telegram's thumbnail when no portrait
+ * art is picked). Transparent kinds get the alpha step (`cleanStillAlpha`)
+ * and stay RGBA PNG (palette PNG when over the limit); opaque kinds are PNG,
+ * then JPEG where the platform allows it.
  */
-export function exportStill(spec, artPath) {
+export function exportStill(spec, artPath, { frame: index = 0 } = {}) {
   const probe = ffprobeJson(artPath, "stream=width,height");
   const s = (probe.streams ?? [])[0];
   if (!s?.width) throw new Error(`ffprobe could not read ${artPath}`);
-  const [frame] = decodeFrames(artPath, { width: s.width, height: s.height });
+  const frames = decodeFrames(artPath, { width: s.width, height: s.height });
+  if (!Number.isInteger(index) || index < 0 || index >= frames.length) throw new Error(`${artPath} has ${frames.length} frame(s); there is no frame ${index}`);
+  const frame = frames[index];
   const src = { width: s.width, height: s.height };
   const attempts = [];
   if (spec.alpha === "transparent") {

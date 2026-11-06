@@ -9,4 +9,5 @@ export function drawPng(output: string, options: { width: number; height: number
 export const falKey: () => string | null;
 export const imageKey: () => string | null;
 export function generateGif(options: Record<string, unknown>): Promise<Record<string, unknown>>;
+export function attachGif(options: Record<string, unknown>): Promise<Record<string, unknown>>;
 export function generateImage(options: Record<string, unknown>): Promise<Record<string, unknown>>;

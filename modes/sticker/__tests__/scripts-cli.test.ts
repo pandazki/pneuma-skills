@@ -116,7 +116,7 @@ describe("sticker.mjs CLI", () => {
     const help = Bun.spawnSync([process.execPath, STICKER, "--help"], { stderr: "pipe" });
     expect(help.exitCode).toBe(0);
     const text = help.stderr.toString();
-    for (const command of ["status", "quote", "character", "gen", "prompts", "import", "inspect", "export", "check"]) expect(text).toContain(`  ${command}`);
+    for (const command of ["status", "quote", "character", "gen", "recover", "prompts", "import", "inspect", "export", "check"]) expect(text).toContain(`  ${command}`);
     const dir = fresh();
     expect(run(dir, ["fly"]).err).toContain("unknown command 'fly'");
     expect(run(dir, ["status", "--wings"]).code).toBe(1);
@@ -354,19 +354,85 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     expect(assetOf(dir, "s02-take-1").status).toBe("failed");
     // It may have been charged: a plain rerun, its quote and the next step leave it, and say how to retry.
     const quote = ok(dir, ["quote"]);
-    expect(quote.items[0]).toMatchObject({ count: 0, stickers: [], uncertain: [{ id: "s02", take: "s02-take-1" }] });
-    expect(run(dir, ["quote"]).out).toContain("s02 (s02-take-1 failed, billing unknown");
+    expect(quote.items[0]).toMatchObject({ count: 0, stickers: [], uncertain: [{ id: "s02", take: "s02-take-1", recoverable: true }] });
+    expect(run(dir, ["quote"]).out).toContain("s02 (s02-take-1: fal accepted the job, request mock-request-failed) — fetch first, free");
     const plain = run(dir, ["gen", "--json", "--at", String(T0)]);
     expect(plain.code).toBe(0);
-    expect(JSON.parse(plain.out)).toMatchObject({ results: [], uncertain: [{ id: "s02", take: "s02-take-1" }] });
-    expect(plain.err).toContain("gen --only s02");
+    expect(JSON.parse(plain.out)).toMatchObject({ results: [], uncertain: [{ id: "s02", take: "s02-take-1", requestId: "mock-request-failed", recoverable: true }] });
+    expect(plain.err).toContain("sticker.mjs recover --only s02");
     expect(gifCalls(dir)).toHaveLength(3);
-    // Only the uncertain one is left: its own step, never "make the missing stickers".
+    // fal accepted the job, so it is asked about that request first — free, and nothing is sent.
+    expect(ok(dir, ["status"]).next).toMatchObject({ id: "recover", command: "sticker.mjs recover", message: { code: "next.recover", params: { stickers: ["s02"] } } });
+    const asked = run(dir, ["recover", "--json", "--at", String(T0)]);
+    expect(asked.code).toBe(1);
+    expect(JSON.parse(asked.out).results).toMatchObject([{ id: "s02-take-1", ok: false, billing: "unknown" }]);
+    expect(asked.err).toContain("mock upstream error");
+    expect(asked.err).toContain("gen --only s02");
+    expect(gifCalls(dir)).toHaveLength(3);
+    expect(edgeOf(dir, "s02-take-1").operation.params).toMatchObject({ requestId: "mock-request-failed", recover: "attach", earlier: [{ status: "failed", requestId: "mock-request-failed" }] });
+    // The job failed upstream: counted once, still uncertain, and now an ordinary retry.
+    expect(summarizeCosts(project(dir))).toMatchObject({ uncertain: ["s02-take-1"], reconciled: ["s02-take-1#1"] });
     expect(ok(dir, ["status"]).next).toMatchObject({ id: "retry", command: "sticker.mjs gen --only s02", message: { code: "next.retry", params: { stickers: ["s02"] } } });
     // Naming it is the explicit retry.
     const rerun = ok(dir, ["gen", "--only", "s02"]);
     expect(rerun.results.map((x: { id: string }) => x.id)).toEqual(["s02-take-2"]);
     expect(gifCalls(dir).map((c: { output: string }) => c.output.split("/stickers/")[1])).toEqual(["s01/take-1.gif", "s02/take-1.gif", "s03/take-1.gif", "s02/take-2.gif"]);
+  });
+
+  test("recover: a finished take whose download failed lands as the same generated take, by its request — no new job, counted once", () => {
+    const dir = workspace({ stickers: 3 });
+    const r = run(dir, ["gen", "--json", "--at", String(T0)], { MOCK_FAIL: "download", MOCK_FAIL_STICKER: "s02" });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("s02-take-1: fal accepted the job but its GIF never arrived — fetch it free with sticker.mjs recover --only s02 (nothing is sent again)");
+    expect(edgeOf(dir, "s02-take-1").operation.params).toMatchObject({ requestId: "mock-download-s02", failure: { billing: "unknown" } });
+    // A named gen is not a resend while fal has the job; nothing is sent.
+    const named = run(dir, ["gen", "--only", "s02"]);
+    expect(named.code).toBe(1);
+    expect(named.err).toContain("sticker.mjs recover --only s02");
+    expect(named.err).toContain("--redo");
+    expect(gifCalls(dir)).toHaveLength(3);
+    // The fetch: same id, same request, made by the agent's generate call — not an upload by a human.
+    const fetched = ok(dir, ["recover"]);
+    expect(fetched.results).toMatchObject([{ id: "s02-take-1", ok: true, requestId: "mock-download-s02" }]);
+    expect(mockLog(dir).filter((e: { kind: string }) => e.kind === "attach")).toMatchObject([{ requestId: "mock-download-s02", output: join(dir, "stickers/s02/take-1.gif") }]);
+    expect(gifCalls(dir)).toHaveLength(3);
+    const edge = edgeOf(dir, "s02-take-1");
+    expect(assetOf(dir, "s02-take-1")).toMatchObject({ status: "ready", uri: "stickers/s02/take-1.gif" });
+    expect(edge.operation).toMatchObject({ type: "generate", actor: "agent" });
+    expect(edge.operation.params).toMatchObject({ provider: "fal", requestId: "mock-download-s02", recover: "attach", sticker: "s02", earlier: [{ status: "failed", requestId: "mock-download-s02" }] });
+    expect(edge.fromAssetId).toBe("character-1");
+    expect(project(dir).sticker.measures["s02-take-1"]).toMatchObject({ format: "gif", frames: 16 });
+    const costs = summarizeCosts(project(dir));
+    expect(costs).toMatchObject({ uncertain: [], reconciled: ["s02-take-1#1"] });
+    expect(costs.total).toBeCloseTo(0.3 + 0.0421, 6);
+    // It was drawn from the pack as it is: ready to pick, not stale.
+    expect(ok(dir, ["status"]).stickers.find((s: { id: string }) => s.id === "s02")).toMatchObject({ status: "pick" });
+    expect(run(dir, ["recover"]).out).toContain("nothing to fetch");
+  });
+
+  test("recover refuses before recording anything: no key, a file already at the take's path, a sticker with nothing to fetch", () => {
+    const dir = workspace({ stickers: 2 });
+    run(dir, ["gen"], { MOCK_FAIL: "download", MOCK_FAIL_STICKER: "s02" });
+    const before = readFileSync(join(dir, "project.json"), "utf-8");
+    const noKey = run(dir, ["recover"], { MOCK_NO_KEYS: "1" });
+    expect(noKey.code).toBe(1);
+    expect(noKey.err).toContain("no fal key");
+    expect(run(dir, ["recover", "--only", "s01"]).err).toContain("s01 has nothing to fetch");
+    writeFileSync(join(dir, "stickers", "s02", "take-1.gif"), "someone else's bytes");
+    const taken = run(dir, ["recover"]);
+    expect(taken.code).toBe(1);
+    expect(taken.err).toContain("stickers/s02/take-1.gif already exists");
+    expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    expect(mockLog(dir).filter((e: { kind: string }) => e.kind === "attach")).toEqual([]);
+  });
+
+  test("a fetch that cannot reach fal keeps the job's billing unknown, never 'not billed'", () => {
+    const dir = workspace({ stickers: 1 });
+    run(dir, ["gen"], { MOCK_FAIL: "download" });
+    const r = run(dir, ["recover", "--json"], { MOCK_ATTACH_FAIL: "1" });
+    expect(r.code).toBe(1);
+    expect(edgeOf(dir, "s01-take-1").operation.params).toMatchObject({ requestId: "mock-download-s01", failure: { billing: "unknown" } });
+    expect(summarizeCosts(project(dir))).toMatchObject({ uncertain: ["s01-take-1"], notBilled: [] });
   });
 
   test("a request that provably never left is recorded as not billed, and a plain rerun retries it", () => {

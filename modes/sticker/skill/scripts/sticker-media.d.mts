@@ -105,7 +105,8 @@ export interface Exported {
 }
 export function exportSticker(platform: Platform, source: GifFrames, keepFrames: number[] | null): Exported;
 export function exportLineMain(source: GifFrames, keepFrames: number[] | null): Exported;
-export function exportStill(spec: DeliverableSpec, artPath: string): Exported;
+/** A still from art, or (`frame`) from that 0-based frame of a sticker's take. */
+export function exportStill(spec: DeliverableSpec, artPath: string, options?: { frame?: number }): Exported;
 export const ARCHIVE_DATE: Date;
 export function archive(entries: { name: string; data: Uint8Array }[]): Buffer;
 

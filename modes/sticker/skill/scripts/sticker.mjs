@@ -98,6 +98,10 @@ async function generators() {
   }
   generatorCache = {
     generateGif: mock.generateGif ?? gif.generateGif,
+    // `recover`: the same GIF call attached to a request fal already accepted —
+    // it polls and fetches that job and never submits a body (runFalJob's requestId).
+    attachGif: mock.attachGif ?? ((options) => gif.generateGif(options, { runJob: (job) => queue.runFalJob({ ...job, requestId: options.requestId }) })),
+    gifModels: gif.GIF_MODELS,
     buildGifRequest: gif.buildGifRequest,
     gifModelId: gif.gifModelId,
     generateImage: mock.generateImage ?? image.generateImage,
@@ -161,7 +165,7 @@ function workspace(v) {
 // ---------------------------------------------------------------------------
 
 /** Commands that write project.json or media files; status, quote, prompts, check and inspect never lock. */
-const MUTATING = new Set(["character", "gen", "import", "export"]);
+const MUTATING = new Set(["character", "gen", "recover", "import", "export"]);
 const LOCK_FILE = ".sticker.lock";
 
 function pidAlive(pid) {
@@ -429,11 +433,12 @@ function reportInterrupt(scope, rows, notStarted) {
  * One registered paid call under the command's interrupt scope. Returns a
  * row; a failed or interrupted call is reported and sets the exit code.
  */
-async function runPaid(ws, now, scope, { reserve, call, updateSidecar }) {
+async function runPaid(ws, now, scope, { reserve, call, updateSidecar, neverReached }) {
   const { io } = await craftModules();
   const started = Date.now();
   const outcome = await io.runRegistered({
     path: ws.project, sidecarKey: S.SIDECAR_KEY, reserve, call, now,
+    ...(neverReached ? { neverReached } : {}),
     signal: scope.signal, handleSignals: false,
     updateSidecar: (d, phase) => {
       updateSidecar?.(d, phase);
@@ -643,11 +648,22 @@ function stickerTargets(pack, doc, v) {
   return { targets, skipped: plan.skipped, uncertain: plan.uncertain };
 }
 
-/** One line for the stickers a plain gen leaves because their last call may have been billed. */
-function uncertainLine(uncertain) {
-  if (!uncertain.length) return null;
-  const ids = uncertain.map((u) => u.id).join(",");
-  return `not sent again: ${uncertain.map((u) => `${u.id} (${u.take} failed, billing unknown: ${u.reason})`).join("; ")} — it may have been charged. Retry only with the user's yes: sticker.mjs gen --only ${ids} (or --redo)`;
+/**
+ * The lines for the stickers gen leaves because their last call may have
+ * been billed: a take fal accepted is fetched first (free); any other is
+ * retried only with the user's yes.
+ */
+function uncertainLines(uncertain) {
+  const fetchable = uncertain.filter((u) => u.recoverable);
+  const asked = uncertain.filter((u) => !u.recoverable);
+  return [
+    fetchable.length
+      ? `not sent again: ${fetchable.map((u) => `${u.id} (${u.take}: fal accepted the job, request ${u.requestId})`).join("; ")} — fetch first, free, nothing is sent again: sticker.mjs recover --only ${fetchable.map((u) => u.id).join(",")}`
+      : null,
+    asked.length
+      ? `not sent again: ${asked.map((u) => `${u.id} (${u.take} failed, billing unknown: ${u.reason})`).join("; ")} — it may have been charged. Retry only with the user's yes: sticker.mjs gen --only ${asked.map((u) => u.id).join(",")} (or --redo)`
+      : null,
+  ].filter(Boolean);
 }
 
 function artTargets(pack, doc, v) {
@@ -696,7 +712,7 @@ async function cmdQuote(v) {
     lines.push(`stickers: ${targets.length ? targets.map((t) => t.sticker.id).join(", ") : "nothing missing"} — ${targets.length} GIF take(s) of ${m.frames} × ${m.size}² at ${m.frameMs} ms × ${costText(est)}; range $${S.ESTIMATES.gifRangeUsd[0]}–${S.ESTIMATES.gifRangeUsd[1]} each`);
     if (targets.length) lines.push(`time: ≈ ${S.ESTIMATES.gifSeconds} s per take, ${concurrency} at a time → ≈ ${wallSeconds(targets.length, S.ESTIMATES.gifSeconds, concurrency)} s`);
     if (skipped.length) lines.push(`skipped (already have takes; --redo re-rolls): ${skipped.map((s) => `${s.id} ${s.status}`).join(", ")}`);
-    if (uncertain.length) lines.push(uncertainLine(uncertain));
+    lines.push(...uncertainLines(uncertain));
   }
   const total = items.reduce((sum, i) => sum + (Number.isFinite(i.each?.usd) ? i.each.usd * i.count : 0), 0);
   const unpriced = items.some((i) => i.count && !Number.isFinite(i.each?.usd));
@@ -889,7 +905,13 @@ async function cmdGen(v) {
   const anchor = requireAnchor(ws, pack, doc);
   const { targets, skipped, uncertain } = stickerTargets(pack, doc, v);
   for (const s of skipped) note(`skip ${s.id}: ${s.status}${s.status === "generating" ? " (another take is in flight; --redo supersedes it)" : " — already has takes; --redo re-rolls"}`);
-  if (uncertain.length) note(uncertainLine(uncertain));
+  for (const line of uncertainLines(uncertain)) note(line);
+  // Naming a sticker whose job fal still has is not a reason to pay for another.
+  const named = listFlag(v.only);
+  const fetchFirst = uncertain.filter((u) => u.recoverable && named.includes(u.id));
+  if (fetchFirst.length && !targets.length) {
+    fail(`nothing was sent — ${fetchFirst.map((u) => `${u.id}'s ${u.take}`).join(", ")} ${fetchFirst.length === 1 ? "is a job" : "are jobs"} fal accepted: fetch ${fetchFirst.length === 1 ? "it" : "them"} first, free: sticker.mjs recover --only ${fetchFirst.map((u) => u.id).join(",")}. To send a new paid take anyway (with the user's yes), add --redo.`);
+  }
   if (!targets.length) {
     emit(v, { command: "gen", results: [], skipped, uncertain }, [uncertain.length
       ? `nothing generated — ${uncertain.map((u) => u.id).join(", ")} may already have been charged; see above`
@@ -959,12 +981,144 @@ async function cmdGen(v) {
   const stopped = reportInterrupt(scope, rows, notStarted.length ? `never started (nothing sent): ${notStarted.join(", ")}` : "every take had started");
   const landed = rows.filter((r) => r.ok).length;
   const after = await loadProjectOrNull(ws);
+  for (const r of rows) {
+    if (!r.ok && S.recoverable(after, r.id)) note(`${r.id}: fal accepted the job but its GIF never arrived — fetch it free with sticker.mjs recover --only ${r.sticker} (nothing is sent again)`);
+  }
   const next = S.nextStep(pack, after);
   emit(v, { command: "gen", results: rows, skipped, uncertain, interrupted: scope.by, notStarted, next }, [
     `takes: ${landed} of ${rows.length} landed`,
     ...paidLines(rows),
     stopped,
     `cost: this run ${rows.length} call(s) ≈ ${money(round4(rows.reduce((s, r) => s + (r.billing === "none" ? 0 : r.cost?.usd ?? 0), 0)))} (estimate — fal reports no usage for GIF jobs) · ${await projectCostLine(ws)}`,
+    `look before picking: sticker.mjs inspect <id> · next: ${next.line}`,
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// recover
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch takes fal accepted but never delivered: for each sticker whose last
+ * take is `S.recoverable` (failed, billing unknown, a fal request id on
+ * record, not yet asked about), attach to that request — poll it and fetch
+ * its GIF; no body is sent, so no new job starts — and land the result as
+ * the SAME take: the same id and file name, the call it was recorded as
+ * (generate, by the agent, from the anchor it was drawn from, with its
+ * prompt and request) and the same request id, so the cost reading counts
+ * that job once (craft "reconciled"). Free.
+ *
+ * Every failure here concerns that one request, so it is recorded under its
+ * id with billing unknown — even a refused connection: the job left long
+ * ago, and nothing done now proves it unbilled. A fetch that failed is not
+ * offered again; the take becomes an ordinary retry, the user's call.
+ */
+async function cmdRecover(v) {
+  const ws = workspace(v);
+  const now = nowFrom(v);
+  const pack = loadPack(ws);
+  const gen = await generators();
+  const { craft } = await craftModules();
+  const deadlineMs = (parseNumber(v["deadline-s"], "--deadline-s", { min: 30, max: 3600 }) ?? 300) * 1000;
+  const concurrency = parseNumber(v.concurrency, "--concurrency", { integer: true, min: 1, max: 8 }) ?? 4;
+  const doc = await loadProjectOrNull(ws);
+  const only = listFlag(v.only);
+  for (const id of only) if (!pack.stickers.some((s) => s.id === id)) fail(`--only: no sticker '${id}' in pack.json`);
+  const plan = [];
+  for (const sticker of pack.stickers) {
+    if (only.length && !only.includes(sticker.id)) continue;
+    const latest = S.takesOf(doc, sticker.id).at(-1) ?? null;
+    if (latest && S.recoverable(doc, latest.id)) {
+      plan.push({ sticker, take: latest, params: latest.edge.operation.params });
+      continue;
+    }
+    if (!only.length) continue;
+    const p = latest?.edge?.operation?.params ?? {};
+    const why = !latest ? "it has no take"
+      : latest.status !== "failed" ? `its last take ${latest.id} is ${latest.status}`
+        : p.failure?.billing === "none" ? `${latest.id} never reached fal (a plain gen makes it again)`
+          : !p.requestId ? `${latest.id} has no fal request on record`
+            : `${latest.id} was already asked for by its request ${p.requestId} and could not be fetched`;
+    fail(`${sticker.id} has nothing to fetch: ${why}. A new take is a new paid call: sticker.mjs gen --only ${sticker.id} — only with the user's yes.`);
+  }
+  if (!plan.length) {
+    emit(v, { command: "recover", results: [] }, ["nothing to fetch — no sticker's last take is a job fal accepted that never arrived"]);
+    return;
+  }
+  // Every refusal that needs no network comes first, before anything is recorded.
+  const jobs = plan.map(({ sticker, take, params: p }) => {
+    const alias = String(p.model ?? "").replace(/^openai\/gpt-image-2\.6-/, "");
+    if (!gen.gifModels.includes(alias)) fail(`${take.id} was made by '${p.model}', which recover does not know`);
+    const request = p.request ?? {};
+    const rel = take.asset.uri;
+    if (!rel) fail(`${take.id} has no planned file on record`);
+    const file = ws.abs(rel);
+    if (existsSync(file)) fail(`${rel} already exists — recover never writes over a file; move it out of the workspace's stickers/ folder, then run recover again`);
+    // The request URLs are fal's app id plus the request id, the same for
+    // both GIF endpoints, so no reference image is needed to attach.
+    const options = {
+      prompt: p.prompt, output: file, model: alias, imageUrls: [],
+      frameCount: request.frames, frameDurationMs: request.frameMs, imageSize: `${request.size}x${request.size}`,
+      quality: request.quality, background: request.background,
+    };
+    gen.buildGifRequest({ ...options, output: join(tmpdir(), `sticker-recover-${process.pid}-${sticker.id}.gif`) });
+    const extra = Object.fromEntries(Object.entries(p).filter(([k]) => !craft.RESERVED_PARAM_KEYS.includes(k) && k !== "recover"));
+    const cost = p.cost && (p.cost.basis === "estimate" || p.cost.basis === "table") ? p.cost : undefined;
+    return {
+      sticker, take, file, options, requestId: p.requestId,
+      reserve: {
+        id: take.id, type: take.asset.type ?? "image", name: take.asset.name, op: "generate", uri: rel,
+        from: craft.edgeInputs(take.edge), model: p.model, prompt: p.prompt, provider: "fal",
+        params: { ...extra, recover: "attach" }, ...(cost ? { cost } : {}),
+      },
+    };
+  });
+  const apiKey = gen.falKey();
+  if (!apiKey) fail("no fal key (FAL_KEY in the environment or a .env) — nothing was fetched or recorded. recover asks fal about each recorded request, which needs the key that sent it.");
+  note(`recover: asking fal about ${jobs.map((j) => `${j.take.id} (request ${j.requestId})`).join(", ")} — no new job is sent; waiting up to ${deadlineMs / 1000} s each`);
+  const scope = interruptScope();
+  const tasks = jobs.map((j) => async () => {
+    let measured = null;
+    const row = await runPaid(ws, now, scope, {
+      reserve: j.reserve,
+      // The job left long ago: nothing that happens now proves it unbilled.
+      neverReached: () => false,
+      call: async ({ signal }) => {
+        try {
+          const result = await gen.attachGif({ ...j.options, requestId: j.requestId, apiKey, signal, deadlineMs, onStatus: ({ status }) => note(`[${j.take.id}] fal ${status}`) });
+          measured = measureTakeSafely(j.file);
+          return { file: j.file, requestId: result?.requestId ?? j.requestId };
+        } catch (error) {
+          if (error && typeof error === "object" && Object.isExtensible(error) && !error.requestId) error.requestId = j.requestId;
+          throw error;
+        }
+      },
+      updateSidecar: (d, phase) => {
+        if (phase === "land" && measured) sidecar(d).measures[j.take.id] = { ...measured, at: now() };
+      },
+    });
+    return { sticker: j.sticker.id, requestId: j.requestId, ...row, detail: takeDetail(measured) };
+  });
+  let ran;
+  try {
+    ran = await pool(tasks, concurrency, scope.signal);
+  } finally {
+    scope.dispose();
+  }
+  const rows = ran.filter(Boolean);
+  const notStarted = jobs.filter((_, i) => !ran[i]).map((j) => j.sticker.id);
+  const stopped = reportInterrupt(scope, rows, notStarted.length ? `never asked: ${notStarted.join(", ")}` : "every fetch had started");
+  const failed = rows.filter((r) => !r.ok);
+  if (failed.length) note(`could not fetch ${failed.map((r) => `${r.id} (request ${r.requestId})`).join(", ")} — billing still unknown. A new take is a new paid call: sticker.mjs gen --only ${failed.map((r) => r.sticker).join(",")} — only with the user's yes.`);
+  const after = await loadProjectOrNull(ws);
+  const next = S.nextStep(pack, after);
+  emit(v, { command: "recover", results: rows, interrupted: scope.by, notStarted, next }, [
+    `fetched: ${rows.filter((r) => r.ok).length} of ${rows.length} — no new job was sent`,
+    ...rows.map((r) => (r.ok
+      ? `  ${r.id} landed from fal request ${r.requestId} · ${r.seconds} s${r.detail ? ` · ${r.detail}` : ""}`
+      : `  ${r.id} NOT FETCHED after ${r.seconds} s — ${r.reason} (billing ${r.billing})`)),
+    stopped,
+    `cost: ${await projectCostLine(ws)}`,
     `look before picking: sticker.mjs inspect <id> · next: ${next.line}`,
   ]);
 }
@@ -1254,13 +1408,15 @@ async function cmdExport(v) {
         rows.push({ deliverable: item.deliverable, state: "current", file: item.file });
         continue;
       }
-      const source = S.deliverableSource(pack, doc0, item).asset;
+      const from = S.deliverableSource(pack, doc0, item);
+      const source = from.asset;
       const sticker = item.sticker ? pack.stickers.find((s) => s.id === item.sticker) : null;
       let out;
       try {
         if (item.kind === "sticker") out = media.exportSticker(platform, frameSource(source), sticker.keepFrames);
         else if (item.kind === "main") out = media.exportLineMain(frameSource(source), sticker.keepFrames);
-        else out = media.exportStill(profile.deliverables[item.deliverable], ws.abs(source.uri));
+        // Art, or (Telegram's thumbnail with no portrait) one frame of a sticker's take.
+        else out = media.exportStill(profile.deliverables[item.deliverable], ws.abs(source.uri), from.frame !== undefined ? { frame: from.frame } : {});
       } catch (error) {
         rows.push({ deliverable: item.deliverable, state: "error", reason: errorMessage(error) });
         process.exitCode = 1;
@@ -1276,12 +1432,12 @@ async function cmdExport(v) {
         continue;
       }
       media.writeAtomic(join(dirAbs, name), out.bytes);
-      made.push({ item, rel, source, measure: { ...out.measure, key: item.key, at: now() } });
+      made.push({ item, rel, source, frame: from.frame, measure: { ...out.measure, key: item.key, at: now() } });
       if (!out.measure.fit.ok) {
         process.exitCode = 1;
         note(`ERROR: ${rel} is ${kb(out.measure.bytes)} after every size setting — over the ${profile.label} limit; it is kept for a look and the check fails it`);
       }
-      rows.push({ deliverable: item.deliverable, state: "exported", file: rel, bytes: out.measure.bytes, fit: out.measure.fit });
+      rows.push({ deliverable: item.deliverable, state: "exported", file: rel, bytes: out.measure.bytes, fit: out.measure.fit, ...(from.frame !== undefined ? { derivedFrom: { sticker: from.sticker, frame: from.frame } } : {}) });
     }
 
     // Record what was made, in one fresh read → write.
@@ -1293,7 +1449,7 @@ async function cmdExport(v) {
       craft.reserveAsset(doc, {
         id: m.item.assetId, type, name: `${profile.label} ${m.item.kind === "sticker" ? `${m.item.name} (${m.item.sticker})` : m.item.deliverable}`,
         op: "derive", uri: m.rel, from: [m.source.id], force: true, generating: false,
-        params: { op: "export", platform, deliverable: m.item.deliverable, recipe: S.EXPORT_RECIPES[platform] },
+        params: { op: "export", platform, deliverable: m.item.deliverable, recipe: S.EXPORT_RECIPES[platform], ...(m.frame !== undefined ? { frame: m.frame } : {}) },
       }, now());
       const { metadata, warning } = io.probeMedia(ws.abs(m.rel), type);
       if (warning) note(`WARN: ${m.item.assetId}: ${warning}`);
@@ -1364,7 +1520,7 @@ async function cmdExport(v) {
   for (const [platform, r] of Object.entries(report)) {
     lines.push(`${S.PLATFORM_PROFILES[platform].label}:`);
     for (const row of r.items) {
-      if (row.state === "exported") lines.push(`  ${row.deliverable} → ${row.file} · ${kb(row.bytes)}${row.fit ? ` · ${Object.entries(row.fit).filter(([k]) => k !== "ok").map(([k, val]) => `${k} ${val}`).join(", ")}` : ""}${row.fit?.ok === false ? " · OVER THE LIMIT" : ""}`);
+      if (row.state === "exported") lines.push(`  ${row.deliverable} → ${row.file} · ${kb(row.bytes)}${row.fit ? ` · ${Object.entries(row.fit).filter(([k]) => k !== "ok").map(([k, val]) => `${k} ${val}`).join(", ")}` : ""}${row.fit?.ok === false ? " · OVER THE LIMIT" : ""}${row.derivedFrom ? ` · made from ${row.derivedFrom.sticker}, frame ${row.derivedFrom.frame} (no portrait art picked)` : ""}`);
       else if (row.state === "current") lines.push(`  ${row.deliverable} current (${row.file})`);
       else if (row.state === "blocked") lines.push(`  ${row.deliverable} ${row.optional ? "skipped (optional)" : "BLOCKED"} — ${row.reason}`);
       else lines.push(`  ${row.deliverable} ERROR — ${row.reason}`);
@@ -1419,7 +1575,8 @@ const COMMAND_HELP = [
   ["status", "", "the pack, keys, tools, every sticker's status, exports, checks, cost and the next step"],
   ["quote", "[--only s01,s03] [--redo] | --art [--only portrait,head] | --character [--count 1]", "what the paid command would send and cost, before it is sent (nothing is sent)"],
   ["character", "[--from <image|character-source-n>] [--count 1] [--model flare|sunburst] [--quality high] [--dry-run]", "character candidates (OpenRouter, transparent PNG) from the user's photo or image, or from character.description. Paid; refuses without rights"],
-  ["gen", "[--only s01,s03] [--redo] [--concurrency 4] [--deadline-s 600] [--dry-run]\n                 --art [--only portrait,head] [--redo] [--model] [--quality high] [--dry-run]", "sticker takes (fal GPT Image 2.6 GIF from the anchor) for stickers with no take, or a new take each with --redo; a sticker whose last take failed with billing unknown is listed, not resent (--only <id> retries it); --art makes the art the chosen platforms need. Paid; refuses without rights; a failure does not stop the others; nothing is retried; one interrupt cancels what is in flight, starts nothing new and exits 130"],
+  ["gen", "[--only s01,s03] [--redo] [--concurrency 4] [--deadline-s 600] [--dry-run]\n                 --art [--only portrait,head] [--redo] [--model] [--quality high] [--dry-run]", "sticker takes (fal GPT Image 2.6 GIF from the anchor) for stickers with no take, or a new take each with --redo; a sticker whose last take failed with billing unknown is listed, not resent: one fal accepted is fetched with recover, and --only <id> refuses it until then; another is retried by --only <id>; --art makes the art the chosen platforms need. Paid; refuses without rights; a failure does not stop the others; nothing is retried; one interrupt cancels what is in flight, starts nothing new and exits 130"],
+  ["recover", "[--only s01,s03] [--deadline-s 300] [--concurrency 4]", "fetch takes fal accepted but never delivered (a failed download, an interrupt): attach to each recorded request, fetch its GIF and land the SAME take — no new job, free, the job counted once. Tried once per request; a take that could not be fetched becomes an ordinary retry (gen --only <id>, with the user's yes)"],
   ["prompts", "[--only s01,…] | --art [--only kinds] | --character", "the exact prompts, for making the files elsewhere (ChatGPT) and importing them"],
   ["import", "--sticker <id> --file <gif> | --art <kind> --file <image> | --character --file <image> | --source --file <photo>", "register a file the user brought (upload by human); a take records the current prompt and anchor"],
   ["inspect", "<sticker id> [--take <id>]", "contact sheet of a take on the light and dark chat plates (inspect/<take>-contact.png) and its loop seam, motion and alpha numbers"],
@@ -1462,6 +1619,7 @@ const COMMANDS = {
   quote: cmdQuote,
   character: cmdCharacter,
   gen: cmdGen,
+  recover: cmdRecover,
   prompts: cmdPrompts,
   import: cmdImport,
   inspect: cmdInspect,

@@ -336,6 +336,66 @@ describe.skipIf(!MEDIA)("sticker export on real media", () => {
   });
 });
 
+describe.skipIf(!MEDIA)("Telegram's thumbnail without portrait art", () => {
+  let dir = "";
+  beforeAll(() => {
+    dir = fresh("sticker-thumb-");
+    const raw = rawPack();
+    raw.platforms = ["telegram"];
+    raw.listing = { telegram: raw.listing.telegram };
+    raw.character.anchor = null;
+    raw.stickers = raw.stickers.slice(0, 2).map((s: object) => ({ ...s, take: null }));
+    raw.art = {};
+    writeFileSync(join(dir, "pack.json"), JSON.stringify(raw, null, 2));
+    spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=0x8899aa:s=640x480", "-frames:v", "1", join(dir, "photo.png")]);
+    ok(dir, ["character", "--from", join(dir, "photo.png")]);
+    editPack(dir, (p) => {
+      p.character.anchor = "character-1";
+    });
+    ok(dir, ["gen"]);
+    editPack(dir, (p) => {
+      p.stickers.forEach((s: { id: string; take: string }) => (s.take = `${s.id}-take-1`));
+    });
+  }, 120_000);
+
+  /** The left edge of the figure in a 100×100 RGBA still. */
+  const leftEdge = (file: string) => M.alphaBox(decode(file, 100, 100)[0], 100, 100)!.x;
+
+  test("is made, free, from the first sticker's first kept frame: a 100×100 transparent PNG in the zip, and the row says where it came from", () => {
+    const out = ok(dir, ["export", "--platform", "telegram"]);
+    expect(out.platforms.telegram.items.find((i: { deliverable: string }) => i.deliverable === "thumb")).toMatchObject({ state: "exported", file: "exports/telegram/thumb.png", derivedFrom: { sticker: "s01", frame: 0 } });
+    const thumb = join(dir, "exports", "telegram", "thumb.png");
+    expect(ffprobe(thumb, "stream=width,height,pix_fmt").streams[0]).toMatchObject({ width: 100, height: 100, pix_fmt: "rgba" });
+    expect(readFileSync(thumb).length).toBeLessThanOrEqual(128_000);
+    const [f] = decode(thumb, 100, 100);
+    expect(detachedSemi(f, 100, 100)).toBe(0);
+    for (const [x, y] of [[0, 0], [99, 0], [0, 99], [99, 99]]) expect(alphaAt(f, 100, x, y)).toBe(0);
+    const edge = readJson(join(dir, "project.json")).provenance.find((e: { toAssetId: string }) => e.toAssetId === "telegram-thumb");
+    expect(edge).toMatchObject({ fromAssetId: "s01-take-1", operation: { type: "derive", params: { op: "export", deliverable: "thumb", frame: 0 } } });
+    const check = JSON.parse(run(dir, ["check", "--json"]).out);
+    const row = check.platforms.telegram.rows.find((r: { id: string }) => r.id === "thumb");
+    expect(row.level).toBe("pass");
+    expect(row.detail).toContain("made from s01, frame 0 (no portrait art picked)");
+    expect(check.platforms.telegram.rows.find((r: { id: string }) => r.id === "zip").level).toBe("pass");
+    if (spawnSync("unzip", ["-v"], { stdio: "ignore" }).status === 0) {
+      expect(spawnSync("unzip", ["-Z1", join(dir, "exports", "telegram.zip")], { encoding: "utf-8" }).stdout.trim().split("\n")).toEqual(["01.webm", "02.webm", "thumb.png"]);
+    }
+  }, 60_000);
+
+  test("follows a trim: keepFrames moves it to the first kept frame, and only it and the trimmed sticker are made again", () => {
+    const before = leftEdge(join(dir, "exports", "telegram", "thumb.png"));
+    editPack(dir, (p) => {
+      p.stickers[0].keepFrames = [10, 11, 12, 13, 14, 15];
+    });
+    const out = ok(dir, ["export", "--platform", "telegram"]);
+    const exported = out.platforms.telegram.items.filter((i: { state: string }) => i.state === "exported").map((i: { deliverable: string }) => i.deliverable);
+    expect(exported).toEqual(["s01", "thumb"]);
+    // The mock figure moves right frame by frame: frame 10 sits further right than frame 0.
+    expect(leftEdge(join(dir, "exports", "telegram", "thumb.png"))).toBeGreaterThan(before);
+    expect(readJson(join(dir, "project.json")).provenance.find((e: { toAssetId: string }) => e.toAssetId === "telegram-thumb").operation.params.frame).toBe(10);
+  }, 60_000);
+});
+
 describe.skipIf(!MEDIA)("export writes and deletes only what the project owns", () => {
   let dir = "";
   const wechat = (name: string) => join(dir, "exports", "wechat", name);

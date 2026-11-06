@@ -89,6 +89,8 @@ export type StateMessage =
   | Said<"summary.telegram", Size & { alpha: boolean; bytes: number; ms: number; fps: number }>
   | Said<"summary.line", Size & { bytes: number; frames: number; ms: number; plays: number }>
   | Said<"summary.still", Size & { format: string; bytes: number }>
+  /** A still made from a sticker's frame (Telegram's thumbnail with no portrait art). */
+  | Said<"summary.still-from-sticker", Size & { format: string; bytes: number; sticker: string; frame: number }>
   // checklist rows
   | Said<"rights.ok", { basis: RightsBasis; confirmedAt: string; note: string }>
   | Said<"rights.missing", None>
@@ -124,12 +126,14 @@ export type StateMessage =
   | Said<"next.character", None>
   | Said<"next.stickers", None>
   | Said<"next.generate", Ids & { uncertain: string[] }>
+  | Said<"next.recover", Ids>
   | Said<"next.retry", Ids>
   | Said<"next.generating", Ids>
   | Said<"next.pick", Ids>
   | Said<"next.reroll", { stale: { sticker: string; why: StateMessage[] }[] }>
   | Said<"next.export", { platform: Platform }>
   | Said<"next.check", { platform: Platform; rows: { id: string; label: string }[] }>
+  | Said<"next.confirm", { rows: { platform: Platform; id: string; label: string }[] }>
   | Said<"next.done", None>;
 
 export type MessageCode = StateMessage["code"];
@@ -398,6 +402,8 @@ export interface DeliverableSpec {
   when?: "reward";
   /** Telegram thumbnail: absent art is a pass. */
   optional?: boolean;
+  /** Telegram thumbnail: with no art picked, made from the first sticker's first kept frame. */
+  fallback?: "first-sticker";
   animated?: boolean;
 }
 
@@ -582,9 +588,19 @@ export interface GenPlan {
   targets: { id: string; status: StickerStatus }[];
   skipped: { id: string; status: StickerStatus }[];
   /** Latest take failed with billing unknown: a plain gen leaves them; `only` naming them retries. */
-  uncertain: { id: string; take: string | null; reason: string }[];
+  uncertain: {
+    id: string;
+    take: string | null;
+    reason: string;
+    /** The fal request the failed take was accepted under, when one is on record. */
+    requestId: string | null;
+    /** `recoverable(project, take)`: fetch it (`sticker.mjs recover`, free) before any retry. */
+    recoverable: boolean;
+  }[];
 }
 export function genTargets(pack: Pack, project: ProjectInput, options?: { only?: string[]; redo?: boolean }): GenPlan;
+/** A failed take fal accepted (request id recorded, billing unknown) that nobody has fetched by that request yet. */
+export function recoverable(project: ProjectInput, takeId: string): boolean;
 export interface AnchorState {
   anchor: string | null;
   ready: boolean;
@@ -614,9 +630,19 @@ export interface Deliverable {
   sticker: string | null;
   art: ArtKind | null;
   optional?: boolean;
+  /** Art with a `fallback` (Telegram's thumbnail): the sticker it is made from when no art is picked. */
+  fallbackSticker?: string | null;
 }
 export function platformDeliverables(pack: Pack, platform: Platform): Deliverable[];
-export function deliverableSource(pack: Pack, project: ProjectInput, item: Deliverable): { asset: CraftAsset | null; reason: string | null; message: StateMessage | null };
+export interface DeliverableSourceResult {
+  asset: CraftAsset | null;
+  /** Set when a still is made from a sticker's picked take: which sticker, and its first kept frame. */
+  sticker?: string;
+  frame?: number;
+  reason: string | null;
+  message: StateMessage | null;
+}
+export function deliverableSource(pack: Pack, project: ProjectInput, item: Deliverable): DeliverableSourceResult;
 /** Hash of everything the deliverable's bytes depend on; null while its source is missing. */
 export function exportKey(pack: Pack, project: ProjectInput, platform: Platform, item: Deliverable): string | null;
 export function sidecarOf(project: ProjectInput): StickerSidecar;
@@ -627,6 +653,8 @@ export interface ExportItem extends Deliverable {
   /** The export asset's uri, when it exists. */
   file: string | null;
   measure: Measure | null;
+  /** A still made from a sticker's frame, not from art: which sticker and frame. */
+  derivedFrom: { sticker: string; frame: number } | null;
   key: string | null;
   state: ExportItemState;
   /** `message` in English; null when current. */
@@ -672,8 +700,12 @@ export function checkPack(pack: Pack, project: ProjectInput, platform: Platform)
 export function tally(rows: CheckRow[]): Record<CheckLevel, number>;
 
 export interface NextStep {
-  /** `retry`: only stickers whose last take failed with billing unknown are left — a retry is the user's call, never a gap to fill. */
-  id: "rights" | "anchor" | "character" | "stickers" | "generate" | "retry" | "generating" | "pick" | "reroll" | "export" | "check" | "done";
+  /**
+   * `recover`: takes fal accepted that never arrived — fetched by request, free, before anything else.
+   * `retry`: only stickers whose last take failed with billing unknown are left — a retry is the user's call, never a gap to fill.
+   * `confirm`: nothing fails, but warnings remain for the person to confirm by hand; `done` has none.
+   */
+  id: "rights" | "anchor" | "character" | "stickers" | "recover" | "generate" | "retry" | "generating" | "pick" | "reroll" | "export" | "check" | "confirm" | "done";
   /** `message` in English. */
   line: string;
   message: StateMessage;
