@@ -441,3 +441,82 @@ Acceptance:
    `~/pneuma-dev-scratch/2026-11-06/sticker-t1/`. Report the actual GIF size
    and timing at the 512²×16 default.
 6. `bun run typecheck`, `bun test modes/sticker`, and the media tier pass.
+
+## TASK-2 — manifest, domain, viewer, registration
+
+Reads TASK-1's `sticker-state.mjs` API as merged; every status, staleness flag
+and checklist row the viewer draws comes from it (no second copy of a rule).
+
+Acceptance:
+1. `manifest.ts` complete per "Manifest" above; no React imports;
+   `supportedBackends: ["claude-code", "codex"]`; `init.seeds` entry for the
+   seed (TASK-3 supplies the files); `contentCheckPattern: "pack.json"`.
+2. `domain.ts`: `loadPack(files)` → the aggregate the viewer draws (pack,
+   per-sticker view with status / takes / media URLs via `resolveAssetUri`,
+   per-platform checklist and export views, cost summary, project-file error);
+   `savePack` writes `pack.json` only, minimal diff; pure edit helpers for
+   every viewer write (field edit, pick take, pick anchor, pick art).
+   A malformed `project.json` is an error state with the reader's named error,
+   never a crash.
+3. `pneuma-mode.ts`: `extractContext` puts the address first and names the
+   sticker's word / caption / action / take state; `workspace` per the brief;
+   actions `navigate-to` and `set-view` with `onNavigateComplete` results
+   (unknown sticker / frame → reported failure, not silence).
+4. Viewer per "Viewer" above. Specifics:
+   - GIFs play with `<img>`; the frame strip decodes frames client-side
+     (`ImageDecoder` where available; without it the strip is hidden and says
+     so). Telegram WebM previews use a muted looping `<video>`; where VP9
+     alpha is unsupported, say so in place rather than show a black box. LINE
+     APNG plays its real loop count with a replay control.
+   - Every state is designed: no pack, rights missing, no character, takes
+     generating (elapsed), failed (reason + "may have been billed" when
+     billing is unknown), pick, stale (why), exports stale, keys missing.
+   - Ethereal Tech chrome (`cc-*` tokens), chat plates only inside content,
+     no emoji in UI chrome (a sticker's `emoji` field is content and is
+     shown), no native form controls.
+   - `editing === false` / `staticPlayer`: no writes, no commands, no
+     `/api/*` beyond `/content` and `/api/file`.
+   - zh-CN, en, ja strings, following the anime-series strings pattern.
+5. Registration: `core/mode-loader.ts`; `src/player/player-modes.ts` import
+   (the whitelist entry comes later, after the player pass).
+6. Tests: domain round-trip and save-scope, address / extractContext,
+   viewer render states on fixtures, registration. `bun run typecheck`,
+   `bun test modes/sticker`, `bun run test:frontend` scoped as the rules say.
+7. Browser evidence: a disposable `--viewing` session on its own port over a
+   real workspace (TASK-1's smoke workspace, then the seed when it lands):
+   screenshots of panel (light + dark), inspector with frame strip, chat,
+   each platform's submit tab; console clean. Screenshots under
+   `~/pneuma-dev-scratch/2026-11-06/sticker-t2/`.
+
+## TASK-3 — skill, seed, showcase copy
+
+Acceptance:
+1. `skill/SKILL.md` (YAML `name: pneuma-sticker`, a `description` with a use
+   condition) in the order Scene → Viewer contract (ViewerAddress vocabulary,
+   the two actions, the look rhythm: `inspect` contact sheet, then
+   `navigate-to` + `capture` on the dark plate, before calling a sticker done)
+   → Core rules (rights gate first; quote before spend and say the wait;
+   `project.json` is never hand-edited; captions are drawn by the model and a
+   wrong caption is a re-roll; `keepFrames` trims a loop that jumps; every
+   platform's checklist green before "ready to submit"; registration and
+   submission are the user's) → the two routes with opening question,
+   defaults, cost and wait, where to look, finish line → commands table →
+   references. Essential policy works without Claude-only tool names.
+2. `skill/references/`: `platforms.md` (the profile tables plus how a person
+   submits on each platform and what review looks like), `writing.md`
+   (choosing phrases people send every day, one distinct pose per sticker,
+   writing actions as concrete body beats in English, caption length, what
+   never goes in a sticker), `prompting.md` (prompt anatomy as assembled by
+   the script, what each re-roll changes). Original text; nothing copied from
+   any reference project.
+3. Seed `modes/sticker/seed/niuma/` made by the mode's scripts: character
+   derived from `modes/anime-series/seed/guang-niuma/refs/char-niuma-sheet-2.webp`
+   with provenance, 8 stickers (everyday work-chat phrases), all art, all three
+   platform exports, checks run; shipped as it came out, re-rolls kept as
+   takes. Spend ≤ $3; report the total and the seed's byte size.
+   The 8 takes are also the default's validation: report per take the
+   frames, bytes, wall time and anything wrong you saw.
+4. `showcase/showcase.json`: tagline + 3 highlights (one character → a
+   whole pack; the panel on light and dark plates; per-platform checklist and
+   export).
+5. Mode `version: "0.1.0"` + changelog entry.
