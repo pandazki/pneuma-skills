@@ -81,10 +81,6 @@ Telegram can still remove sets that break its terms.
 Files: `exports/line/01.png…`, `main.png`, `tab.png`, `listing.md`,
 `exports/line.zip`.
 
-The main image is cut from a sticker, so with the white sticker border its
-check row warns about a near-white outline; tell the user what it is rather
-than treating it as a failure.
-
 **Submitting.** The user signs in to LINE Creators Market
 (creator.line.me) with their LINE account, registers as a creator (payout
 details are needed to sell), creates a new animation sticker item, enters

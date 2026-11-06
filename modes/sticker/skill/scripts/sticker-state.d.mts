@@ -258,7 +258,10 @@ export interface DeliverableSpec {
   maxBytes: number;
   alpha: "transparent" | "opaque";
   fit: "pad" | "cover";
+  /** The background must not be mostly white (WeChat banner). */
   notWhite?: boolean;
+  /** No white outline around the figure: a rule of the WeChat cover (表情封面图) only. */
+  noWhiteOutline?: boolean;
   /** Only when the WeChat listing has a rewardLine. */
   when?: "reward";
   /** Telegram thumbnail: absent art is a pass. */

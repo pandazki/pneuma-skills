@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ASSET_STATUSES, statusOf } from "../../_shared/scripts/craft-project.mjs";
+import { ASSET_STATUSES, dropAssets, statusOf } from "../../_shared/scripts/craft-project.mjs";
 import * as S from "../skill/scripts/sticker-state.mjs";
 import type { CheckRow, Measure, Platform } from "../skill/scripts/sticker-state.mjs";
 import { addImage, addTake, emptyDoc, exportAll, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
@@ -293,6 +293,26 @@ describe("exports", () => {
     expect(tab).toMatchObject({ state: "blocked", reason: "art.head is not picked" });
   });
 
+  test("exports the project no longer records read as not exported, whatever the sidecar still holds", () => {
+    const pack = packFrom(rawPack());
+    const doc = readyDoc(pack);
+    for (const p of pack.platforms) exportAll(doc, pack, p);
+    // craft-project-io.mjs drop removes the assets and their edges; the sidecar is the mode's.
+    dropAssets(doc, doc.assets.map((a) => a.id).filter((id) => /^(wechat|telegram|line)-/.test(id)));
+    expect(Object.keys(doc.sticker.measures).some((id) => id.startsWith("wechat-"))).toBe(true);
+    expect(Object.keys(doc.sticker.archives).sort()).toEqual(["line", "telegram", "wechat"]);
+    for (const p of pack.platforms) {
+      const state = S.exportState(pack, doc, p);
+      expect(state.items.map((i) => [i.state, i.measure, i.file])).toEqual(state.items.map(() => ["missing", null, null]));
+      expect({ archive: state.archive.state, measure: state.archive.measure }).toEqual({ archive: "blocked", measure: null });
+      const rows = S.checkPack(pack, doc, p);
+      expect(rows.filter((r) => r.id.startsWith("sticker-")).every((r) => r.level === "fail" && r.detail.startsWith("not exported yet"))).toBe(true);
+    }
+    // WeChat's "all animated" reads exported measurements: with none recorded, no row.
+    expect(S.checkPack(pack, doc, "wechat").some((r) => r.id === "all-animated")).toBe(false);
+    expect(S.nextStep(pack, doc).id).toBe("export");
+  });
+
   test("the export key depends on the inputs and the recipe, nothing else", () => {
     const pack = packFrom(rawPack());
     const doc = readyDoc(pack);
@@ -450,6 +470,24 @@ describe("checks", () => {
       expect(row.detail).toContain(expected);
     });
   }
+
+  test("'no white outline' is the WeChat cover's rule alone: a bordered sticker or head passes elsewhere", () => {
+    const pack = packFrom(rawPack());
+    const doc = readyDoc(pack);
+    const white = (m: Measure): Measure => ({ ...m, alpha: { ...m.alpha!, edgeWhite: 0.93 } });
+    for (const p of pack.platforms) exportAll(doc, pack, p, (_, m) => (m.alpha?.channel ? white(m) : m));
+    // A white-outlined portrait as the cover still warns…
+    const cover = rowOf(S.checkPack(pack, doc, "wechat"), "cover");
+    expect(cover.level).toBe("warn");
+    expect(cover.detail).toContain("93% of the outline is near-white");
+    // …while the LINE main image (cut from a bordered sticker), the WeChat icon,
+    // the LINE tab and the Telegram thumbnail have no such rule.
+    for (const [platform, id] of [["line", "main"], ["wechat", "icon"], ["line", "tab"], ["telegram", "thumb"]] as const) {
+      const row = rowOf(S.checkPack(pack, doc, platform), id);
+      expect({ platform, id, level: row.level, detail: row.detail }).toEqual({ platform, id, level: "pass", detail: expect.not.stringContaining("white outline") });
+    }
+    expect(Object.entries(S.PLATFORM_PROFILES).flatMap(([p, prof]) => Object.entries(prof.deliverables).filter(([, d]) => d.noWhiteOutline).map(([k]) => `${p}.${k}`))).toEqual(["wechat.cover"]);
+  });
 
   test("the Telegram thumbnail is optional; LINE's tab and WeChat's cover are not", () => {
     const raw = rawPack();

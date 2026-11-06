@@ -103,9 +103,10 @@ same anchor, 512² × 16:
 
 On the light plate both read. Identity held and captions were exact in all
 eight. The border costs about 15% more raw bytes, which the exporters absorb.
-Decision: the border clause is in every take's prompt. One side effect: LINE's
-main image is made from a sticker, so its check row warns about a near-white
-outline.
+Decision: the border clause is in every take's prompt. "No white outline" is
+a rule of the WeChat cover alone, which is made from the portrait art, so the
+border never meets it; LINE's main image, cut from a sticker, has no such
+rule.
 
 ### 512² × 16 frames × 120 ms
 

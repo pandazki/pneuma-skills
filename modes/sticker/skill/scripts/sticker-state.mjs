@@ -98,7 +98,7 @@ export const PLATFORM_PROFILES = Object.freeze({
     count: Object.freeze({ min: 8, max: 24 }),
     sticker: Object.freeze({ format: "gif", ext: "gif", width: 240, height: 240, maxBytes: 500 * KB, loopForever: true, animated: true }),
     deliverables: Object.freeze({
-      cover: Object.freeze({ label: "表情封面图 cover", from: "portrait", formats: Object.freeze(["png"]), width: 240, height: 240, maxBytes: 500 * KB, alpha: "transparent", fit: "pad" }),
+      cover: Object.freeze({ label: "表情封面图 cover", from: "portrait", formats: Object.freeze(["png"]), width: 240, height: 240, maxBytes: 500 * KB, alpha: "transparent", noWhiteOutline: true, fit: "pad" }),
       icon: Object.freeze({ label: "聊天页图标 icon", from: "head", formats: Object.freeze(["png"]), width: 50, height: 50, maxBytes: 100 * KB, alpha: "transparent", fit: "pad" }),
       banner: Object.freeze({ label: "详情页横幅 banner", from: "banner", formats: Object.freeze(["png", "jpg"]), width: 750, height: 400, maxBytes: 500 * KB, alpha: "opaque", fit: "cover", notWhite: true }),
       "reward-guide": Object.freeze({ label: "赞赏引导图 reward guide", from: "reward-guide", formats: Object.freeze(["png"]), width: 750, height: 560, maxBytes: 500 * KB, alpha: "opaque", fit: "cover", when: "reward" }),
@@ -874,7 +874,9 @@ export function exportState(pack, project, platform) {
   const items = platformDeliverables(pack, platform).map((item) => {
     const source = deliverableSource(pack, project, item);
     const asset = assetOf(project, item.assetId);
-    const measure = sidecar.measures[item.assetId] ?? null;
+    // A measurement describes a recorded file. One left behind for an export
+    // the project no longer records (a craft `drop`) describes nothing.
+    const measure = asset ? sidecar.measures[item.assetId] ?? null : null;
     const base = { ...item, file: asset?.uri ?? null, measure };
     if (!source.asset) return { ...base, key: null, state: "blocked", reason: source.reason };
     const key = exportKey(pack, project, platform, item);
@@ -888,7 +890,11 @@ export function exportState(pack, project, platform) {
     return { ...base, key, state: "current", reason: null };
   });
   const required = items.filter((i) => !i.optional || i.state !== "blocked");
-  const archive = sidecar.archives[platform] ?? null;
+  // Likewise the archive record: it counts while every file in it is still a
+  // recorded export of this platform.
+  const recorded = new Set(items.filter((i) => i.file).map((i) => i.file.split("/").pop()));
+  const kept = sidecar.archives[platform] ?? null;
+  const archive = kept && Array.isArray(kept.entries) && kept.entries.every((name) => recorded.has(name)) ? kept : null;
   const allCurrent = required.length > 0 && required.every((i) => i.state === "current");
   const key = allCurrent ? archiveKey(platform, required.map((i) => [i.file, i.key])) : null;
   const archiveState = !allCurrent ? "blocked" : !archive ? "missing" : archive.key !== key ? "stale" : "current";
@@ -981,7 +987,7 @@ function artExportProblems(spec, m) {
   if (spec.alpha === "transparent") {
     if (!(m.alpha?.clear > 0)) out.push(["fail", "is not transparent"]);
     else if (m.alpha?.cornersClear === false) out.push(["fail", "a corner is not transparent (a square frame or background)"]);
-    if (m.alpha?.edgeWhite !== undefined && m.alpha.edgeWhite > 0.5) out.push(["warn", `${Math.round(m.alpha.edgeWhite * 100)}% of the outline is near-white — the platform asks for no white outline`]);
+    if (spec.noWhiteOutline && m.alpha?.edgeWhite !== undefined && m.alpha.edgeWhite > 0.5) out.push(["warn", `${Math.round(m.alpha.edgeWhite * 100)}% of the outline is near-white — the platform asks for no white outline`]);
   } else if (spec.alpha === "opaque") {
     if (m.alpha?.clear > 0 || m.alpha?.semi > 0) out.push(["fail", "has transparent pixels; it must be opaque"]);
     if (spec.notWhite && m.nearWhite !== undefined && m.nearWhite > 0.5) out.push(["warn", `${Math.round(m.nearWhite * 100)}% near-white — the background must not be white`]);
