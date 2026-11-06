@@ -116,11 +116,15 @@ export function waitForNavigation(
  * there; `season`/`group`/`bible`/`episode` by anime-series, where the
  * season overview, a group or bible card and an episode's board are separate
  * places on the canvas — its `part`/`shot`/`time`/`take` stay fine, since
- * they move inside the episode already on screen). A mode whose coarse key
+ * they move inside the episode already on screen; `sticker`/`art`/`platform`
+ * by sticker, where a sticker opens the inspector, an art kind its own
+ * inspector and a platform the submission tab — its `take`/`frame` stay
+ * fine, since they move the stage of the sticker already open, and its
+ * `character: true` reuses the key above). A mode whose coarse key
  * is missing here does not fail loudly: `capture` would silently screenshot
  * whatever is on screen, which is why new coarse keys belong in this list.
  */
-const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience", "motion", "ref", "round", "season", "character", "group", "scene", "bible", "episode"];
+const COARSE_ADDRESS_KEYS = ["page", "file", "slide", "contentSet", "nodeId", "elementId", "image", "section", "step", "audience", "motion", "ref", "round", "season", "character", "group", "scene", "bible", "episode", "sticker", "art", "platform"];
 
 /**
  * Whether an address names something outside the current view, so `capture`
