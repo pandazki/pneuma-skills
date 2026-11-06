@@ -55,6 +55,31 @@ function Notice({ tone, icon, children }: { tone: "success" | "warning" | "error
   );
 }
 
+/**
+ * What a plain gen does with a failed sticker, read off `genTargets`: it
+ * retries one whose last call provably never left, and leaves one whose
+ * last call may have been billed for the user to retry on purpose.
+ */
+function GenPlanLine({ value, sticker, t }: { value: StickerPack; sticker: StickerView; t: StickerStrings }) {
+  const plan = value.gen;
+  if (!plan) return null;
+  if (plan.uncertain.some((u) => u.id === sticker.id)) {
+    return (
+      <div data-gen-plan="uncertain" className="mt-1.5 border-t border-cc-error/20 pt-1.5 font-medium text-cc-warning">
+        {t.genLeftUncertain}
+      </div>
+    );
+  }
+  if (plan.targets.some((x) => x.id === sticker.id)) {
+    return (
+      <div data-gen-plan="target" className="mt-1.5 border-t border-cc-error/20 pt-1.5 text-cc-fg/75">
+        {t.genRetries}
+      </div>
+    );
+  }
+  return null;
+}
+
 function BillingLine({ take, t }: { take: AssetBrief; t: StickerStrings }) {
   if (take.failure?.billing === "unknown") return <div className="mt-0.5 font-medium text-cc-warning">{t.billingUnknown}</div>;
   if (take.failure?.billing === "none") return <div className="mt-0.5 text-cc-muted">{t.billingNone}</div>;
@@ -63,7 +88,7 @@ function BillingLine({ take, t }: { take: AssetBrief; t: StickerStrings }) {
 
 // ── Sticker ────────────────────────────────────────────────────────────────
 
-function StatusBlock({ sticker, t, now }: { sticker: StickerView; t: StickerStrings; now: number }) {
+function StatusBlock({ value, sticker, t, now, canCommand }: { value: StickerPack; sticker: StickerView; t: StickerStrings; now: number; canCommand: boolean }) {
   const state = sticker.state;
   switch (state.status) {
     case "ready":
@@ -113,10 +138,11 @@ function StatusBlock({ sticker, t, now }: { sticker: StickerView; t: StickerStri
                 <BillingLine take={x} t={t} />
               </div>
             ))}
+          <GenPlanLine value={value} sticker={sticker} t={t} />
         </Notice>
       );
     default:
-      return <Notice tone="neutral">{t.emptyHeadline}</Notice>;
+      return <Notice tone="neutral">{canCommand ? t.emptyHeadline : t.emptyHeadlineQuiet}</Notice>;
   }
 }
 
@@ -387,6 +413,7 @@ export function StickerInspector({
   t,
   now,
   canWrite,
+  canCommand,
   onClose,
   onShowTake,
   onFrame,
@@ -401,6 +428,8 @@ export function StickerInspector({
   t: StickerStrings;
   now: number;
   canWrite: boolean;
+  /** The agent can be asked (editing, not read-only): the empty headline names the command. */
+  canCommand: boolean;
   onClose: () => void;
   onShowTake: (take: string | null) => void;
   onFrame: (frame: number | null) => void;
@@ -434,7 +463,7 @@ export function StickerInspector({
       }
     >
       <div className="flex flex-col gap-3.5">
-        {unknown ? null : <StatusBlock sticker={sticker} t={t} now={now} />}
+        {unknown ? null : <StatusBlock value={value} sticker={sticker} t={t} now={now} canCommand={canCommand} />}
         <div>
           <Stage sticker={sticker} take={take} position={position} frames={frames} base={base} t={t} now={now} />
           {take?.status === "ready" ? (

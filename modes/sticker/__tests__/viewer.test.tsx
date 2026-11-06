@@ -27,6 +27,7 @@ import type { ViewerActionRequest, ViewerActionResult, ViewerLocator, ViewerNoti
 import { findSticker, loadPack, type StickerPack } from "../domain.js";
 import manifest from "../manifest.js";
 import { filesOf, finishedWorkspace, richWorkspace } from "./pack-workspace.js";
+import { addTake, packFrom } from "./sticker-fixture.js";
 
 let win: Window;
 let restore: () => void;
@@ -326,13 +327,48 @@ describe("read-only and editing", () => {
     await m.click(m.q('[data-command="make-missing"]'));
     expect(notes.length).toBe(1);
     expect(notes[0].type).toBe("sticker-command:make-missing");
-    expect(notes[0].message).toContain("stickers with no usable take: s05 (failed), s06 (empty), s08 (failed)");
-    expect(notes[0].message).toContain("billing is unknown (may have been charged): s05-take-1");
+    // Exactly what a plain gen makes (genTargets): s05's last take may have
+    // been billed, so it is named apart, as a retry only the user can ask for.
+    expect(notes[0].message).toContain("make (what a plain gen makes): s06 (empty), s08 (failed)");
+    expect(notes[0].message).toContain("not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: s05 (s05-take-1: upstream error)");
+    expect(notes[0].summary).toBe("/make-missing · s06, s08");
     await m.click(m.q('[data-segment="view:submit"]'));
     await m.click(m.q('[data-segment="platform:line"]'));
     await m.click(m.q('[data-command="export-check"]'));
     expect(notes[1].type).toBe("sticker-command:export-check");
     expect(notes[1].message).toContain("platform: line");
+    await m.unmount();
+  });
+});
+
+describe("what a plain gen makes", () => {
+  /** The rich pack with s06 and s08 drawn: only s05 (failed, billing unknown) has no usable take. */
+  function onlyUncertain(): StickerPack {
+    const { raw, doc } = richWorkspace();
+    const pack = packFrom(raw);
+    addTake(doc, pack, "s06", 1);
+    addTake(doc, pack, "s08", 2);
+    return loadPack(filesOf(raw, doc));
+  }
+
+  test("the failed sticker inspector says whether make-missing retries it or leaves it", async () => {
+    const m = await mount(rich(), { editing: true, onNotifyAgent: () => {} });
+    await m.click(m.q('[data-sticker="s05"]'));
+    expect(m.q("[data-gen-plan]")?.getAttribute("data-gen-plan")).toBe("uncertain");
+    expect(m.q("[data-gen-plan]")?.textContent).toContain("may already have been billed");
+    await m.click(m.q('[data-sticker="s08"]'));
+    expect(m.q("[data-gen-plan]")?.getAttribute("data-gen-plan")).toBe("target");
+    await m.unmount();
+  });
+
+  test("with only an uncertain sticker left, nothing offers a silent resend", async () => {
+    const value = onlyUncertain();
+    expect(value.gen).toEqual({ targets: [], skipped: expect.any(Array), uncertain: [{ id: "s05", take: "s05-take-1", reason: "upstream error" }] });
+    const m = await mount(value, { editing: true, onNotifyAgent: () => {} });
+    expect(m.q('[data-command="make-missing"]')).toBeNull();
+    expect(m.q("[data-next-step]")?.getAttribute("data-next-step")).toBe("retry");
+    expect(m.q("[data-next-step]")?.textContent).not.toContain("Make the missing stickers");
+    expect(m.q("[data-next-step]")?.textContent).toContain("may already have been billed");
     await m.unmount();
   });
 });

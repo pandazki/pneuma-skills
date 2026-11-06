@@ -38,6 +38,7 @@ import type {
   CheckRow,
   ExportItem,
   ExportState,
+  GenPlan,
   Measure,
   NextStep,
   Pack,
@@ -59,6 +60,7 @@ import {
   checkPack,
   exportNumber,
   exportState,
+  genTargets,
   nextStep,
   parsePack,
   platformDeliverables,
@@ -77,6 +79,7 @@ export type {
   ExportItem,
   ExportItemState,
   ExportState,
+  GenPlan,
   Measure,
   NextStep,
   Pack,
@@ -204,6 +207,8 @@ export interface StickerPack {
   art: ArtKindView[];
   platforms: PlatformView[];
   next: NextStep | null;
+  /** `genTargets` — what a plain `sticker.mjs gen` makes, and the stickers it leaves for an explicit retry; null when project.json is unreadable. */
+  gen: GenPlan | null;
   cost: PackCost;
   assets: Record<string, AssetBrief>;
 }
@@ -352,7 +357,7 @@ function build(raw: Json | null, parseErrors: PackIssue[], hasPack: boolean, pro
     assets,
   };
   if (!pack) {
-    return { ...base, title: "", character: null, stickers: [], art: [], platforms: [], next: null };
+    return { ...base, title: "", character: null, stickers: [], art: [], platforms: [], next: null, gen: null };
   }
   return {
     ...base,
@@ -367,6 +372,7 @@ function build(raw: Json | null, parseErrors: PackIssue[], hasPack: boolean, pro
     // The rules would answer for a pack with no record at all ("make the
     // character"), which is not this pack: its record exists and is unreadable.
     next: projectError ? null : nextStep(pack, rules),
+    gen: projectError ? null : genTargets(pack, rules),
   };
 }
 

@@ -413,19 +413,21 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     [props, t],
   );
 
+  /** Exactly what a plain `gen` makes (`genTargets`, as gen, quote and the next step read it); never a sticker whose last call may have been billed. */
   const makeMissing = useCallback(() => {
     const v = valueRef.current;
-    if (!v) return;
-    const missing = v.stickers.filter((s) => s.state.status === "empty" || s.state.status === "failed");
-    const uncertain = v.stickers.flatMap((s) => s.uncertain);
+    const plan = v?.gen;
+    if (!v || !plan?.targets.length) return;
     notify(
       "make-missing",
       [
-        `stickers with no usable take: ${missing.map((s) => `${s.id} (${s.state.status})`).join(", ") || "none"}`,
-        uncertain.length ? `failed takes whose billing is unknown (may have been charged): ${uncertain.join(", ")}` : "",
+        `make (what a plain gen makes): ${plan.targets.map((s) => `${s.id} (${s.status})`).join(", ")}`,
+        plan.uncertain.length
+          ? `not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: ${plan.uncertain.map((u) => `${u.id} (${u.take ?? "no take"}: ${u.reason})`).join(", ")}`
+          : "",
         v.next ? `next step: ${v.next.line}` : "",
       ].filter(Boolean),
-      missing.map((s) => s.id).join(", ") || v.title,
+      plan.targets.map((s) => s.id).join(", "),
     );
   }, [notify]);
 
@@ -518,7 +520,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
 
   const ready = value.stickers.filter((s) => s.state.status === "ready").length;
   const next = value.next;
-  const missing = value.stickers.some((s) => s.state.status === "empty" || s.state.status === "failed");
+  const missing = (value.gen?.targets.length ?? 0) > 0;
   const nextPlatform = next ? stepPlatform(value, next.command) : null;
 
   // Layout by the viewer's own width.
@@ -553,6 +555,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
           t={t}
           now={now}
           canWrite={canWrite}
+          canCommand={canCommand}
           onClose={closeInspector}
           onShowTake={(take) => apply({ ...posRef.current, take, frame: null })}
           onFrame={(frame) => apply({ ...posRef.current, frame })}

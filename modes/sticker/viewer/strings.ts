@@ -93,6 +93,12 @@ export interface StickerStrings {
   failedHeadline: string;
   generatingHeadline: (elapsed: string) => string;
   emptyHeadline: string;
+  /** Read-only: no command to point at. */
+  emptyHeadlineQuiet: string;
+  /** A failed sticker a plain "make the missing stickers" leaves: its last call may have been billed. */
+  genLeftUncertain: string;
+  /** A failed sticker a plain "make the missing stickers" retries: its last call never left. */
+  genRetries: string;
   readyHeadline: string;
   billingUnknown: string;
   billingNone: string;
@@ -264,6 +270,9 @@ const EN: StickerStrings = {
   failedHeadline: "Every take failed",
   generatingHeadline: (e) => `Generating for ${e}`,
   emptyHeadline: "No take yet — “Make the missing stickers” asks the agent to draw it",
+  emptyHeadlineQuiet: "No take yet",
+  genLeftUncertain: "“Make the missing stickers” leaves this one: retry it only on purpose — it may already have been billed.",
+  genRetries: "The request never left, so “Make the missing stickers” tries it again.",
   readyHeadline: "Ready — matches pack.json",
   billingUnknown: "May have been billed: the provider never confirmed either way.",
   billingNone: "Not billed: the request never left this machine.",
@@ -445,6 +454,9 @@ const ZH: StickerStrings = {
   failedHeadline: "每一版都失败了",
   generatingHeadline: (e) => `已生成 ${e}`,
   emptyHeadline: "还没出图——点“补齐没出图的表情”，agent 会去画",
+  emptyHeadlineQuiet: "还没出图",
+  genLeftUncertain: "“补齐没出图的表情”不会重画这一张：上一次可能已经扣费，要重画得你明确说一声。",
+  genRetries: "请求没发出去，“补齐没出图的表情”会再画一次。",
   readyHeadline: "已就绪，和 pack.json 一致",
   billingUnknown: "可能已扣费：服务商没有确认是否收费。",
   billingNone: "未扣费：请求没有发出这台机器。",
@@ -626,6 +638,9 @@ const JA: StickerStrings = {
   failedHeadline: "すべてのテイクが失敗しました",
   generatingHeadline: (e) => `生成を始めて ${e}`,
   emptyHeadline: "テイクはまだありません ——「足りないスタンプを作る」で agent が描きます",
+  emptyHeadlineQuiet: "テイクはまだありません",
+  genLeftUncertain: "「足りないスタンプを作る」ではこの 1 枚は描き直しません。前回すでに課金された可能性があるので、描き直すならはっきり指示してください。",
+  genRetries: "リクエストは送信されていないので、「足りないスタンプを作る」でもう一度描きます。",
   readyHeadline: "完成 —— pack.json と一致しています",
   billingUnknown: "課金された可能性あり：プロバイダーからどちらとも確認できていません。",
   billingNone: "課金なし：リクエストはこのマシンから出ていません。",
