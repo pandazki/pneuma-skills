@@ -85,13 +85,14 @@
 | **lucid** | 一场画面与程序之间的闭环 —— agent 先用图像生成把成品截图「梦」出来并锁死，再用 Three.js 静态场景一轮轮往那张图上追；每一轮都由一个没看过前情的评审按构图、光照、材质、细节打分，直到实时画面真的对上；素材阶梯上还有 Blender 与图生 3D。移植自 [achimala/dream-loop](https://github.com/achimala/dream-loop)（MIT） |
 | **backlot** | 片场 —— 从一个念头拍到成片：剧本、人物与场景设定、分镜画稿、3D 白模预演、模型渲染的镜头、台词与配乐；每一道工序都要你点头才进下一道。白模那一关先把空间、动作和运镜定死，再让视频模型在它之上把质感画出来。做法改编自 [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows)（MIT） |
 | **anime-series** | 动画单元剧：拍到第十集，主角还是那两个主角 —— 左边一面钉死的设定墙（角色、群体、场景、画风，各带设定图和锁定版本），右边一集一张桌子，镜头条同时是故事板、镜头表和时间轴。故事板宫格和 Seedance 视频的提示词都由脚本从设定集拼出来，不手写；成片抽帧后逐镜对照设定图检查，哪几秒跑偏就单独补拍那几秒，不用整集重拍。方法改编自 [10291124jcjc-dotcom/ai-anime-series](https://github.com/10291124jcjc-dotcom/ai-anime-series) |
+| **sticker** | 一张照片或一个角色，做成一整套动态聊天表情 —— 角色先重画成一个扁平描边的表情形象，之后每一张表情都是照着这张图、由 GPT Image 2.6 一次画出的 GIF，字直接写在画里，外面一圈白色贴纸描边，深色聊天里也看得清。表情面板在浅色和深色聊天背景上播放每一次出图，需要时逐帧看，还能在聊天预览里看整套的实际效果。导出一次，每个平台要的东西就齐了：微信是 240 像素的 GIF 加封面、图标和横幅，Telegram 是 512 像素的 VP9 视频表情，LINE 是带主图和标签图的 APNG；每个平台一张按官方规范核对的检查清单，附上可以直接粘贴的上架文案和上传用的压缩包。花钱之前先确认形象的使用权；提交上架由你自己来 |
 | **mode-maker** | 用 AI 做自定义 mode —— fork、Play 试跑、发布 |
 
 > 每个 mode 独立版本号 —— 在 launcher 和 mode 市场处呈现，不在 README 里重复以避免与代码漂移。
 
 > 其中少数几个随安装包一起发布，其余的第一次用到时才下载。launcher 的卡片上写着下载体积，点开就先取回来、再照常启动。哪些随包、哪些按需，是这一版发布的安排（`modes/distribution.json`），不是 mode 自己的属性 —— 一个 mode 在两边挪动，对使用的人来说没有任何差别。
 
-各 mode 的图像工具统一通过 OpenRouter 使用 GPT Image 2.6：Flare 默认生图（包括参考图引导的新图生成），Sunburst 默认改图，两者都能直接出透明背景。`generate_image.mjs --model sunburst` 可升级生图模型；`edit_image.mjs` 默认使用 Sunburst。配置 OpenRouter API key 即可启用。sprite 的动图帧和 brand 的 SVG 矢量素材走 fal.ai 上的 GPT Image 2.6；用到这两项，或者用到视频、语音、抠图、图生 3D 工具的 mode，还需要 fal.ai key。
+各 mode 的图像工具统一通过 OpenRouter 使用 GPT Image 2.6：Flare 默认生图（包括参考图引导的新图生成），Sunburst 默认改图，两者都能直接出透明背景。`generate_image.mjs --model sunburst` 可升级生图模型；`edit_image.mjs` 默认使用 Sunburst。配置 OpenRouter API key 即可启用。sprite 和 sticker 的动图、brand 的 SVG 矢量素材走 fal.ai 上的 GPT Image 2.6；用到这两项，或者用到视频、语音、抠图、图生 3D 工具的 mode，还需要 fal.ai key。
 
 ## 第一次进项目时，Pneuma 会带着你走一遍
 
@@ -183,6 +184,7 @@ Modes:
   lucid                        梦出目标截图，用 Three.js 追着建
   backlot                      从一个念头拍到成片
   anime-series                 动画单元剧，拍到第十集角色也不走样
+  sticker                      动态表情包，微信、Telegram、LINE 都能上架
   mode-maker                   用 AI 做自定义 mode
   evolve                       启动 Evolution Agent
   /path/to/mode                从本地目录加载

@@ -85,13 +85,14 @@ When humans and code agents co-create content, they need more than a chat window
 | **lucid** | A closed loop between a picture and a program — the agent dreams a target screenshot with image generation, locks it, builds a static Three.js scene toward it, and a fresh-context judge scores composition, lighting, materials and details every round until the live frame matches; Blender and image-to-3D sit on the asset ladder. Ported from [achimala/dream-loop](https://github.com/achimala/dream-loop) (MIT) |
 | **backlot** | From an idea to a finished cut — screenplay, character and set bible, storyboard frames, 3D greybox previz, model-rendered takes, dialogue and music; the creator approves every stage before the next one starts, and the greybox stage is what fixes space, action and camera before any video model paints the look. Practice adapted from [modengsir/blender-video-workflows](https://github.com/modengsir/blender-video-workflows) (MIT) |
 | **anime-series** | A cartoon series that stays itself across episodes — a pinned bible wall of characters, groups, places and style, each with its design sheet and lock version; one desk per episode where the shot strip is the storyboard, the shot list and the timeline at once. Storyboard grids and Seedance takes are assembled from the bible by script, never written by hand; frames sampled from each take are checked shot by shot against the sheets, so a drift is named and a few seconds are re-shot instead of the whole episode. Method adapted from [10291124jcjc-dotcom/ai-anime-series](https://github.com/10291124jcjc-dotcom/ai-anime-series) |
+| **sticker** | Animated chat stickers from one photo or character — the character is redrawn once as a flat outlined sticker figure, then every sticker is one GPT Image 2.6 GIF drawn from that picture with its caption lettered in and a white die-cut border so it reads on dark chats too. The panel plays every take on light and dark chat backgrounds, frame by frame on request, with a chat preview of the whole pack. One export makes what each store asks for — 240-pixel GIFs for WeChat with cover, icon and banner, 512-pixel VP9 video stickers for Telegram, APNGs with main and tab images for LINE — each with a checklist from that platform's official rules, the listing text to paste and an upload zip. Rights are asked before anything is paid for; submitting stays yours |
 | **mode-maker** | Create custom modes with AI — fork, play-test, publish |
 
 > Each mode versions independently. Per-mode versions surface in the launcher and on the mode marketplace — they're not duplicated here to avoid drift.
 
 > A few of these ship inside the package; the rest arrive on first use. Their card in the launcher shows the download size, and opening one fetches it and then starts as usual. Which modes are which is a property of the release (`modes/distribution.json`), not of the mode — so a mode can move between the two without anything changing for the person using it.
 
-Image tools across modes use GPT Image 2.6 through OpenRouter: Flare for new images (including reference-guided generation), Sunburst for edits; both can return a transparent background. Pass `--model sunburst` to `generate_image.mjs` to upgrade generation; `edit_image.mjs` defaults to Sunburst. Configure an OpenRouter API key to enable them. Animated GIF frames (sprite) and SVG vector assets (brand) come from GPT Image 2.6 on fal.ai; modes with those, video, speech, background removal, or image-to-3D tools may also need a fal.ai key.
+Image tools across modes use GPT Image 2.6 through OpenRouter: Flare for new images (including reference-guided generation), Sunburst for edits; both can return a transparent background. Pass `--model sunburst` to `generate_image.mjs` to upgrade generation; `edit_image.mjs` defaults to Sunburst. Configure an OpenRouter API key to enable them. Animated GIFs (sprite, sticker) and SVG vector assets (brand) come from GPT Image 2.6 on fal.ai; modes with those, video, speech, background removal, or image-to-3D tools may also need a fal.ai key.
 
 ## First Run — Pneuma Walks You Through It
 
@@ -183,6 +184,7 @@ Modes:
   lucid                        Dream a screenshot, build it in Three.js
   backlot                      From an idea to a finished cut
   anime-series                 Cartoon series that stay on model
+  sticker                      Animated chat sticker packs for WeChat, Telegram and LINE
   mode-maker                   Create custom modes with AI
   evolve                       Launch the Evolution Agent
   /path/to/mode                Load from a local directory
