@@ -11,6 +11,8 @@ import { join } from "node:path";
 import { ASSET_STATUSES, dropAssets, failAsset, statusOf } from "../../_shared/scripts/craft-project.mjs";
 import * as S from "../skill/scripts/sticker-state.mjs";
 import type { CheckRow, Measure, Platform } from "../skill/scripts/sticker-state.mjs";
+import { allMessages, SAMPLE_PARAMS, sampleMessages } from "./message-samples.js";
+import { finishedWorkspace, richWorkspace } from "./pack-workspace.js";
 import { addImage, addTake, emptyDoc, exportAll, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
 
 const rowOf = (rows: CheckRow[], id: string) => {
@@ -214,7 +216,7 @@ describe("sticker status", () => {
   test("stale reasons name what moved: text, motion, anchor, wording", () => {
     const pack = packFrom(rawPack());
     const doc = readyDoc(pack);
-    expect(S.takeStaleness(pack, doc, "s01-take-1")).toEqual({ stale: false, reasons: [] });
+    expect(S.takeStaleness(pack, doc, "s01-take-1")).toEqual({ stale: false, reasons: [], messages: [] });
     const raw = rawPack();
     raw.character.description = "a tall ox";
     raw.stickers[0].action = "jumps";
@@ -222,9 +224,17 @@ describe("sticker status", () => {
     raw.character.anchor = "character-2";
     const moved = packFrom(raw);
     addImage(doc, "character-2", "character/anchor-2.png");
-    const { stale, reasons } = S.takeStaleness(moved, doc, "s01-take-1");
+    const { stale, reasons, messages } = S.takeStaleness(moved, doc, "s01-take-1");
     expect(stale).toBe(true);
     expect(reasons).toEqual(["character description changed", "action changed", "motion.frames changed (16 → 12)", "the character anchor changed (character-1 → character-2)"]);
+    // The same reasons as codes, for the viewer to say in the user's language.
+    expect(messages).toEqual([
+      { code: "stale.changed", params: { field: "description" } },
+      { code: "stale.changed", params: { field: "action" } },
+      { code: "stale.motion", params: { key: "frames", from: 16, to: 12 } },
+      { code: "stale.anchor", params: { from: "character-1", to: "character-2" } },
+    ]);
+    expect(messages.map(S.messageText)).toEqual(reasons);
     // A caption change on a captioned sticker never blames the word.
     const recaption = rawPack();
     recaption.stickers[0].caption = "收到啦";
@@ -648,7 +658,7 @@ describe("what gen makes", () => {
       addTake(doc, pack, sid, n);
     }
     const ask = S.nextStep(pack, doc);
-    expect(ask).toMatchObject({ id: "generate", command: "sticker.mjs gen --only s02", stickers: ["s02"] });
+    expect(ask).toMatchObject({ id: "retry", command: "sticker.mjs gen --only s02", stickers: ["s02"], message: { code: "next.retry", params: { stickers: ["s02"] } } });
     expect(ask.line).toContain("may have been charged");
     expect(S.genTargets(pack, doc).targets).toEqual([]);
   });
@@ -683,5 +693,63 @@ describe("next step", () => {
     const noIntro = rawPack();
     noIntro.listing.wechat.intro = "";
     expect(S.nextStep(packFrom(noIntro), full)).toMatchObject({ id: "check", command: "sticker.mjs check --platform wechat" });
+  });
+});
+
+describe("messages: every sentence is a code first", () => {
+  test("the English table and the samples name the same codes", () => {
+    expect([...S.MESSAGE_CODES].sort() as string[]).toEqual(Object.keys(SAMPLE_PARAMS).sort());
+    // Every rule with no official value has its own code.
+    for (const profile of Object.values(S.PLATFORM_PROFILES)) {
+      for (const rule of profile.unconfirmed) expect(S.MESSAGE_CODES).toContain(`unconfirmed.${rule.id}` as S.MessageCode);
+    }
+  });
+
+  test("every code renders English; a command follows a dash; an unknown code throws", () => {
+    for (const message of sampleMessages()) {
+      const text = S.messageText(message);
+      expect(text.length).toBeGreaterThan(0);
+      expect(text).not.toMatch(/undefined|NaN|\[object/);
+    }
+    expect(S.messageText({ code: "export.not-exported", params: {}, command: "sticker.mjs export --platform line" })).toBe("not exported yet — sticker.mjs export --platform line");
+    expect(() => S.messageText({ code: "nope", params: {} } as unknown as S.StateMessage)).toThrow("no text for message 'nope'");
+  });
+
+  test("reason, detail and line are their messages in English, over every state a pack can be in", () => {
+    const seen = new Set<string>();
+    const note = (message: S.StateMessage) => {
+      for (const m of allMessages(message)) {
+        expect(S.MESSAGE_CODES).toContain(m.code);
+        seen.add(m.code);
+      }
+    };
+    for (const workspace of [richWorkspace(), finishedWorkspace()]) {
+      const pack = packFrom(workspace.raw);
+      const doc = workspace.doc;
+      for (const sticker of pack.stickers) {
+        const state = S.stickerState(pack, doc, sticker.id);
+        expect(state.reason).toBe(state.messages.length ? state.messages.map(S.messageText).join("; ") : null);
+        state.messages.forEach(note);
+      }
+      for (const platform of S.PLATFORMS) {
+        for (const r of S.checkPack(pack, doc, platform)) {
+          expect(r.detail).toBe(S.messageText(r.message));
+          note(r.message);
+        }
+        for (const item of S.exportState(pack, doc, platform).items) {
+          expect(item.reason).toBe(item.message ? S.messageText(item.message) : null);
+          if (item.message) note(item.message);
+        }
+      }
+      const next = S.nextStep(pack, doc);
+      expect(next.line).toBe(S.messageText(next.message));
+      note(next.message);
+    }
+    const anchorless = rawPack();
+    anchorless.character.anchor = "character-9";
+    const anchor = S.anchorState(packFrom(anchorless), emptyDoc());
+    expect(anchor).toMatchObject({ ready: false, reason: "character.anchor 'character-9' is not in project.json", message: { code: "anchor.not-ready" } });
+    // The fixtures reach the common paths; the samples cover the rest.
+    expect(seen.size).toBeGreaterThan(20);
   });
 });

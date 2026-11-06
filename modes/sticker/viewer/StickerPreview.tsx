@@ -47,6 +47,7 @@ import { Btn, Chip, Icon, Segmented } from "./ui.js";
 import {
   PLATE_COLORS,
   START,
+  frameVerdict,
   positionAddress,
   resolveAddress,
   resolveSetView,
@@ -107,12 +108,6 @@ function Centered({ title, body, children }: { title: string; body?: string; chi
 
 function Swatch({ plate }: { plate: Plate }) {
   return <span className="h-3 w-3 rounded-[4px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]" style={{ backgroundColor: PLATE_COLORS[plate] }} />;
-}
-
-/** "WeChat" out of the module's own `--platform wechat` for a next step that names one. */
-function stepPlatform(value: StickerPack, command: string | undefined): string | null {
-  const id = command ? /--platform (\w+)/.exec(command)?.[1] : undefined;
-  return id ? value.platforms.find((p) => p.platform === id)?.profile.label ?? null : null;
 }
 
 export default function StickerPreview(props: ViewerPreviewProps) {
@@ -195,30 +190,33 @@ export default function StickerPreview(props: ViewerPreviewProps) {
   }, [frames, position.frame, apply]);
 
   /**
-   * Resolves once a frame address is on screen (its frames decoded), or with
-   * a note for the agent when it cannot be (no ImageDecoder, a decode error,
-   * still decoding after 5 s). Anything else is on screen at once.
+   * Resolves with null once a frame address is on screen (its take's frames
+   * decoded and long enough), or with why it cannot be: no ImageDecoder, a
+   * decode error, fewer frames than recorded, still decoding after 5 s.
+   * Anything that is not a frame is on screen at once.
    */
   const arrival = useCallback(
     (target: Position): Promise<string | null> => {
       if (target.view !== "panel" || target.frame === null || !valueRef.current) return Promise.resolve(null);
+      const frame = target.frame;
       const sticker = target.focus?.type === "sticker" ? findSticker(valueRef.current, target.focus.id) : null;
       const expected = mediaUrl(base, stageTake(sticker, target));
       return new Promise((resolve) => {
         let settled = false;
-        const done = (note: string | null) => {
+        const done = (failure: string | null) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          resolve(note);
+          resolve(failure);
         };
-        const timer = setTimeout(() => done(`Frame ${target.frame} was still decoding after ${FRAME_ARRIVAL_TIMEOUT_MS / 1000} s; the stage may still show the loop.`), FRAME_ARRIVAL_TIMEOUT_MS);
+        const timer = setTimeout(
+          () => done(`Frame ${frame} was still decoding after ${FRAME_ARRIVAL_TIMEOUT_MS / 1000} s: the stage plays the whole take.`),
+          FRAME_ARRIVAL_TIMEOUT_MS,
+        );
         const check = () => {
-          const f = framesRef.current;
-          if (f.status === "unsupported") return done(`This browser cannot decode GIF frames (no ImageDecoder): the stage plays the whole take, not frame ${target.frame}.`);
-          if (f.status === "ready" && f.url === expected) return done(null);
-          if (f.status === "error" && f.url === expected) return done(`The frames could not be decoded (${f.message}); the stage plays the whole take.`);
-          waiters.current.push(check);
+          const verdict = frameVerdict(framesRef.current, expected, frame);
+          if (!verdict.done) waiters.current.push(check);
+          else done(verdict.shown ? null : verdict.reason);
         };
         check();
       });
@@ -333,14 +331,27 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     [apply, viewState],
   );
 
-  /** Move, then answer once the target is on screen (a frame waits for its decode). */
+  /**
+   * Move, then answer once the target is on screen. A frame waits for its
+   * decode; a frame that cannot be shown is a failure — a `navigate-to` +
+   * `capture` caller would otherwise screenshot the playing loop as that
+   * frame — and the stage lets go of it, so the reply's `data` and the
+   * screen agree: the sticker, playing.
+   */
   const navigate = useCallback(
     (address: unknown, answer: (result: ViewerActionResult) => void) => {
       const { result, target } = runAddress(address);
       if (!target) return answer(result);
-      void arrival(target).then((note) => answer(note ? { ...result, message: note, data: viewState() } : { ...result, data: viewState() }));
+      void arrival(target).then((failure) => {
+        if (target.frame === null) return answer({ ...result, data: viewState() });
+        const here = posRef.current;
+        const still = here.view === "panel" && here.frame === target.frame && here.take === target.take && JSON.stringify(here.focus) === JSON.stringify(target.focus);
+        if (!failure && still) return answer({ ...result, data: viewState() });
+        if (still) apply({ ...here, frame: null });
+        answer({ success: false, message: failure ?? `Frame ${target.frame} was replaced by a later move before it was shown.`, data: viewState() });
+      });
     },
-    [runAddress, arrival, viewState],
+    [runAddress, arrival, viewState, apply],
   );
 
   const { actionRequest, onActionResult } = props;
@@ -396,19 +407,21 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     [props, t],
   );
 
+  /** Exactly what a plain `gen` makes (`genTargets`, as gen, quote and the next step read it); never a sticker whose last call may have been billed. */
   const makeMissing = useCallback(() => {
     const v = valueRef.current;
-    if (!v) return;
-    const missing = v.stickers.filter((s) => s.state.status === "empty" || s.state.status === "failed");
-    const uncertain = v.stickers.flatMap((s) => s.uncertain);
+    const plan = v?.gen;
+    if (!v || !plan?.targets.length) return;
     notify(
       "make-missing",
       [
-        `stickers with no usable take: ${missing.map((s) => `${s.id} (${s.state.status})`).join(", ") || "none"}`,
-        uncertain.length ? `failed takes whose billing is unknown (may have been charged): ${uncertain.join(", ")}` : "",
+        `make (what a plain gen makes): ${plan.targets.map((s) => `${s.id} (${s.status})`).join(", ")}`,
+        plan.uncertain.length
+          ? `not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: ${plan.uncertain.map((u) => `${u.id} (${u.take ?? "no take"}: ${u.reason})`).join(", ")}`
+          : "",
         v.next ? `next step: ${v.next.line}` : "",
       ].filter(Boolean),
-      missing.map((s) => s.id).join(", ") || v.title,
+      plan.targets.map((s) => s.id).join(", "),
     );
   }, [notify]);
 
@@ -501,8 +514,9 @@ export default function StickerPreview(props: ViewerPreviewProps) {
 
   const ready = value.stickers.filter((s) => s.state.status === "ready").length;
   const next = value.next;
-  const missing = value.stickers.some((s) => s.state.status === "empty" || s.state.status === "failed");
-  const nextPlatform = next ? stepPlatform(value, next.command) : null;
+  const missing = (value.gen?.targets.length ?? 0) > 0;
+  // The step in the user's words; the CLI command only where someone can act on it.
+  const nextText = next ? t.say(next.message) : "";
 
   // Layout by the viewer's own width.
   const inspectorOpen = position.view === "panel" && position.focus !== null;
@@ -536,6 +550,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
           t={t}
           now={now}
           canWrite={canWrite}
+          canCommand={canCommand}
           onClose={closeInspector}
           onShowTake={(take) => apply({ ...posRef.current, take, frame: null })}
           onFrame={(frame) => apply({ ...posRef.current, frame })}
@@ -598,7 +613,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
           {value.stickers.length ? (
             <StickerGrid value={value} position={position} base={base} t={t} now={now} columns={columns} onFocus={focusOn} />
           ) : (
-            <Centered title={t.nextStep({ id: "stickers", line: "" })} body={next?.line} />
+            <Centered title={t.noStickers} body={nextText || undefined} />
           )}
         </div>
         {inspector && inspectorMode === "column" ? (
@@ -656,9 +671,8 @@ export default function StickerPreview(props: ViewerPreviewProps) {
       {next ? (
         <div data-next-step={next.id} className="flex shrink-0 items-center gap-2.5 border-b border-cc-border bg-cc-primary/[0.035] px-4 py-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-cc-primary">{t.next}</span>
-          <span className="min-w-0 truncate text-[12px] font-medium text-cc-fg" title={next.line}>
-            {t.nextStep(next)}
-            {nextPlatform ? ` · ${nextPlatform}` : ""}
+          <span className="min-w-0 truncate text-[12px] font-medium text-cc-fg" title={canWrite && next.command ? `${nextText} — ${next.command}` : nextText}>
+            {nextText}
           </span>
           <span className="ml-auto" />
           {canCommand && missing ? (

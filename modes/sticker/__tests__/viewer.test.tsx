@@ -27,6 +27,8 @@ import type { ViewerActionRequest, ViewerActionResult, ViewerLocator, ViewerNoti
 import { findSticker, loadPack, type StickerPack } from "../domain.js";
 import manifest from "../manifest.js";
 import { filesOf, finishedWorkspace, richWorkspace } from "./pack-workspace.js";
+import { englishIn } from "./message-samples.js";
+import { addTake, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
 
 let win: Window;
 let restore: () => void;
@@ -291,19 +293,146 @@ describe("read-only and editing", () => {
     await m.unmount();
   });
 
+  test("Escape cancels an edit: nothing is written and the field shows the saved text again", async () => {
+    const m = await mount(rich(), { editing: true, onNotifyAgent: () => {} });
+    const { act } = await import("react");
+    /** Type into a field, then press Escape — the blur that follows must not save the draft. */
+    const typeThenEscape = async (selector: string, text: string) => {
+      const el = m.q(selector) as HTMLInputElement | HTMLTextAreaElement;
+      expect(el).toBeTruthy();
+      const before = el.value;
+      await act(async () => {
+        el.focus();
+        const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")!.set!;
+        setter.call(el, text);
+        el.dispatchEvent(new win.Event("input", { bubbles: true }) as unknown as Event);
+        el.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }) as unknown as Event);
+        await sleep(0);
+      });
+      expect((m.q(selector) as HTMLInputElement).value).toBe(before);
+      expect(document.activeElement).not.toBe(el);
+    };
+    await m.click(m.q('[data-sticker="s02"]'));
+    await typeThenEscape('[data-field="caption"]', "不想上班了"); // <input>
+    await typeThenEscape('[data-field="action"]', "dances wildly"); // <textarea>
+    await m.click(m.q('[data-segment="view:submit"]'));
+    await typeThenEscape('[data-field="listing-intro"]', "改过的介绍"); // listing <textarea>
+    await typeThenEscape('[data-field="listing-name"]', "改过"); // listing <input>
+    expect(m.writes).toEqual([]);
+    await m.unmount();
+  });
+
   test("a command reaches the agent with the stickers it is about", async () => {
     const notes: ViewerNotification[] = [];
     const m = await mount(rich(), { editing: true, onNotifyAgent: (n) => notes.push(n) });
     await m.click(m.q('[data-command="make-missing"]'));
     expect(notes.length).toBe(1);
     expect(notes[0].type).toBe("sticker-command:make-missing");
-    expect(notes[0].message).toContain("stickers with no usable take: s05 (failed), s06 (empty), s08 (failed)");
-    expect(notes[0].message).toContain("billing is unknown (may have been charged): s05-take-1");
+    // Exactly what a plain gen makes (genTargets): s05's last take may have
+    // been billed, so it is named apart, as a retry only the user can ask for.
+    expect(notes[0].message).toContain("make (what a plain gen makes): s06 (empty), s08 (failed)");
+    expect(notes[0].message).toContain("not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: s05 (s05-take-1: upstream error)");
+    expect(notes[0].summary).toBe("/make-missing · s06, s08");
     await m.click(m.q('[data-segment="view:submit"]'));
     await m.click(m.q('[data-segment="platform:line"]'));
     await m.click(m.q('[data-command="export-check"]'));
     expect(notes[1].type).toBe("sticker-command:export-check");
     expect(notes[1].message).toContain("platform: line");
+    await m.unmount();
+  });
+});
+
+/** An element's text, one text node at a time — `textContent` runs "50 KB" into the next span's "s07…". */
+function spoken(el: Element): string {
+  const parts: string[] = [];
+  const walk = (node: Node) => {
+    if (node.nodeType === 3) parts.push(node.textContent ?? "");
+    node.childNodes.forEach(walk);
+  };
+  walk(el);
+  return parts.join(" ");
+}
+
+describe("what the rules say, to whom", () => {
+  /** Every sticker and art ready, nothing exported: every file row carries `sticker.mjs export`. */
+  function unexported(): StickerPack {
+    const raw = rawPack();
+    return loadPack(filesOf(raw, readyDoc(packFrom(raw))));
+  }
+
+  test("read-only: rows, the next step and their tooltips say what is wrong, never what to type", async () => {
+    const m = await mount(unexported(), { editing: false, onNotifyAgent: () => {} });
+    expect(m.q("[data-next-step]")?.getAttribute("data-next-step")).toBe("export");
+    expect(m.q("[data-next-step]")?.textContent).toContain("Export the WeChat files");
+    await m.click(m.q('[data-segment="view:submit"]'));
+    expect(m.q('[data-check="sticker-s01"] [data-check-detail]')?.textContent).toBe("not exported yet");
+    expect(m.q('[data-check="zip"] [data-check-detail]')?.textContent).toBe("waits until every file is exported and current");
+    expect(m.all("[data-check-command]")).toEqual([]);
+    for (const leak of ["sticker.mjs", "--platform", "pack.json", "listing.wechat."]) expect(m.host.innerHTML).not.toContain(leak);
+    await m.unmount();
+  });
+
+  test("editing: a row's command shows beside its meaning, and the step's in its tooltip", async () => {
+    const m = await mount(unexported(), { editing: true, onNotifyAgent: () => {} });
+    expect(m.q("[data-next-step] [title]")?.getAttribute("title")).toBe("Export the WeChat files — sticker.mjs export --platform wechat");
+    await m.click(m.q('[data-segment="view:submit"]'));
+    expect(m.q('[data-check="sticker-s01"] [data-check-detail]')?.textContent).toBe("not exported yetsticker.mjs export --platform wechat");
+    expect(m.q('[data-check="sticker-s01"] [data-check-command]')?.textContent).toBe("sticker.mjs export --platform wechat");
+    await m.unmount();
+  });
+
+  test("Chinese and Japanese: stale reasons, checklist rows, file reasons and the next step in the user's language", async () => {
+    for (const [locale, stale, step] of [
+      ["zh-CN", "配字改了", "补齐还没出图的：s06、s08；s05 要重画得另外确认"],
+      ["ja", "文字が変わりました", "足りないスタンプを作る：s06、s08（s05 の描き直しは別に確認）"],
+    ] as const) {
+      const m = await mount(rich(), { locale, editing: false });
+      expect(m.q("[data-next-step]")?.textContent).toContain(step);
+      await m.click(m.q('[data-sticker="s03"]'));
+      expect(m.all("[data-stale-reason]").map((r) => r.textContent)).toEqual([stale]);
+      await m.click(m.q('[data-segment="view:submit"]'));
+      for (const platform of ["wechat", "telegram", "line"]) {
+        await m.click(m.q(`[data-segment="platform:${platform}"]`));
+        const rows = m.all("[data-check]").filter((r) => !["rights", "listing-copyright", "listing-title", "listing-creator", "listing-description", "listing-shortName"].includes(r.getAttribute("data-check")!));
+        expect(rows.length).toBeGreaterThan(5);
+        for (const r of rows) expect({ row: r.getAttribute("data-check"), english: englishIn(spoken(r)) }).toEqual({ row: r.getAttribute("data-check"), english: [] });
+        for (const f of m.all("[data-not-exported] [data-export], [data-files] figure")) {
+          expect({ file: f.getAttribute("data-export"), english: englishIn(spoken(f)) }).toEqual({ file: f.getAttribute("data-export"), english: [] });
+        }
+      }
+      await m.unmount();
+    }
+  });
+});
+
+describe("what a plain gen makes", () => {
+  /** The rich pack with s06 and s08 drawn: only s05 (failed, billing unknown) has no usable take. */
+  function onlyUncertain(): StickerPack {
+    const { raw, doc } = richWorkspace();
+    const pack = packFrom(raw);
+    addTake(doc, pack, "s06", 1);
+    addTake(doc, pack, "s08", 2);
+    return loadPack(filesOf(raw, doc));
+  }
+
+  test("the failed sticker inspector says whether make-missing retries it or leaves it", async () => {
+    const m = await mount(rich(), { editing: true, onNotifyAgent: () => {} });
+    await m.click(m.q('[data-sticker="s05"]'));
+    expect(m.q("[data-gen-plan]")?.getAttribute("data-gen-plan")).toBe("uncertain");
+    expect(m.q("[data-gen-plan]")?.textContent).toContain("may already have been billed");
+    await m.click(m.q('[data-sticker="s08"]'));
+    expect(m.q("[data-gen-plan]")?.getAttribute("data-gen-plan")).toBe("target");
+    await m.unmount();
+  });
+
+  test("with only an uncertain sticker left, nothing offers a silent resend", async () => {
+    const value = onlyUncertain();
+    expect(value.gen).toEqual({ targets: [], skipped: expect.any(Array), uncertain: [{ id: "s05", take: "s05-take-1", reason: "upstream error" }] });
+    const m = await mount(value, { editing: true, onNotifyAgent: () => {} });
+    expect(m.q('[data-command="make-missing"]')).toBeNull();
+    expect(m.q("[data-next-step]")?.getAttribute("data-next-step")).toBe("retry");
+    expect(m.q("[data-next-step]")?.textContent).not.toContain("Make the missing stickers");
+    expect(m.q("[data-next-step]")?.textContent).toContain("may already have been billed");
     await m.unmount();
   });
 });
@@ -327,14 +456,120 @@ describe("actions and navigation", () => {
     await m.unmount();
   });
 
-  test("a frame address in a browser without ImageDecoder arrives with a note, not silence", async () => {
+  test("a frame the browser cannot decode is reported as not shown, and the stage says it plays the loop", async () => {
+    // A `navigate-to` + `capture` caller screenshots whatever is on the
+    // stage: a success here would hand it the playing loop as frame 3.
     const m = await mount(rich());
     await m.request({ requestId: "f1", actionId: "navigate-to", params: { address: { sticker: "s01", frame: 3 } } });
     await m.wait(10);
-    expect(m.results[0].result.success).toBe(true);
+    expect(m.results[0].result.success).toBe(false);
     expect(m.results[0].result.message).toContain("no ImageDecoder");
-    expect(m.q("[data-stage]")?.getAttribute("data-stage-frame")).toBe("3");
+    expect(m.results[0].result.data).toMatchObject({ focus: { type: "sticker", id: "s01" }, frame: null });
+    expect(m.q("[data-stage]")?.getAttribute("data-stage-frame")).toBe("");
+    await m.locate({ sticker: "s01", frame: 5 });
+    await m.wait(10);
+    expect(m.navigations[0]).toMatchObject({ success: false });
+    expect(m.navigations[0]?.message).toContain("no ImageDecoder");
     await m.unmount();
+  });
+
+  describe("with ImageDecoder", () => {
+    /**
+     * A stand-in for WebCodecs' ImageDecoder: `frames` frames, decoded once
+     * `release()` is called (so a test can hold the decode), or a failing
+     * fetch. The bitmaps are plain objects; happy-dom has no 2D context, so
+     * FrameCanvas draws nothing.
+     */
+    function decoder(opts: { frames: number; status?: number }) {
+      const g = globalThis as unknown as Record<string, unknown>;
+      const saved = { ImageDecoder: g.ImageDecoder, createImageBitmap: g.createImageBitmap, fetch: g.fetch };
+      let release: () => void = () => {};
+      const gate = new Promise<void>((r) => (release = r));
+      g.fetch = (async () => new Response(new Uint8Array([0x47, 0x49, 0x46]), { status: opts.status ?? 200 })) as unknown as typeof fetch;
+      g.createImageBitmap = async () => ({ width: 512, height: 512, close() {} });
+      g.ImageDecoder = class {
+        completed = gate;
+        tracks = { ready: Promise.resolve(), selectedTrack: { frameCount: opts.frames } };
+        async decode() {
+          return { image: { close() {}, displayWidth: 512, displayHeight: 512 } };
+        }
+        close() {}
+      };
+      return {
+        release: () => release(),
+        restore: () => {
+          for (const [key, value] of Object.entries(saved)) {
+            if (value === undefined) delete g[key];
+            else g[key] = value;
+          }
+        },
+      };
+    }
+
+    test("success only once the requested frame is on the stage", async () => {
+      const d = decoder({ frames: 16 });
+      try {
+        const m = await mount(rich());
+        await m.request({ requestId: "g1", actionId: "navigate-to", params: { address: { sticker: "s01", frame: 3 } } });
+        await m.wait(10);
+        expect(m.results).toEqual([]);
+        d.release();
+        await m.wait(10);
+        expect(m.results[0].result.success).toBe(true);
+        expect(m.results[0].result.message).toBeUndefined();
+        expect(m.results[0].result.data).toMatchObject({ frame: 3 });
+        expect(m.q("[data-stage]")?.getAttribute("data-stage-frame")).toBe("3");
+        expect(m.q("[data-stage] canvas")).not.toBeNull();
+        await m.unmount();
+      } finally {
+        d.restore();
+      }
+    });
+
+    test("a decode failure is reported as not shown", async () => {
+      const d = decoder({ frames: 16, status: 404 });
+      try {
+        const m = await mount(rich());
+        await m.request({ requestId: "g2", actionId: "navigate-to", params: { address: { sticker: "s01", frame: 3 } } });
+        await m.wait(20);
+        expect(m.results[0].result.success).toBe(false);
+        expect(m.results[0].result.message).toContain("HTTP 404");
+        expect(m.results[0].result.data).toMatchObject({ frame: null });
+        expect(m.q("[data-stage]")?.getAttribute("data-stage-frame")).toBe("");
+        await m.unmount();
+      } finally {
+        d.restore();
+      }
+    });
+
+    test("a take that decodes to fewer frames than recorded is reported as not shown", async () => {
+      const d = decoder({ frames: 2 });
+      try {
+        const m = await mount(rich());
+        await m.request({ requestId: "g3", actionId: "navigate-to", params: { address: { sticker: "s01", frame: 3 } } });
+        d.release();
+        await m.wait(20);
+        expect(m.results[0].result.success).toBe(false);
+        expect(m.results[0].result.message).toContain("decoded to 2 frames");
+        expect(m.q("[data-stage]")?.getAttribute("data-stage-frame")).toBe("");
+        await m.unmount();
+      } finally {
+        d.restore();
+      }
+    });
+  });
+
+  test("the frame verdict: shown, not shown with a reason, or still waiting", async () => {
+    const { frameVerdict } = await import("../viewer/view-model.js");
+    const url = "/content/stickers/s01/take-1.gif?v=1";
+    const bitmaps = Array.from({ length: 4 }, () => ({}) as ImageBitmap);
+    expect(frameVerdict({ status: "ready", url, frames: bitmaps, width: 1, height: 1 }, url, 2)).toEqual({ done: true, shown: true });
+    expect(frameVerdict({ status: "ready", url, frames: bitmaps, width: 1, height: 1 }, url, 4)).toMatchObject({ done: true, shown: false });
+    expect(frameVerdict({ status: "ready", url: "/content/other.gif", frames: bitmaps, width: 1, height: 1 }, url, 2)).toEqual({ done: false });
+    expect(frameVerdict({ status: "loading", url }, url, 2)).toEqual({ done: false });
+    expect(frameVerdict({ status: "idle" }, url, 2)).toEqual({ done: false });
+    expect(frameVerdict({ status: "unsupported" }, url, 2)).toMatchObject({ done: true, shown: false });
+    expect(frameVerdict({ status: "error", url, message: "boom" }, url, 2)).toMatchObject({ done: true, shown: false });
   });
 
   test("set-view switches view, tab and plate, and refuses a platform the pack does not ship to", async () => {

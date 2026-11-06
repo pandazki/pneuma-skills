@@ -124,7 +124,7 @@ export function StickerCard({
           {unknown ? (
             <StatusChip status="unknown">{t.statusUnknown}</StatusChip>
           ) : (
-            <StatusChip status={status} title={sticker.state.reason ?? undefined}>
+            <StatusChip status={status} title={sticker.state.messages.map(t.say).join(" · ") || undefined}>
               {t.status(status, ready, elapsedOf(t, now, busy?.submittedAt ?? null))}
             </StatusChip>
           )}
@@ -239,8 +239,8 @@ function CharacterCard({ value, plate, base, t, selected, onOpen }: { value: Sti
         <div className="border-t border-cc-border bg-cc-surface/50 px-2.5 py-2">
           <div className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-cc-muted">{t.style}</div>
           <div className="line-clamp-2 text-[11.5px] leading-[1.45] text-cc-fg/90">{pack.character.style}</div>
-          {!unread && character && !character.anchor.ready && character.anchor.anchor ? (
-            <div className="mt-1 text-[10.5px] text-cc-warning">{character.anchor.reason}</div>
+          {!unread && character && !character.anchor.ready && character.anchor.anchor && character.anchor.message ? (
+            <div className="mt-1 text-[10.5px] text-cc-warning">{t.say(character.anchor.message)}</div>
           ) : null}
         </div>
       </button>

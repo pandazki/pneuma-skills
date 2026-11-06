@@ -361,7 +361,8 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     expect(JSON.parse(plain.out)).toMatchObject({ results: [], uncertain: [{ id: "s02", take: "s02-take-1" }] });
     expect(plain.err).toContain("gen --only s02");
     expect(gifCalls(dir)).toHaveLength(3);
-    expect(ok(dir, ["status"]).next).toMatchObject({ id: "generate", command: "sticker.mjs gen --only s02" });
+    // Only the uncertain one is left: its own step, never "make the missing stickers".
+    expect(ok(dir, ["status"]).next).toMatchObject({ id: "retry", command: "sticker.mjs gen --only s02", message: { code: "next.retry", params: { stickers: ["s02"] } } });
     // Naming it is the explicit retry.
     const rerun = ok(dir, ["gen", "--only", "s02"]);
     expect(rerun.results.map((x: { id: string }) => x.id)).toEqual(["s02-take-2"]);

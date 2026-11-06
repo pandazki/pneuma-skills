@@ -5,7 +5,8 @@
  *
  * Writes are DECISIONS only — a picked take, anchor or art, an edited word,
  * caption, emoji or action — and go through the domain's pure edits into
- * pack.json. Statuses and reasons are the domain's (sticker-state.mjs).
+ * pack.json. Statuses and reasons are the domain's (sticker-state.mjs),
+ * reasons said in the user's language (`t.say`).
  */
 
 import type { ReactNode } from "react";
@@ -55,6 +56,31 @@ function Notice({ tone, icon, children }: { tone: "success" | "warning" | "error
   );
 }
 
+/**
+ * What a plain gen does with a failed sticker, read off `genTargets`: it
+ * retries one whose last call provably never left, and leaves one whose
+ * last call may have been billed for the user to retry on purpose.
+ */
+function GenPlanLine({ value, sticker, t }: { value: StickerPack; sticker: StickerView; t: StickerStrings }) {
+  const plan = value.gen;
+  if (!plan) return null;
+  if (plan.uncertain.some((u) => u.id === sticker.id)) {
+    return (
+      <div data-gen-plan="uncertain" className="mt-1.5 border-t border-cc-error/20 pt-1.5 font-medium text-cc-warning">
+        {t.genLeftUncertain}
+      </div>
+    );
+  }
+  if (plan.targets.some((x) => x.id === sticker.id)) {
+    return (
+      <div data-gen-plan="target" className="mt-1.5 border-t border-cc-error/20 pt-1.5 text-cc-fg/75">
+        {t.genRetries}
+      </div>
+    );
+  }
+  return null;
+}
+
 function BillingLine({ take, t }: { take: AssetBrief; t: StickerStrings }) {
   if (take.failure?.billing === "unknown") return <div className="mt-0.5 font-medium text-cc-warning">{t.billingUnknown}</div>;
   if (take.failure?.billing === "none") return <div className="mt-0.5 text-cc-muted">{t.billingNone}</div>;
@@ -63,7 +89,7 @@ function BillingLine({ take, t }: { take: AssetBrief; t: StickerStrings }) {
 
 // ── Sticker ────────────────────────────────────────────────────────────────
 
-function StatusBlock({ sticker, t, now }: { sticker: StickerView; t: StickerStrings; now: number }) {
+function StatusBlock({ value, sticker, t, now, canCommand }: { value: StickerPack; sticker: StickerView; t: StickerStrings; now: number; canCommand: boolean }) {
   const state = sticker.state;
   switch (state.status) {
     case "ready":
@@ -77,9 +103,9 @@ function StatusBlock({ sticker, t, now }: { sticker: StickerView; t: StickerStri
         <Notice tone="warning" icon={<Icon.Alert size={12} />}>
           <div data-stale-headline className="font-semibold">{t.staleHeadline}</div>
           <ul className="m-0 mt-0.5 list-none p-0 text-cc-fg/80">
-            {(state.reasons ?? [state.reason ?? ""]).map((r) => (
-              <li key={r} data-stale-reason>
-                {r}
+            {state.messages.map((m, i) => (
+              <li key={i} data-stale-reason>
+                {t.say(m)}
               </li>
             ))}
           </ul>
@@ -89,7 +115,7 @@ function StatusBlock({ sticker, t, now }: { sticker: StickerView; t: StickerStri
       return (
         <Notice tone="primary" icon={<Icon.Spark size={12} />}>
           <div className="font-semibold">{t.pickHeadline(state.ready.length)}</div>
-          <div className="text-cc-fg/70">{state.reason}</div>
+          <div className="text-cc-fg/70">{state.messages.map(t.say).join(" · ")}</div>
         </Notice>
       );
     case "generating": {
@@ -97,7 +123,7 @@ function StatusBlock({ sticker, t, now }: { sticker: StickerView; t: StickerStri
       return (
         <Notice tone="primary" icon={<span className="block h-2.5 w-2.5 rounded-full border-[1.5px] border-current border-t-transparent motion-safe:animate-spin" />}>
           <div className="font-semibold">{t.generatingHeadline(elapsedOf(t, now, busy?.submittedAt ?? null))}</div>
-          <div className="text-cc-fg/70">{state.reason}</div>
+          <div className="text-cc-fg/70">{state.messages.map(t.say).join(" · ")}</div>
         </Notice>
       );
     }
@@ -113,10 +139,11 @@ function StatusBlock({ sticker, t, now }: { sticker: StickerView; t: StickerStri
                 <BillingLine take={x} t={t} />
               </div>
             ))}
+          <GenPlanLine value={value} sticker={sticker} t={t} />
         </Notice>
       );
     default:
-      return <Notice tone="neutral">{t.emptyHeadline}</Notice>;
+      return <Notice tone="neutral">{canCommand ? t.emptyHeadline : t.emptyHeadlineQuiet}</Notice>;
   }
 }
 
@@ -316,7 +343,7 @@ function TakeDetail({ take, t, canWrite, onPick }: { take: TakeView; t: StickerS
           <BillingLine take={take} t={t} />
         </div>
       ) : null}
-      {take.staleness?.stale && !take.picked ? <div className="mt-1 text-[10.5px] text-cc-warning">{take.staleness.reasons.join("; ")}</div> : null}
+      {take.staleness?.stale && !take.picked ? <div className="mt-1 text-[10.5px] text-cc-warning">{take.staleness.messages.map(t.say).join(" · ")}</div> : null}
       {canWrite && take.status === "ready" && !take.picked ? (
         <div className="mt-2">
           <Btn primary small data-action="pick-take" onClick={onPick}>
@@ -387,6 +414,7 @@ export function StickerInspector({
   t,
   now,
   canWrite,
+  canCommand,
   onClose,
   onShowTake,
   onFrame,
@@ -401,6 +429,8 @@ export function StickerInspector({
   t: StickerStrings;
   now: number;
   canWrite: boolean;
+  /** The agent can be asked (editing, not read-only): the empty headline names the command. */
+  canCommand: boolean;
   onClose: () => void;
   onShowTake: (take: string | null) => void;
   onFrame: (frame: number | null) => void;
@@ -434,7 +464,7 @@ export function StickerInspector({
       }
     >
       <div className="flex flex-col gap-3.5">
-        {unknown ? null : <StatusBlock sticker={sticker} t={t} now={now} />}
+        {unknown ? null : <StatusBlock value={value} sticker={sticker} t={t} now={now} canCommand={canCommand} />}
         <div>
           <Stage sticker={sticker} take={take} position={position} frames={frames} base={base} t={t} now={now} />
           {take?.status === "ready" ? (
@@ -542,9 +572,9 @@ export function CharacterInspector({
             </span>
           )}
         </Plate>
-        {character.anchor.reason && character.anchor.anchor ? (
+        {character.anchor.message && character.anchor.anchor ? (
           <Notice tone="warning" icon={<Icon.Alert size={12} />}>
-            {character.anchor.reason}
+            {t.say(character.anchor.message)}
           </Notice>
         ) : null}
         {character.candidates.length ? (
@@ -677,7 +707,7 @@ export function ArtInspector({
                     className="flex items-center gap-2 rounded-lg border border-cc-border bg-cc-bg/35 px-2.5 py-1.5 text-left transition-colors hover:border-cc-primary/40 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
                   >
                     <span className="text-[11.5px] font-medium text-cc-fg">{PLATFORM_PROFILES[b.platform].label}</span>
-                    <span className="truncate text-[11px] text-cc-muted">{b.label}</span>
+                    <span className="truncate text-[11px] text-cc-muted">{t.deliverableLabel(b.platform, b.deliverable)}</span>
                     <span className="font-mono text-[10.5px] text-cc-muted">{spec ? `${spec.width}×${spec.height}` : ""}</span>
                     {item ? (
                       <span className="ml-auto">

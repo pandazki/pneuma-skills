@@ -32,17 +32,20 @@ import type {
 } from "../_shared/scripts/craft-project.mjs";
 import { indexAssets, readProjectFile, statusOf, summarizeCosts } from "../_shared/scripts/craft-project.mjs";
 import type {
+  AnchorState,
   ArtKind,
   CheckLevel,
   CheckRow,
   ExportItem,
   ExportState,
+  GenPlan,
   Measure,
   NextStep,
   Pack,
   PackIssue,
   Platform,
   PlatformProfile,
+  Staleness,
   Sticker,
   StickerProject,
   StickerState,
@@ -57,6 +60,7 @@ import {
   checkPack,
   exportNumber,
   exportState,
+  genTargets,
   nextStep,
   parsePack,
   platformDeliverables,
@@ -75,6 +79,7 @@ export type {
   ExportItem,
   ExportItemState,
   ExportState,
+  GenPlan,
   Measure,
   NextStep,
   Pack,
@@ -84,6 +89,9 @@ export type {
   Sticker,
   StickerState,
   StickerStatus,
+  StateMessage,
+  MessageCode,
+  MessageParams,
 } from "./skill/scripts/sticker-state.mjs";
 
 export const PACK_PATH = "pack.json";
@@ -121,7 +129,7 @@ export interface TakeView extends AssetBrief {
   /** pack.json picks this take. */
   picked: boolean;
   /** Ready takes only: `takeStaleness` against pack.json as it is now. */
-  staleness: { stale: boolean; reasons: string[] } | null;
+  staleness: Staleness | null;
 }
 
 export interface StickerView {
@@ -140,7 +148,7 @@ export interface StickerView {
 }
 
 export interface CharacterView {
-  anchor: { anchor: string | null; ready: boolean; reason: string | null };
+  anchor: AnchorState;
   /** The anchor's asset, whatever its state. */
   asset: AssetBrief | null;
   candidates: AssetBrief[];
@@ -199,6 +207,8 @@ export interface StickerPack {
   art: ArtKindView[];
   platforms: PlatformView[];
   next: NextStep | null;
+  /** `genTargets` — what a plain `sticker.mjs gen` makes, and the stickers it leaves for an explicit retry; null when project.json is unreadable. */
+  gen: GenPlan | null;
   cost: PackCost;
   assets: Record<string, AssetBrief>;
 }
@@ -347,7 +357,7 @@ function build(raw: Json | null, parseErrors: PackIssue[], hasPack: boolean, pro
     assets,
   };
   if (!pack) {
-    return { ...base, title: "", character: null, stickers: [], art: [], platforms: [], next: null };
+    return { ...base, title: "", character: null, stickers: [], art: [], platforms: [], next: null, gen: null };
   }
   return {
     ...base,
@@ -362,6 +372,7 @@ function build(raw: Json | null, parseErrors: PackIssue[], hasPack: boolean, pro
     // The rules would answer for a pack with no record at all ("make the
     // character"), which is not this pack: its record exists and is unreadable.
     next: projectError ? null : nextStep(pack, rules),
+    gen: projectError ? null : genTargets(pack, rules),
   };
 }
 

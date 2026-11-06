@@ -138,7 +138,7 @@ const stickerManifest: ModeManifest = {
           },
         },
         description:
-          "Put the viewer on the sticker, frame, take, art or platform export you are talking about, so the user sees what your sentence is about — and call it before `capture` so the screenshot is the thing you mean (a frame address freezes the stage on that frame). A sticker, take, frame, art kind or platform that does not exist is refused by name and nothing moves; the reply's `data` says what the viewer shows.",
+          "Put the viewer on the sticker, frame, take, art or platform export you are talking about, so the user sees what your sentence is about — and call it before `capture` so the screenshot is the thing you mean (a frame address freezes the stage on that frame; when the browser cannot show it — no frame decoder, a decode error, still decoding after 5 s — the reply fails with the reason and the stage plays the whole sticker, so do not capture it as that frame). A sticker, take, frame, art kind or platform that does not exist is refused by name and nothing moves; the reply's `data` says what the viewer shows.",
       },
       {
         id: "set-view",

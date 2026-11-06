@@ -23,6 +23,13 @@
  * with no official source is flagged `unconfirmed` and its checklist row is
  * a warning, never a pass. Byte limits read "KB" as 1000 bytes and "MB" as
  * 1,000,000 — the stricter reading, so a file that passes here passes either.
+ *
+ * Every sentence a rule says — a stale reason, a sticker's or anchor's
+ * reason, an export's reason, a checklist row's detail, the next step — is a
+ * MESSAGE first: `{ code, params, command? }`. The English the CLI prints is
+ * `messageText(message)`, so `reason` / `detail` / `line` are that message in
+ * English; the viewer formats the same code in the user's language. A new
+ * code needs its English here and its strings in the viewer's tables.
  */
 
 // ---------------------------------------------------------------------------
@@ -250,6 +257,158 @@ function fmtBytes(n) {
 
 function fmtSeconds(ms) {
   return `${(ms / 1000).toFixed(2).replace(/\.?0+$/, "")} s`;
+}
+
+// ---------------------------------------------------------------------------
+// Messages — what the rules say, as codes; English for the CLI and the agent
+// ---------------------------------------------------------------------------
+
+/** A message: a stable code and its parameters, and the sticker.mjs command that takes the step, when there is one. */
+function msg(code, params = {}, command) {
+  return command ? { code, params, command } : { code, params };
+}
+
+const list = (items) => items.join(", ");
+const unit = (width) => (width ? "width (Asian characters count 2)" : "characters");
+const STATUS_WORDS = Object.freeze({ empty: "no take yet", failed: "every take failed", generating: "still generating", pick: "no take picked" });
+const STALE_FIELDS = Object.freeze({ description: "character description", style: "character style" });
+const charged = "the last take failed with billing unknown — it may have been charged";
+
+function unconfirmedDetail(id) {
+  for (const profile of Object.values(PLATFORM_PROFILES)) {
+    const rule = profile.unconfirmed.find((u) => u.id === id);
+    if (rule) return rule.detail;
+  }
+  return id;
+}
+
+/** English for every code: `(params, say) => text`, `say` formatting a nested message. */
+const MESSAGES = Object.freeze({
+  // take staleness
+  "stale.sticker-gone": (p) => `${p.sticker} is no longer in pack.json`,
+  "stale.no-record": (p) => `${p.take} has no provenance record`,
+  "stale.changed": (p) => `${STALE_FIELDS[p.field] ?? p.field} changed`,
+  "stale.no-prompt": () => "no prompt was recorded for it",
+  "stale.prompt": () => "the prompt wording changed",
+  "stale.motion": (p) => `motion.${p.key} changed (${p.from ?? "none"} → ${p.to})`,
+  "stale.anchor": (p) => `the character anchor changed (${p.from ?? "none"} → ${p.to ?? "none"})`,
+  // a sticker's state
+  "state.in-flight": (p) => `${list(p.takes)} in flight`,
+  "state.unpicked": () => "no take picked",
+  "state.pick-not-ready": (p) => `picked ${p.take} is ${p.status ?? "not in project.json"}`,
+  "state.ready-takes": (p) => `ready: ${list(p.takes)}`,
+  "state.failed": (p) => `${p.count} take(s) failed`,
+  // the character anchor
+  "anchor.unset": () => "character.anchor is not set",
+  "anchor.not-ready": (p) => `character.anchor '${p.anchor}' is ${p.status ?? "not in project.json"}`,
+  // where an export comes from
+  "source.no-sticker": () => "the pack has no sticker",
+  "source.sticker": (p, say) => `${p.sticker}: ${STATUS_WORDS[p.status] ?? p.status}${p.why.length ? ` (${p.why.map(say).join("; ")})` : ""}`,
+  "source.art-unpicked": (p) => `art.${p.art} is not picked`,
+  "source.art-not-ready": (p) => `art.${p.art} '${p.asset}' is ${p.status ?? "not in project.json"}`,
+  // an export's state
+  "export.not-exported": () => "not exported yet",
+  "export.from-other": (p) => `exported from ${p.from}; the pick is now ${p.now}`,
+  "export.other-inputs": () => "exported from other inputs (keepFrames, order, art or the exporter changed)",
+  "export.again": (p, say) => `${say(p.why)} — export again`,
+  "export.optional-none": (p, say) => `none — ${say(p.why)}; optional${p.platform === "telegram" ? " (Telegram uses the first sticker)" : ""}`,
+  "export.measured": (p, say) => (p.problems.length ? `${p.problems.map(say).join("; ")} (${say(p.summary)})` : say(p.summary)),
+  // an exported file against its platform's rules
+  "file.bytes-over": (p) => `${fmtBytes(p.bytes)} is over ${fmtBytes(p.max)}`,
+  "file.format": (p) => `format ${p.format}, not ${p.expected.join(" or ")}`,
+  "file.size": (p) => `${p.width}×${p.height}, not ${p.expectedWidth}×${p.expectedHeight}`,
+  "file.loop-none": () => "does not loop (no loop block)",
+  "file.loop-count": (p) => `loops ${p.count} time(s), not forever`,
+  "file.still": () => "is not animated",
+  "file.codec": (p) => `${p.format}/${p.codec}, not WEBM VP9`,
+  "file.no-alpha": () => "has no alpha channel",
+  "file.telegram-edge": (p) => `${p.width}×${p.height}: one side must be exactly ${p.edge}, the other at most ${p.edge}`,
+  "file.duration-over": (p) => `${fmtSeconds(p.ms)}, over ${fmtSeconds(p.max)}`,
+  "file.fps-over": (p) => `${p.fps} fps, over ${p.max}`,
+  "file.audio": () => "has an audio stream",
+  "file.outside": (p) => `${p.width}×${p.height} is outside ${p.maxWidth}×${p.maxHeight}`,
+  "file.min-side": (p) => `${p.width}×${p.height}: width or height must be at least ${p.min}`,
+  "file.frames-range": (p) => `${p.frames} frames, not ${p.min}–${p.max}`,
+  "file.loop-long": (p) => `one loop is ${fmtSeconds(p.ms)}, over ${fmtSeconds(p.max)}`,
+  "file.plays-range": (p) => `plays ${p.plays === 0 ? "forever" : p.plays}, not ${p.min}–${p.max}`,
+  "file.plays-total": (p) => `${p.plays} plays × ${fmtSeconds(p.ms)} is over ${fmtSeconds(p.max)}`,
+  "file.main-plays": (p) => `plays ${p.plays} × ${fmtSeconds(p.ms)} breaks LINE's ${p.min}–${p.max} plays within ${fmtSeconds(p.maxTotal)}`,
+  "file.identical": () => "every frame is identical",
+  "file.not-transparent": () => "is not transparent",
+  "file.margin": (p) => `${p.px} px of empty margin left`,
+  "file.first-frame": (p) => `the first frame (the store still) shows ${p.percent}% of the usual figure`,
+  "file.corner": () => "a corner is not transparent (a square frame or background)",
+  "file.white-outline": (p) => `${p.percent}% of the outline is near-white — the platform asks for no white outline`,
+  "file.not-opaque": () => "has transparent pixels; it must be opaque",
+  "file.white-background": (p) => `${p.percent}% near-white — the background must not be white`,
+  "file.take-stale": (p, say) => `its take is stale (${p.why.map(say).join("; ")}) — re-roll to apply`,
+  // what an exported file is
+  "summary.wechat": (p) => `${p.width}×${p.height} GIF · ${fmtBytes(p.bytes)} · ${p.frames} frames · ${p.loops ? "loops forever" : "does not loop"}`,
+  "summary.telegram": (p) => `${p.width}×${p.height} WEBM VP9${p.alpha ? "+alpha" : ""} · ${fmtBytes(p.bytes)} · ${fmtSeconds(p.ms)} at ${p.fps} fps`,
+  "summary.line": (p) => `${p.width}×${p.height} APNG · ${fmtBytes(p.bytes)} · ${p.frames} frames · ${fmtSeconds(p.ms)} × ${p.plays} play(s)`,
+  "summary.still": (p) => `${p.width}×${p.height} ${String(p.format).toUpperCase()} · ${fmtBytes(p.bytes)}`,
+  // checklist rows
+  "rights.ok": (p) => `${p.basis}, confirmed ${p.confirmedAt}${p.note ? ` — ${p.note}` : ""}`,
+  "rights.missing": () => "rights is not recorded in pack.json — required before any paid step and any submission",
+  "platform.unchosen": (p) => `'${p.platform}' is not in pack.platforms`,
+  "count.allowed": (p) => `${p.count} sticker(s); ${PLATFORM_PROFILES[p.platform].label} takes ${list(p.allowed)}`,
+  "count.range": (p) => `${p.count} sticker(s); ${PLATFORM_PROFILES[p.platform].label} takes ${p.min}–${p.max}${p.setMax ? ` at creation, ${p.setMax} per set` : ""}`,
+  "animated.static": (p) => `${list(p.stickers)} are static; a set is all animated or all static`,
+  "animated.all": (p) => `all ${p.count} exported stickers are animated`,
+  "words.bad": (p) =>
+    [
+      p.long.length ? `${p.long.map((w) => `${w.sticker} "${w.word}"`).join(", ")}: 1–${p.max} characters` : null,
+      p.dupes.length ? `${p.dupes.map((w) => `${w.sticker} "${w.word}"`).join(", ")}: used twice` : null,
+    ]
+      .filter(Boolean)
+      .join("; "),
+  "words.ok": (p) => `${p.count} words, each 1–${p.max} characters and unique`,
+  "emoji.bad": (p) => `${p.items.map((i) => `${i.sticker} ${JSON.stringify(i.emoji)}`).join(", ")}: each sticker exports exactly one emoji`,
+  "emoji.ok": () => "one emoji per sticker",
+  "listing.empty": (p) => `listing.${p.platform}.${p.field} is empty`,
+  "listing.unset": () => "not set (optional)",
+  "listing.bad": (p, say) => `"${p.text}": ${p.problems.map(say).join("; ")}`,
+  "listing.long": (p) => `"${p.text}": ${p.length} ${unit(p.width)} — up to ${p.best} shows best`,
+  "listing.ok": (p) => `"${p.text}" — ${p.length} ${unit(p.width)}${p.max !== null ? ` (max ${p.max}${p.min !== null ? `, min ${p.min}` : ""})` : ""}`,
+  "text.over": (p) => `${p.length} ${unit(p.width)}, over ${p.max}`,
+  "text.under": (p) => `${p.length} ${unit(p.width)}, under ${p.min}`,
+  "text.punctuation": () => "no punctuation allowed",
+  "zip.ok": (p) => `${p.uri} · ${fmtBytes(p.bytes)} · ${p.files} files${p.over !== null ? ` — over ${fmtBytes(p.over)}` : ""}`,
+  "zip.blocked": () => "waits for every deliverable to be exported and current",
+  "zip.missing": () => "missing",
+  "zip.stale": () => "stale",
+  "unconfirmed.reward-thumb": () => `unconfirmed: ${unconfirmedDetail("reward-thumb")}`,
+  "unconfirmed.zip-naming": () => `unconfirmed: ${unconfirmedDetail("zip-naming")}`,
+  // the next step
+  "next.rights": () => "Record the rights basis in pack.json (rights: { basis, note, confirmedAt }) — nothing paid runs before it.",
+  "next.anchor": (p) => `Pick the character: set character.anchor in pack.json to one of ${list(p.candidates)}.`,
+  "next.describe": () => "Write character.description (identity features, in English) in pack.json, then make the character.",
+  "next.character": () => "Make the character from the user's photo or image.",
+  "next.stickers": () => "Add stickers to pack.json (id, word, caption, emoji, action).",
+  "next.generate": (p) =>
+    `Generate takes for ${list(p.stickers)}.${p.uncertain.length ? ` Not included: ${list(p.uncertain)} (${charged}; retry only with the user's yes: sticker.mjs gen --only ${p.uncertain.join(",")}).` : ""}`,
+  "next.retry": (p) => `${list(p.stickers)}: ${charged}. A plain gen does not send it again; ask the user before retrying.`,
+  "next.generating": (p) => `Wait for ${list(p.stickers)} to land.`,
+  "next.pick": (p) => `Pick a take for ${list(p.stickers)} (stickers[].take in pack.json).`,
+  "next.reroll": (p, say) => `Re-roll stale takes: ${p.stale.map((s) => `${s.sticker} (${s.why.map(say).join("; ")})`).join("; ")}.`,
+  "next.export": (p) => `Export for ${PLATFORM_PROFILES[p.platform].label}.`,
+  "next.check": (p) => `${PLATFORM_PROFILES[p.platform].label}: ${p.rows.length} check(s) fail — ${p.rows.map((r) => r.label).join(", ")}.`,
+  "next.done": () => "Every chosen platform's checklist passes; the zips are ready to submit.",
+});
+
+/** Every message code the rules can say. */
+export const MESSAGE_CODES = Object.freeze(Object.keys(MESSAGES));
+
+/**
+ * A message in English — the text `sticker.mjs` prints — with its command
+ * after a dash when it has one. An unknown code throws: every code the rules
+ * say has its English here.
+ */
+export function messageText(message) {
+  const template = MESSAGES[message.code];
+  if (!template) throw new Error(`sticker-state: no text for message '${message.code}'`);
+  const text = template(message.params ?? {}, messageText);
+  return message.command ? `${text} — ${message.command}` : text;
 }
 
 // ---------------------------------------------------------------------------
@@ -689,16 +848,21 @@ function findSticker(pack, sid) {
 /**
  * Whether a take still matches pack.json: its recorded prompt and request
  * against the ones the pack makes now, its recorded input against the
- * current anchor. `reasons` say what changed, in words.
+ * current anchor. `messages` say what changed; `reasons` are their English.
  */
 export function takeStaleness(pack, project, takeId) {
+  const messages = staleMessages(pack, project, takeId);
+  return { stale: messages.length > 0, reasons: messages.map(messageText), messages };
+}
+
+function staleMessages(pack, project, takeId) {
   const sid = takeId.replace(/-take-\d+$/, "");
   const sticker = findSticker(pack, sid);
   const edge = edgeOf(project, takeId);
-  if (!sticker) return { stale: true, reasons: [`${sid} is no longer in pack.json`] };
-  if (!edge) return { stale: true, reasons: [`${takeId} has no provenance record`] };
+  if (!sticker) return [msg("stale.sticker-gone", { sticker: sid })];
+  if (!edge) return [msg("stale.no-record", { take: takeId })];
   const params = edge.operation?.params ?? {};
-  const reasons = [];
+  const out = [];
   const recordedPrompt = params.prompt ?? null;
   const prompt = stickerPrompt(pack, sticker);
   if (recordedPrompt !== prompt) {
@@ -707,17 +871,17 @@ export function takeStaleness(pack, project, takeId) {
     // The word reaches the prompt only for a sticker without a caption.
     const wordCounts = !now.caption || !(before?.caption ?? "");
     const changed = before ? Object.keys(now).filter((k) => (k !== "word" || wordCounts) && (before[k] ?? "") !== now[k]) : [];
-    if (changed.length) reasons.push(...changed.map((k) => (k === "description" ? "character description changed" : k === "style" ? "character style changed" : `${k} changed`)));
-    else reasons.push(recordedPrompt === null ? "no prompt was recorded for it" : "the prompt wording changed");
+    if (changed.length) out.push(...changed.map((field) => msg("stale.changed", { field })));
+    else out.push(msg(recordedPrompt === null ? "stale.no-prompt" : "stale.prompt"));
   }
   const request = isRecord(params.request) ? params.request : null;
   const current = stickerRequest(pack);
   for (const k of ["frames", "frameMs", "size"]) {
-    if (request && request[k] !== current[k]) reasons.push(`motion.${k} changed (${request[k]} → ${current[k]})`);
+    if (request && request[k] !== current[k]) out.push(msg("stale.motion", { key: k, from: request[k] ?? null, to: current[k] }));
   }
   const from = edge.fromAssetId ?? null;
-  if (from !== pack.character.anchor) reasons.push(`the character anchor changed (${from ?? "none"} → ${pack.character.anchor ?? "none"})`);
-  return { stale: reasons.length > 0, reasons };
+  if (from !== pack.character.anchor) out.push(msg("stale.anchor", { from, to: pack.character.anchor ?? null }));
+  return out;
 }
 
 /**
@@ -739,17 +903,19 @@ export function stickerState(pack, project, sid) {
   const picked = sticker.take;
   const pickedReady = picked !== null && ready.includes(picked);
   const base = { id: sid, takes: takes.map((t) => t.id), ready, failed, inFlight, picked, effective: pickedReady ? picked : null };
-  if (inFlight.length) return { ...base, status: "generating", reason: `${inFlight.join(", ")} in flight` };
+  // `reason` is the messages in English, joined.
+  const said = (messages) => ({ reason: messages.length ? messages.map(messageText).join("; ") : null, messages });
+  if (inFlight.length) return { ...base, status: "generating", ...said([msg("state.in-flight", { takes: inFlight })]) };
   if (pickedReady) {
-    const { stale, reasons } = takeStaleness(pack, project, picked);
-    return stale ? { ...base, status: "stale", reason: reasons.join("; "), reasons } : { ...base, status: "ready", reason: null };
+    const { stale, reasons, messages } = takeStaleness(pack, project, picked);
+    return stale ? { ...base, status: "stale", ...said(messages), reasons } : { ...base, status: "ready", ...said([]) };
   }
   if (ready.length) {
-    const why = picked === null ? "no take picked" : `picked ${picked} is ${assetStatus(assetOf(project, picked)) ?? "not in project.json"}`;
-    return { ...base, status: "pick", reason: `${why}; ready: ${ready.join(", ")}` };
+    const why = picked === null ? msg("state.unpicked") : msg("state.pick-not-ready", { take: picked, status: assetStatus(assetOf(project, picked)) ?? null });
+    return { ...base, status: "pick", ...said([why, msg("state.ready-takes", { takes: ready })]) };
   }
-  if (failed.length) return { ...base, status: "failed", reason: `${failed.length} take(s) failed` };
-  return { ...base, status: "empty", reason: null };
+  if (failed.length) return { ...base, status: "failed", ...said([msg("state.failed", { count: failed.length })]) };
+  return { ...base, status: "empty", ...said([]) };
 }
 
 /** Every sticker's state, in pack order. */
@@ -802,11 +968,12 @@ export function genTargets(pack, project, { only = [], redo = false } = {}) {
 /** The picked anchor if it is a ready character asset, else null with why. */
 export function anchorState(pack, project) {
   const anchor = pack.character.anchor;
-  if (!anchor) return { anchor: null, ready: false, reason: "character.anchor is not set" };
+  const not = (message) => ({ anchor, ready: false, reason: messageText(message), message });
+  if (!anchor) return not(msg("anchor.unset"));
   const asset = assetOf(project, anchor);
   const status = assetStatus(asset);
-  if (status !== "ready") return { anchor, ready: false, reason: `character.anchor '${anchor}' is ${status ?? "not in project.json"}` };
-  return { anchor, ready: true, reason: null };
+  if (status !== "ready") return not(msg("anchor.not-ready", { anchor, status: status ?? null }));
+  return { anchor, ready: true, reason: null, message: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -855,21 +1022,20 @@ export function platformDeliverables(pack, platform) {
   return out;
 }
 
-const STATUS_WORDS = Object.freeze({ empty: "no take yet", failed: "every take failed", generating: "still generating", pick: "no take picked" });
-
 /** The source asset an export derives from, or null with why not. */
 export function deliverableSource(pack, project, item) {
+  const none = (message) => ({ asset: null, reason: messageText(message), message });
   if (item.kind === "sticker" || item.kind === "main") {
-    if (!item.sticker) return { asset: null, reason: "the pack has no sticker" };
+    if (!item.sticker) return none(msg("source.no-sticker"));
     const state = stickerState(pack, project, item.sticker);
-    if (!state.effective) return { asset: null, reason: `${item.sticker}: ${STATUS_WORDS[state.status] ?? state.status}${state.reason && state.status === "pick" ? ` (${state.reason})` : ""}` };
-    return { asset: assetOf(project, state.effective), reason: null };
+    if (!state.effective) return none(msg("source.sticker", { sticker: item.sticker, status: state.status, why: state.status === "pick" ? state.messages : [] }));
+    return { asset: assetOf(project, state.effective), reason: null, message: null };
   }
   const picked = pack.art[item.art] ?? null;
-  if (!picked) return { asset: null, reason: `art.${item.art} is not picked` };
+  if (!picked) return none(msg("source.art-unpicked", { art: item.art }));
   const asset = assetOf(project, picked);
-  if (assetStatus(asset) !== "ready") return { asset: null, reason: `art.${item.art} '${picked}' is ${assetStatus(asset) ?? "not in project.json"}` };
-  return { asset, reason: null };
+  if (assetStatus(asset) !== "ready") return none(msg("source.art-not-ready", { art: item.art, asset: picked, status: assetStatus(asset) ?? null }));
+  return { asset, reason: null, message: null };
 }
 
 /**
@@ -948,16 +1114,16 @@ export function exportState(pack, project, platform) {
     // the project no longer records (a craft `drop`) describes nothing.
     const measure = asset ? sidecar.measures[item.assetId] ?? null : null;
     const base = { ...item, file: asset?.uri ?? null, measure };
-    if (!source.asset) return { ...base, key: null, state: "blocked", reason: source.reason };
+    const why = (message) => ({ reason: messageText(message), message });
+    if (!source.asset) return { ...base, key: null, state: "blocked", reason: source.reason, message: source.message };
     const key = exportKey(pack, project, platform, item);
-    if (!asset || assetStatus(asset) !== "ready" || !measure) return { ...base, key, state: "missing", reason: "not exported yet" };
+    if (!asset || assetStatus(asset) !== "ready" || !measure) return { ...base, key, state: "missing", ...why(msg("export.not-exported")) };
     if (measure.key !== key) {
       const edge = edgeOf(project, item.assetId);
       const from = edge?.fromAssetId ?? null;
-      const reason = from && from !== source.asset.id ? `exported from ${from}; the pick is now ${source.asset.id}` : "exported from other inputs (keepFrames, order, art or the exporter changed)";
-      return { ...base, key, state: "stale", reason };
+      return { ...base, key, state: "stale", ...why(from && from !== source.asset.id ? msg("export.from-other", { from, now: source.asset.id }) : msg("export.other-inputs")) };
     }
-    return { ...base, key, state: "current", reason: null };
+    return { ...base, key, state: "current", reason: null, message: null };
   });
   const required = items.filter((i) => !i.optional || i.state !== "blocked");
   // Likewise the archive record: it counts while every file in it is still a
@@ -983,8 +1149,10 @@ export function exportState(pack, project, platform) {
 const LEVELS = ["pass", "warn", "fail"];
 const worst = (levels) => levels.reduce((a, b) => (LEVELS.indexOf(b) > LEVELS.indexOf(a) ? b : a), "pass");
 
-function row(id, label, level, detail, address) {
-  return address ? { id, label, level, detail, address } : { id, label, level, detail };
+/** A checklist row; `detail` is its message in English. */
+function row(id, label, level, message, address) {
+  const detail = messageText(message);
+  return address ? { id, label, level, detail, message, address } : { id, label, level, detail, message };
 }
 
 function textRow(platform, field, spec, value) {
@@ -993,77 +1161,77 @@ function textRow(platform, field, spec, value) {
   const address = { platform };
   const text = String(value ?? "");
   if (!text.trim()) {
-    return spec.required ? row(id, label, "fail", `listing.${platform}.${field} is empty`, address) : row(id, label, "pass", "not set (optional)", address);
+    return spec.required ? row(id, label, "fail", msg("listing.empty", { platform, field }), address) : row(id, label, "pass", msg("listing.unset"), address);
   }
-  const length = spec.asianWidth ? asianWidthLength(text) : charLength(text);
-  const unit = spec.asianWidth ? "width (Asian characters count 2)" : "characters";
+  const width = Boolean(spec.asianWidth);
+  const length = width ? asianWidthLength(text) : charLength(text);
   const problems = [];
-  if (spec.max !== undefined && length > spec.max) problems.push(`${length} ${unit}, over ${spec.max}`);
-  if (spec.min !== undefined && length < spec.min) problems.push(`${length} ${unit}, under ${spec.min}`);
-  if (spec.noPunctuation && hasPunctuation(text)) problems.push("no punctuation allowed");
-  if (problems.length) return row(id, label, "fail", `"${text}": ${problems.join("; ")}`, address);
-  if (spec.best !== undefined && length > spec.best) return row(id, label, "warn", `"${text}": ${length} ${unit} — up to ${spec.best} shows best`, address);
-  const range = spec.max !== undefined ? ` (max ${spec.max}${spec.min !== undefined ? `, min ${spec.min}` : ""})` : "";
-  return row(id, label, "pass", `"${text}" — ${length} ${unit}${range}`, address);
+  if (spec.max !== undefined && length > spec.max) problems.push(msg("text.over", { length, width, max: spec.max }));
+  if (spec.min !== undefined && length < spec.min) problems.push(msg("text.under", { length, width, min: spec.min }));
+  if (spec.noPunctuation && hasPunctuation(text)) problems.push(msg("text.punctuation"));
+  if (problems.length) return row(id, label, "fail", msg("listing.bad", { text, problems }), address);
+  if (spec.best !== undefined && length > spec.best) return row(id, label, "warn", msg("listing.long", { text, length, width, best: spec.best }), address);
+  return row(id, label, "pass", msg("listing.ok", { text, length, width, max: spec.max ?? null, min: spec.min ?? null }), address);
 }
 
-/** Problems of one exported sticker against its platform's rules: [level, text][]. */
+/** Problems of one exported sticker against its platform's rules: [level, message][]. */
 function stickerExportProblems(platform, m) {
   const rules = PLATFORM_PROFILES[platform].sticker;
   const out = [];
-  const fail = (text) => out.push(["fail", text]);
-  if (m.bytes > rules.maxBytes) fail(`${fmtBytes(m.bytes)} is over ${fmtBytes(rules.maxBytes)}`);
+  const fail = (code, params) => out.push(["fail", msg(code, params)]);
+  if (m.bytes > rules.maxBytes) fail("file.bytes-over", { bytes: m.bytes, max: rules.maxBytes });
   if (platform === "wechat") {
-    if (m.format !== "gif") fail(`format ${m.format}, not GIF`);
-    if (m.width !== rules.width || m.height !== rules.height) fail(`${m.width}×${m.height}, not ${rules.width}×${rules.height}`);
-    if (m.loopCount !== 0) fail(m.loopCount === null ? "does not loop (no loop block)" : `loops ${m.loopCount} time(s), not forever`);
-    if (!(m.frames > 1)) fail("is not animated");
+    if (m.format !== "gif") fail("file.format", { format: m.format, expected: ["GIF"] });
+    if (m.width !== rules.width || m.height !== rules.height) fail("file.size", { width: m.width, height: m.height, expectedWidth: rules.width, expectedHeight: rules.height });
+    if (m.loopCount !== 0) fail(m.loopCount === null ? "file.loop-none" : "file.loop-count", m.loopCount === null ? {} : { count: m.loopCount });
+    if (!(m.frames > 1)) fail("file.still");
   } else if (platform === "telegram") {
-    if (m.format !== "webm" || m.codec !== "vp9") fail(`${m.format}/${m.codec}, not WEBM VP9`);
-    if (!m.alpha?.channel) fail("has no alpha channel");
+    if (m.format !== "webm" || m.codec !== "vp9") fail("file.codec", { format: m.format, codec: m.codec ?? null });
+    if (!m.alpha?.channel) fail("file.no-alpha");
     const long = Math.max(m.width, m.height);
-    if (long !== rules.edge || Math.min(m.width, m.height) > rules.edge) fail(`${m.width}×${m.height}: one side must be exactly ${rules.edge}, the other at most ${rules.edge}`);
-    if (m.durationMs > rules.maxDurationMs) fail(`${fmtSeconds(m.durationMs)}, over ${fmtSeconds(rules.maxDurationMs)}`);
-    if (m.fps > rules.fps) fail(`${m.fps} fps, over ${rules.fps}`);
-    if (m.hasAudio) fail("has an audio stream");
+    if (long !== rules.edge || Math.min(m.width, m.height) > rules.edge) fail("file.telegram-edge", { width: m.width, height: m.height, edge: rules.edge });
+    if (m.durationMs > rules.maxDurationMs) fail("file.duration-over", { ms: m.durationMs, max: rules.maxDurationMs });
+    if (m.fps > rules.fps) fail("file.fps-over", { fps: m.fps, max: rules.fps });
+    if (m.hasAudio) fail("file.audio");
   } else if (platform === "line") {
-    if (m.format !== "apng") fail(`format ${m.format}, not APNG`);
-    if (m.width > rules.maxWidth || m.height > rules.maxHeight) fail(`${m.width}×${m.height} is outside ${rules.maxWidth}×${rules.maxHeight}`);
-    if (m.width < rules.minLongSide && m.height < rules.minLongSide) fail(`${m.width}×${m.height}: width or height must be at least ${rules.minLongSide}`);
-    if (m.frames < rules.minFrames || m.frames > rules.maxFrames) fail(`${m.frames} frames, not ${rules.minFrames}–${rules.maxFrames}`);
-    if (m.durationMs > rules.maxLoopMs) fail(`one loop is ${fmtSeconds(m.durationMs)}, over ${fmtSeconds(rules.maxLoopMs)}`);
-    if (!(m.loopCount >= rules.minPlays && m.loopCount <= rules.maxPlays)) fail(`plays ${m.loopCount === 0 ? "forever" : m.loopCount}, not ${rules.minPlays}–${rules.maxPlays}`);
-    else if (m.loopCount * m.durationMs > rules.maxTotalMs) fail(`${m.loopCount} plays × ${fmtSeconds(m.durationMs)} is over ${fmtSeconds(rules.maxTotalMs)}`);
-    if (m.identical) fail("every frame is identical");
-    if (!(m.alpha?.clear > 0)) fail("is not transparent");
-    if (rules.cropMargins && m.margin !== undefined && m.margin > 1) out.push(["warn", `${m.margin} px of empty margin left`]);
-    if (m.firstFrameCoverage !== undefined && m.firstFrameCoverage < 0.5) out.push(["warn", `the first frame (the store still) shows ${Math.round(m.firstFrameCoverage * 100)}% of the usual figure`]);
+    if (m.format !== "apng") fail("file.format", { format: m.format, expected: ["APNG"] });
+    if (m.width > rules.maxWidth || m.height > rules.maxHeight) fail("file.outside", { width: m.width, height: m.height, maxWidth: rules.maxWidth, maxHeight: rules.maxHeight });
+    if (m.width < rules.minLongSide && m.height < rules.minLongSide) fail("file.min-side", { width: m.width, height: m.height, min: rules.minLongSide });
+    if (m.frames < rules.minFrames || m.frames > rules.maxFrames) fail("file.frames-range", { frames: m.frames, min: rules.minFrames, max: rules.maxFrames });
+    if (m.durationMs > rules.maxLoopMs) fail("file.loop-long", { ms: m.durationMs, max: rules.maxLoopMs });
+    if (!(m.loopCount >= rules.minPlays && m.loopCount <= rules.maxPlays)) fail("file.plays-range", { plays: m.loopCount, min: rules.minPlays, max: rules.maxPlays });
+    else if (m.loopCount * m.durationMs > rules.maxTotalMs) fail("file.plays-total", { plays: m.loopCount, ms: m.durationMs, max: rules.maxTotalMs });
+    if (m.identical) fail("file.identical");
+    if (!(m.alpha?.clear > 0)) fail("file.not-transparent");
+    if (rules.cropMargins && m.margin !== undefined && m.margin > 1) out.push(["warn", msg("file.margin", { px: m.margin })]);
+    if (m.firstFrameCoverage !== undefined && m.firstFrameCoverage < 0.5) out.push(["warn", msg("file.first-frame", { percent: Math.round(m.firstFrameCoverage * 100) })]);
   }
   return out;
 }
 
 function stickerExportSummary(platform, m) {
-  if (platform === "wechat") return `${m.width}×${m.height} GIF · ${fmtBytes(m.bytes)} · ${m.frames} frames · ${m.loopCount === 0 ? "loops forever" : "does not loop"}`;
-  if (platform === "telegram") return `${m.width}×${m.height} WEBM VP9${m.alpha?.channel ? "+alpha" : ""} · ${fmtBytes(m.bytes)} · ${fmtSeconds(m.durationMs)} at ${m.fps} fps`;
-  return `${m.width}×${m.height} APNG · ${fmtBytes(m.bytes)} · ${m.frames} frames · ${fmtSeconds(m.durationMs)} × ${m.loopCount} play(s)`;
+  if (platform === "wechat") return msg("summary.wechat", { width: m.width, height: m.height, bytes: m.bytes, frames: m.frames, loops: m.loopCount === 0 });
+  if (platform === "telegram") return msg("summary.telegram", { width: m.width, height: m.height, alpha: Boolean(m.alpha?.channel), bytes: m.bytes, ms: m.durationMs, fps: m.fps });
+  return msg("summary.line", { width: m.width, height: m.height, bytes: m.bytes, frames: m.frames, ms: m.durationMs, plays: m.loopCount });
 }
 
 function artExportProblems(spec, m) {
   const out = [];
-  if (m.width !== spec.width || m.height !== spec.height) out.push(["fail", `${m.width}×${m.height}, not ${spec.width}×${spec.height}`]);
-  if (m.bytes > spec.maxBytes) out.push(["fail", `${fmtBytes(m.bytes)} is over ${fmtBytes(spec.maxBytes)}`]);
+  const add = (level, code, params) => out.push([level, msg(code, params)]);
+  if (m.width !== spec.width || m.height !== spec.height) add("fail", "file.size", { width: m.width, height: m.height, expectedWidth: spec.width, expectedHeight: spec.height });
+  if (m.bytes > spec.maxBytes) add("fail", "file.bytes-over", { bytes: m.bytes, max: spec.maxBytes });
   const formats = spec.formats;
-  if (!formats.includes(m.format)) out.push(["fail", `format ${m.format}, not ${formats.join(" or ")}`]);
+  if (!formats.includes(m.format)) add("fail", "file.format", { format: m.format, expected: [...formats] });
   if (spec.alpha === "transparent") {
-    if (!(m.alpha?.clear > 0)) out.push(["fail", "is not transparent"]);
-    else if (m.alpha?.cornersClear === false) out.push(["fail", "a corner is not transparent (a square frame or background)"]);
-    if (spec.noWhiteOutline && m.alpha?.edgeWhite !== undefined && m.alpha.edgeWhite > 0.5) out.push(["warn", `${Math.round(m.alpha.edgeWhite * 100)}% of the outline is near-white — the platform asks for no white outline`]);
+    if (!(m.alpha?.clear > 0)) add("fail", "file.not-transparent");
+    else if (m.alpha?.cornersClear === false) add("fail", "file.corner");
+    if (spec.noWhiteOutline && m.alpha?.edgeWhite !== undefined && m.alpha.edgeWhite > 0.5) add("warn", "file.white-outline", { percent: Math.round(m.alpha.edgeWhite * 100) });
   } else if (spec.alpha === "opaque") {
-    if (m.alpha?.clear > 0 || m.alpha?.semi > 0) out.push(["fail", "has transparent pixels; it must be opaque"]);
-    if (spec.notWhite && m.nearWhite !== undefined && m.nearWhite > 0.5) out.push(["warn", `${Math.round(m.nearWhite * 100)}% near-white — the background must not be white`]);
+    if (m.alpha?.clear > 0 || m.alpha?.semi > 0) add("fail", "file.not-opaque");
+    if (spec.notWhite && m.nearWhite !== undefined && m.nearWhite > 0.5) add("warn", "file.white-background", { percent: Math.round(m.nearWhite * 100) });
   }
   if (spec.animated) {
-    if (m.format !== "apng" || !(m.frames > 1)) out.push(["fail", "is not animated"]);
+    if (m.format !== "apng" || !(m.frames > 1)) add("fail", "file.still");
   }
   return out;
 }
@@ -1075,32 +1243,34 @@ function deliverableRow(platform, item, takeState) {
   const label = item.kind === "sticker" ? `${item.name} · ${item.sticker}` : spec.label;
   const id = item.kind === "sticker" ? `sticker-${item.sticker}` : item.deliverable;
   if (item.state === "blocked") {
-    if (item.optional) return row(id, label, "pass", `none — ${item.reason}; optional${platform === "telegram" ? " (Telegram uses the first sticker)" : ""}`, address);
-    return row(id, label, "fail", item.reason, address);
+    if (item.optional) return row(id, label, "pass", msg("export.optional-none", { why: item.message, platform }), address);
+    return row(id, label, "fail", item.message, address);
   }
-  if (item.state === "missing") return row(id, label, "fail", `not exported yet — sticker.mjs export --platform ${platform}`, address);
-  if (item.state === "stale") return row(id, label, "fail", `${item.reason} — export again`, address);
+  if (item.state === "missing") return row(id, label, "fail", { ...item.message, command: `sticker.mjs export --platform ${platform}` }, address);
+  if (item.state === "stale") return row(id, label, "fail", msg("export.again", { why: item.message }), address);
   const m = item.measure;
   const problems = item.kind === "sticker" ? stickerExportProblems(platform, m) : item.kind === "main" ? [...artExportProblems(spec, m), ...lineMainTiming(m)] : artExportProblems(spec, m);
-  if (takeState?.status === "stale") problems.push(["warn", `its take is stale (${takeState.reason}) — re-roll to apply`]);
+  if (takeState?.status === "stale") problems.push(["warn", msg("file.take-stale", { why: takeState.messages })]);
   const level = worst(problems.map(([l]) => l));
-  const summary = item.kind === "sticker" ? stickerExportSummary(platform, m) : `${m.width}×${m.height} ${String(m.format).toUpperCase()} · ${fmtBytes(m.bytes)}`;
-  return row(id, label, level, problems.length ? `${problems.map(([, t]) => t).join("; ")} (${summary})` : summary, address);
+  const summary = item.kind === "sticker" ? stickerExportSummary(platform, m) : msg("summary.still", { width: m.width, height: m.height, format: m.format, bytes: m.bytes });
+  return row(id, label, level, msg("export.measured", { problems: problems.map(([, said]) => said), summary }), address);
 }
 
 function lineMainTiming(m) {
   const rules = PLATFORM_PROFILES.line.sticker;
   const out = [];
-  if (m.frames < rules.minFrames || m.frames > rules.maxFrames) out.push(["fail", `${m.frames} frames, not ${rules.minFrames}–${rules.maxFrames}`]);
-  if (!(m.loopCount >= rules.minPlays && m.loopCount <= rules.maxPlays) || m.loopCount * m.durationMs > rules.maxTotalMs) out.push(["fail", `plays ${m.loopCount} × ${fmtSeconds(m.durationMs)} breaks LINE's 1–4 plays within ${fmtSeconds(rules.maxTotalMs)}`]);
+  if (m.frames < rules.minFrames || m.frames > rules.maxFrames) out.push(["fail", msg("file.frames-range", { frames: m.frames, min: rules.minFrames, max: rules.maxFrames })]);
+  if (!(m.loopCount >= rules.minPlays && m.loopCount <= rules.maxPlays) || m.loopCount * m.durationMs > rules.maxTotalMs) {
+    out.push(["fail", msg("file.main-plays", { plays: m.loopCount, ms: m.durationMs, min: rules.minPlays, max: rules.maxPlays, maxTotal: rules.maxTotalMs })]);
+  }
   return out;
 }
 
 /**
  * The checklist for one platform: rows `{ id, label, level, detail,
- * address? }`, `level` ∈ pass | warn | fail. Pure over pack.json and the
- * measurements sticker.mjs recorded; `sticker.mjs check` prints these rows
- * and the viewer draws them, so the two always agree.
+ * message, address? }`, `level` ∈ pass | warn | fail. Pure over pack.json
+ * and the measurements sticker.mjs recorded; `sticker.mjs check` prints
+ * these rows and the viewer draws them, so the two always agree.
  */
 export function checkPack(pack, project, platform) {
   const profile = PLATFORM_PROFILES[platform];
@@ -1109,18 +1279,18 @@ export function checkPack(pack, project, platform) {
   const listing = pack.listing?.[platform] ?? {};
 
   rows.push(pack.rights
-    ? row("rights", "rights", "pass", `${pack.rights.basis}, confirmed ${pack.rights.confirmedAt}${pack.rights.note ? ` — ${pack.rights.note}` : ""}`)
-    : row("rights", "rights", "fail", "rights is not recorded in pack.json — required before any paid step and any submission"));
+    ? row("rights", "rights", "pass", msg("rights.ok", { basis: pack.rights.basis, confirmedAt: pack.rights.confirmedAt, note: pack.rights.note ?? "" }))
+    : row("rights", "rights", "fail", msg("rights.missing")));
 
-  if (!pack.platforms.includes(platform)) rows.push(row("platform", "platform", "warn", `'${platform}' is not in pack.platforms`, { platform }));
+  if (!pack.platforms.includes(platform)) rows.push(row("platform", "platform", "warn", msg("platform.unchosen", { platform }), { platform }));
 
   // count
   const n = pack.stickers.length;
   if (profile.count.allowed) {
-    rows.push(row("count", "sticker count", profile.count.allowed.includes(n) ? "pass" : "fail", `${n} sticker(s); ${profile.label} takes ${profile.count.allowed.join(", ")}`, { platform }));
+    rows.push(row("count", "sticker count", profile.count.allowed.includes(n) ? "pass" : "fail", msg("count.allowed", { count: n, platform, allowed: [...profile.count.allowed] }), { platform }));
   } else {
     const { min, max } = profile.count;
-    rows.push(row("count", "sticker count", n >= min && n <= max ? "pass" : "fail", `${n} sticker(s); ${profile.label} takes ${min}–${max}${profile.count.setMax ? ` at creation, ${profile.count.setMax} per set` : ""}`, { platform }));
+    rows.push(row("count", "sticker count", n >= min && n <= max ? "pass" : "fail", msg("count.range", { count: n, platform, min, max, setMax: profile.count.setMax ?? null }), { platform }));
   }
 
   // per deliverable
@@ -1132,20 +1302,23 @@ export function checkPack(pack, project, platform) {
   if (platform === "wechat") {
     const exported = state.items.filter((i) => i.kind === "sticker" && i.measure);
     const still = exported.filter((i) => !(i.measure.frames > 1));
-    if (exported.length) rows.push(row("all-animated", "all animated", still.length ? "fail" : "pass", still.length ? `${still.map((i) => i.sticker).join(", ")} are static; a set is all animated or all static` : `all ${exported.length} exported stickers are animated`, { platform }));
+    if (exported.length) {
+      rows.push(row("all-animated", "all animated", still.length ? "fail" : "pass", still.length ? msg("animated.static", { stickers: still.map((i) => i.sticker) }) : msg("animated.all", { count: exported.length }), { platform }));
+    }
     const words = pack.stickers.map((s) => s.word.trim());
     const long = pack.stickers.filter((s) => !s.word.trim() || charLength(s.word.trim()) > profile.word.max);
     const dupes = pack.stickers.filter((s, i) => s.word.trim() && words.indexOf(s.word.trim()) !== i);
     const bad = [...long, ...dupes];
+    const named = (list) => list.map((s) => ({ sticker: s.id, word: s.word }));
     rows.push(row("words", "含义词 meaning words", bad.length ? "fail" : "pass",
-      bad.length
-        ? [long.length ? `${long.map((s) => `${s.id} "${s.word}"`).join(", ")}: 1–${profile.word.max} characters` : null, dupes.length ? `${dupes.map((s) => `${s.id} "${s.word}"`).join(", ")}: used twice` : null].filter(Boolean).join("; ")
-        : `${n} words, each 1–${profile.word.max} characters and unique`,
+      bad.length ? msg("words.bad", { long: named(long), dupes: named(dupes), max: profile.word.max }) : msg("words.ok", { count: n, max: profile.word.max }),
       bad.length ? { sticker: bad[0].id, platform } : { platform }));
   }
   if (platform === "telegram") {
     const bad = pack.stickers.filter((s) => !isSingleEmoji(s.emoji));
-    rows.push(row("emoji", "emoji", bad.length ? "fail" : "pass", bad.length ? `${bad.map((s) => `${s.id} ${JSON.stringify(s.emoji)}`).join(", ")}: each sticker exports exactly one emoji` : "one emoji per sticker", bad.length ? { sticker: bad[0].id, platform } : { platform }));
+    rows.push(row("emoji", "emoji", bad.length ? "fail" : "pass",
+      bad.length ? msg("emoji.bad", { items: bad.map((s) => ({ sticker: s.id, emoji: s.emoji })) }) : msg("emoji.ok"),
+      bad.length ? { sticker: bad[0].id, platform } : { platform }));
   }
 
   // listing text
@@ -1159,15 +1332,16 @@ export function checkPack(pack, project, platform) {
   if (archive.state === "current") {
     const m = archive.measure;
     const over = profile.zip && m.bytes > profile.zip.maxBytes;
-    rows.push(row("zip", "upload archive", over ? "fail" : "pass", `${archive.uri} · ${fmtBytes(m.bytes)} · ${m.entries.length} files${over ? ` — over ${fmtBytes(profile.zip.maxBytes)}` : ""}`, { platform }));
+    rows.push(row("zip", "upload archive", over ? "fail" : "pass", msg("zip.ok", { uri: archive.uri, bytes: m.bytes, files: m.entries.length, over: over ? profile.zip.maxBytes : null }), { platform }));
   } else {
-    rows.push(row("zip", "upload archive", "fail", archive.state === "blocked" ? "waits for every deliverable to be exported and current" : `${archive.state} — sticker.mjs export --platform ${platform}`, { platform }));
+    rows.push(row("zip", "upload archive", "fail",
+      archive.state === "blocked" ? msg("zip.blocked") : msg(`zip.${archive.state}`, { platform }, `sticker.mjs export --platform ${platform}`), { platform }));
   }
 
   // rules with no official value: always a warning, never a pass
   for (const u of profile.unconfirmed) {
     if (u.when === "reward" && !rewardOn(pack)) continue;
-    rows.push(row(u.id, u.label, "warn", `unconfirmed: ${u.detail}`, { platform }));
+    rows.push(row(u.id, u.label, "warn", msg(`unconfirmed.${u.id}`), { platform }));
   }
   return rows;
 }
@@ -1186,45 +1360,51 @@ export function tally(rows) {
 /**
  * The one next step for this pack, in the order the work goes: rights,
  * character, stickers, takes, picks, re-rolls, exports, checks.
- * `{ id, line, command?, stickers? }`.
+ * `{ id, line, message, command?, stickers? }` — `line` is `message` in
+ * English.
  */
 export function nextStep(pack, project) {
-  if (!pack.rights) return { id: "rights", line: "Record the rights basis in pack.json (rights: { basis, note, confirmedAt }) — nothing paid runs before it." };
+  const step = (id, message, extra = {}) => ({ id, line: messageText(message), message, ...extra });
+  if (!pack.rights) return step("rights", msg("next.rights"));
   const anchor = anchorState(pack, project);
   if (!anchor.ready) {
     const { candidates } = characterAssets(project);
     const ready = candidates.filter((a) => assetStatus(a) === "ready");
-    if (ready.length) return { id: "anchor", line: `Pick the character: set character.anchor in pack.json to one of ${ready.map((a) => a.id).join(", ")}.` };
-    if (!pack.character.description.trim()) return { id: "character", line: "Write character.description (identity features, in English) in pack.json, then make the character." };
-    return { id: "character", line: "Make the character from the user's photo or image.", command: "sticker.mjs character --from <image>" };
+    if (ready.length) return step("anchor", msg("next.anchor", { candidates: ready.map((a) => a.id) }));
+    if (!pack.character.description.trim()) return step("character", msg("next.describe"));
+    return step("character", msg("next.character"), { command: "sticker.mjs character --from <image>" });
   }
-  if (!pack.stickers.length) return { id: "stickers", line: "Add stickers to pack.json (id, word, caption, emoji, action)." };
+  if (!pack.stickers.length) return step("stickers", msg("next.stickers"));
   const states = stickerStates(pack, project);
   const by = (status) => states.filter((s) => s.status === status).map((s) => s.id);
   // Exactly what a plain `gen` would make (genTargets), then the stickers it leaves alone.
   const plan = genTargets(pack, project);
   const missing = plan.targets.map((t) => t.id);
   const uncertain = plan.uncertain.map((u) => u.id);
-  const charged = `the last take failed with billing unknown — it may have been charged`;
   if (missing.length) {
-    const left = uncertain.length ? ` Not included: ${uncertain.join(", ")} (${charged}; retry only with the user's yes: sticker.mjs gen --only ${uncertain.join(",")}).` : "";
-    return { id: "generate", line: `Generate takes for ${missing.join(", ")}.${left}`, command: `sticker.mjs gen${missing.length === states.length ? "" : ` --only ${missing.join(",")}`}`, stickers: missing };
+    return step("generate", msg("next.generate", { stickers: missing, uncertain }), { command: `sticker.mjs gen${missing.length === states.length ? "" : ` --only ${missing.join(",")}`}`, stickers: missing });
   }
-  if (uncertain.length) return { id: "generate", line: `${uncertain.join(", ")}: ${charged}. A plain gen does not send it again; ask the user before retrying.`, command: `sticker.mjs gen --only ${uncertain.join(",")}`, stickers: uncertain };
+  // Only stickers whose last call may have been billed: a retry is the user's decision, not a gap to fill.
+  if (uncertain.length) return step("retry", msg("next.retry", { stickers: uncertain }), { command: `sticker.mjs gen --only ${uncertain.join(",")}`, stickers: uncertain });
   const generating = by("generating");
-  if (generating.length) return { id: "generating", line: `Wait for ${generating.join(", ")} to land.`, stickers: generating };
+  if (generating.length) return step("generating", msg("next.generating", { stickers: generating }), { stickers: generating });
   const pick = by("pick");
-  if (pick.length) return { id: "pick", line: `Pick a take for ${pick.join(", ")} (stickers[].take in pack.json).`, stickers: pick };
+  if (pick.length) return step("pick", msg("next.pick", { stickers: pick }), { stickers: pick });
   const stale = states.filter((s) => s.status === "stale");
-  if (stale.length) return { id: "reroll", line: `Re-roll stale takes: ${stale.map((s) => `${s.id} (${s.reason})`).join("; ")}.`, command: `sticker.mjs gen --only ${stale.map((s) => s.id).join(",")} --redo`, stickers: stale.map((s) => s.id) };
+  if (stale.length) {
+    return step("reroll", msg("next.reroll", { stale: stale.map((s) => ({ sticker: s.id, why: s.messages })) }), {
+      command: `sticker.mjs gen --only ${stale.map((s) => s.id).join(",")} --redo`,
+      stickers: stale.map((s) => s.id),
+    });
+  }
   for (const platform of pack.platforms) {
     const state = exportState(pack, project, platform);
-    if (state.stale) return { id: "export", line: `Export for ${PLATFORM_PROFILES[platform].label}.`, command: `sticker.mjs export --platform ${platform}` };
+    if (state.stale) return step("export", msg("next.export", { platform }), { command: `sticker.mjs export --platform ${platform}` });
   }
   for (const platform of pack.platforms) {
     const rows = checkPack(pack, project, platform);
     const failing = rows.filter((r) => r.level === "fail");
-    if (failing.length) return { id: "check", line: `${PLATFORM_PROFILES[platform].label}: ${failing.length} check(s) fail — ${failing.map((r) => r.label).join(", ")}.`, command: `sticker.mjs check --platform ${platform}` };
+    if (failing.length) return step("check", msg("next.check", { platform, rows: failing.map((r) => ({ id: r.id, label: r.label })) }), { command: `sticker.mjs check --platform ${platform}` });
   }
-  return { id: "done", line: "Every chosen platform's checklist passes; the zips are ready to submit." };
+  return step("done", msg("next.done"));
 }

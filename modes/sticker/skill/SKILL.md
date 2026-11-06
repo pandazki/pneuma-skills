@@ -58,8 +58,11 @@ Examples: `{ "sticker": "s05", "take": "s05-take-2" }` ·
 ### Actions
 
 - `navigate-to { address }` — put the viewer on what your sentence is about.
-  A frame address freezes the stage on that frame. An unknown sticker, take,
-  frame, art kind or platform is refused by name and nothing moves.
+  A frame address freezes the stage on that frame; when the browser cannot
+  show it (no frame decoder, a decode error, still decoding after 5 s) the
+  reply fails with the reason and the stage plays the whole sticker — do not
+  capture that as the frame. An unknown sticker, take, frame, art kind or
+  platform is refused by name and nothing moves.
 - `set-view { view, platform?, plate? }` — `view` is `panel`, `chat` or
   `submit`; `platform` picks the submit tab; `plate` is `light` (#EDEDED) or
   `dark` (#111111), the chat background every sticker plays on.
