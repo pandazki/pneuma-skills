@@ -58,10 +58,11 @@ export const EXPORT_RECIPES = Object.freeze({ wechat: 2, telegram: 2, line: 2 })
 export const ESTIMATES = Object.freeze({
   gifUsd: 0.10,
   gifRangeUsd: Object.freeze([0.05, 0.20]),
-  gifSeconds: 27,
+  /** 26–28 s at 240² / 480² (6 probes); 37.6 s at the 512² × 16 default (1 paid smoke, 2026-11-06). */
+  gifSeconds: 38,
   imageUsd: 0.055,
   imageSeconds: Object.freeze([10, 30]),
-  note: "2026-11-06 probes: 26–28 s per GIF; fal reports no usage, so a GIF's price is a planning estimate, never an invoice",
+  note: "2026-11-06: 26–28 s per GIF at 240²/480², 37.6 s at 512²×16; fal reports no usage, so a GIF's price is a planning estimate, never an invoice",
 });
 
 const KB = 1000;
