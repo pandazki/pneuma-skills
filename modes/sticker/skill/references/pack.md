@@ -79,15 +79,23 @@ All take `--dir <workspace>` (default: the current directory) and `--json`.
 | `status` | no | rights, keys, ffmpeg, the anchor, each sticker's status, art, exports, checks, spend, the next step |
 | `quote [--only s01,s03] [--redo]` · `quote --art [--only kinds] [--redo]` · `quote --character [--count n]` | no | what the paid command would send and cost, and the wait |
 | `character [--from <image or character-source-n>] [--count n] [--model flare\|sunburst]` | yes | character candidates, transparent PNG |
-| `gen [--only s01,s03] [--redo] [--concurrency 4]` | yes | a take for each sticker without one; `--redo` adds a new take to each named sticker |
+| `gen [--only s01,s03] [--redo] [--concurrency 4]` | yes | a take for each sticker without one, or whose last take failed without leaving (billing `none`); one whose last take failed with billing `unknown` is listed, not resent — `--only <id>` retries it; `--redo` adds a new take to each chosen sticker |
 | `gen --art [--only kinds] [--redo]` | yes | the art the chosen platforms need |
 | `prompts [--only …]` · `prompts --art` · `prompts --character` | no | the exact prompts, for the no-key route |
 | `import --sticker <id> --file <gif>` · `--art <kind>` · `--character` · `--source` | no | register a file the user brought |
 | `inspect <id> [--take <take>]` | no | numbers and `inspect/<take>-contact.png` |
-| `export [--platform wechat\|telegram\|line\|all]` | no | every platform file, the listing text and the zip; current files are left alone |
-| `check [--platform …]` | no | the checklist; exits 1 when a row fails |
+| `export [--platform wechat\|telegram\|line\|all]` | no | every platform file, the listing text and the zip; current files are left alone; a file at an export name that the project does not record is refused, never overwritten or deleted |
+| `check [--platform …]` | no | the checklist, plus each exported file and zip against its record on disk; exits 1 when a row or a file fails |
 
 `--dry-run` on `character` and `gen` prints the request without sending it.
+
+`character`, `gen`, `import` and `export` hold `.sticker.lock` while they run:
+a second one refuses and names the holder (pid, command, start time); a lock
+whose process is gone is taken over with a warning. One interrupt (Ctrl-C or
+SIGTERM) stops a paid command: calls in flight are cancelled and recorded as
+failed with billing unknown, nothing new is sent, and it exits 130 naming
+what never started; a second interrupt exits at once. Paths stay inside the
+workspace: a symbolic link there, or a recorded path outside it, is refused.
 
 ## Status words
 

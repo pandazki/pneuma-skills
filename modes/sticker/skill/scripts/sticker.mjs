@@ -1419,12 +1419,12 @@ const COMMAND_HELP = [
   ["status", "", "the pack, keys, tools, every sticker's status, exports, checks, cost and the next step"],
   ["quote", "[--only s01,s03] [--redo] | --art [--only portrait,head] | --character [--count 1]", "what the paid command would send and cost, before it is sent (nothing is sent)"],
   ["character", "[--from <image|character-source-n>] [--count 1] [--model flare|sunburst] [--quality high] [--dry-run]", "character candidates (OpenRouter, transparent PNG) from the user's photo or image, or from character.description. Paid; refuses without rights"],
-  ["gen", "[--only s01,s03] [--redo] [--concurrency 4] [--deadline-s 600] [--dry-run]\n                 --art [--only portrait,head] [--redo] [--model] [--quality high] [--dry-run]", "sticker takes (fal GPT Image 2.6 GIF from the anchor) for stickers with no take, or a new take each with --redo; --art makes the art the chosen platforms need. Paid; refuses without rights; a failure does not stop the others; nothing is retried"],
+  ["gen", "[--only s01,s03] [--redo] [--concurrency 4] [--deadline-s 600] [--dry-run]\n                 --art [--only portrait,head] [--redo] [--model] [--quality high] [--dry-run]", "sticker takes (fal GPT Image 2.6 GIF from the anchor) for stickers with no take, or a new take each with --redo; a sticker whose last take failed with billing unknown is listed, not resent (--only <id> retries it); --art makes the art the chosen platforms need. Paid; refuses without rights; a failure does not stop the others; nothing is retried; one interrupt cancels what is in flight, starts nothing new and exits 130"],
   ["prompts", "[--only s01,…] | --art [--only kinds] | --character", "the exact prompts, for making the files elsewhere (ChatGPT) and importing them"],
   ["import", "--sticker <id> --file <gif> | --art <kind> --file <image> | --character --file <image> | --source --file <photo>", "register a file the user brought (upload by human); a take records the current prompt and anchor"],
   ["inspect", "<sticker id> [--take <id>]", "contact sheet of a take on the light and dark chat plates (inspect/<take>-contact.png) and its loop seam, motion and alpha numbers"],
-  ["export", "[--platform wechat|telegram|line|all]", "derive every platform's files from the picked takes and art (ffmpeg), record their measurements, write the listing text and the upload zip. Deterministic: current files are left alone"],
-  ["check", "[--platform wechat|telegram|line|all]", "the platform checklist (the viewer shows the same rows); exits 1 when a row fails"],
+  ["export", "[--platform wechat|telegram|line|all]", "derive every platform's files from the picked takes and art (ffmpeg), record their measurements, write the listing text and the upload zip. Deterministic: current files are left alone; a file it did not record is never overwritten or deleted"],
+  ["check", "[--platform wechat|telegram|line|all]", "the platform checklist (the viewer shows the same rows) and every recorded export and zip against the file on disk; exits 1 when either fails"],
 ];
 
 const COMMON_HELP = `Common: --dir <workspace> (default: cwd) · --json prints one object on stdout · --at <epoch ms> pins timestamps.
@@ -1437,6 +1437,7 @@ export const HELP = `Usage: sticker.mjs <command> [--dir <workspace>] [--json] [
 pack.json is the pack (you and the viewer edit it; this CLI only reads it);
 project.json is machine state written only here. Paid commands refuse
 without rights in pack.json, record before sending and print a cost line.
+character, gen, import and export hold .sticker.lock: one writer at a time.
 
 ${COMMAND_HELP.map(helpEntry).join("\n")}
 

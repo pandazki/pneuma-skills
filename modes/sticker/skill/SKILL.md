@@ -105,7 +105,8 @@ sheet. Then say what you saw, per sticker, before recommending a pick.
    `gen --art`, run `quote` with the same flags and tell the user the price
    and how long it takes; after, report what it cost. GIF prices are
    estimates (fal reports no usage). A failed call whose billing is unknown
-   may have been charged: say so before running it again.
+   may have been charged: a plain `gen` does not send it again and lists it
+   instead; retry it (`gen --only <id>`) only after the user agrees.
 3. **Two files, two writers.** `pack.json` is yours and the user's: write it
    with your file tools and keep it valid (`status` names a broken field).
    `project.json` — every file, its provenance, cost and measurements — is
@@ -136,7 +137,13 @@ sheet. Then say what you saw, per sticker, before recommending a pick.
 10. **Every file comes from `sticker.mjs`, inside the workspace.** Do not run
     the generators or ffmpeg yourself and do not write outside the
     workspace: a file the script did not record has no provenance, and the
-    viewer cannot show it.
+    viewer cannot show it. The script refuses symbolic links in the
+    workspace and paths outside it.
+11. **One `sticker.mjs` writer at a time.** `character`, `gen`, `import` and
+    `export` refuse while another of them runs in the workspace and name it;
+    wait for it to finish rather than retrying in a loop (`status`, `quote`,
+    `prompts`, `check` and `inspect` still work). A lock left by a process
+    that is gone is taken over with a warning.
 
 What this session can generate (the scripts also say so in `status`):
 
@@ -215,8 +222,10 @@ words is free now.
 ### 3. Generate and look
 
 `quote`, say the price and the wait, then `gen` (every sticker without a take,
-4 at a time; a failure does not stop the others). When they land, run the
-look rhythm for each and report per sticker: what reads, what is wrong.
+4 at a time; a failure does not stop the others). Interrupting `gen` (Ctrl-C,
+SIGTERM) cancels the takes in flight — recorded as failed, billing unknown —
+starts nothing new, exits 130 and names what never started. When they land,
+run the look rhythm for each and report per sticker: what reads, what is wrong.
 Recommend a take; the user picks on the panel or you set `stickers[].take`.
 For a bad take, re-roll (`quote --only s05 --redo`, then `gen --only s05
 --redo`); the old take stays. Twice the same failure: rewrite the action
@@ -234,7 +243,11 @@ listing fields within the limits `check` prints.
 
 `export --platform <p|all>` derives every file from the picked takes and art
 and writes `exports/<platform>.zip` plus the listing text; it skips what is
-already current. `check` prints the same checklist the submit tab shows.
+already current. It overwrites and deletes only files it recorded as its own
+exports: a file of someone else's at an export name is refused by name (ask
+the user, move it, export again) and other files are left alone. `check`
+prints the same checklist the submit tab shows and fails a deliverable or
+zip that changed on disk since export.
 Fix each failing row at its cause (a pick, a field, `keepFrames`), export
 again, check again. Then `set-view { "view": "submit", "platform": … }`,
 `capture`, and walk the user through submitting
@@ -258,7 +271,7 @@ yes in chat.
 
 | Command | What you do |
 |---|---|
-| `make-missing` ("Make the missing stickers") | `quote`, say price and wait, `gen` for every sticker with no take; then look at each landed take and recommend picks. |
+| `make-missing` ("Make the missing stickers") | `quote`, say price and wait, `gen` for every sticker with no take; then look at each landed take and recommend picks. Stickers whose last take failed with billing unknown are listed, not resent: ask before `gen --only <id>`. |
 | `export-check` ("Export and check") | For the platform on screen: `export --platform <p>`, `check --platform <p>`, read every row, fix the failures you can, explain the warnings, `capture` the submit tab. |
 
 ## References
