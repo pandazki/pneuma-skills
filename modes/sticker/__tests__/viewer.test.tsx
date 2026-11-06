@@ -11,7 +11,10 @@
  * - `navigate-to`, `set-view` and locator navigation answer with what is on
  *   screen, and refuse unknown stickers / frames by name;
  * - nothing calls `fetch` (happy-dom has no ImageDecoder, so the frame strip
- *   says so instead of decoding — the path a browser without WebCodecs takes).
+ *   says so instead of decoding — the path a browser without WebCodecs takes);
+ * - in the hosted player an upload archive is saved through `fetch`, which
+ *   the content service worker answers, never by letting `<a download>`
+ *   navigate past it.
  *
  * Harness shape follows `modes/anime-series/__tests__/viewer.test.tsx`.
  */
@@ -23,7 +26,7 @@ import { MemorySource } from "../../../core/sources/memory.js";
 import type { ViewerActionRequest, ViewerActionResult, ViewerLocator, ViewerNotification, ViewerPreviewProps, ViewerSelectionContext } from "../../../core/types/viewer-contract.js";
 import { findSticker, loadPack, type StickerPack } from "../domain.js";
 import manifest from "../manifest.js";
-import { filesOf, richWorkspace } from "./pack-workspace.js";
+import { filesOf, finishedWorkspace, richWorkspace } from "./pack-workspace.js";
 
 let win: Window;
 let restore: () => void;
@@ -378,5 +381,113 @@ describe("actions and navigation", () => {
     expect(sources.length).toBeGreaterThan(0);
     expect(sources.every((src) => src.startsWith("/content/"))).toBe(true);
     await m.unmount();
+  });
+});
+
+describe("hosted player", () => {
+  /**
+   * The static player has no server: `/content/*` exists only inside the
+   * content service worker. Chrome 156 and WebKit 26 hand an `<a download>`
+   * click to the download manager, which never asks the worker — on the
+   * player harness the click saved the static host's 9-byte 404 body
+   * ("wechat.txt" in Chrome, cancelled; "line.zip.txt" in WebKit, kept). A
+   * page `fetch()` does go through the worker.
+   */
+  interface Harness {
+    fetched: string[];
+    blobs: Blob[];
+    clicks: Array<{ href: string; download: string | null; prevented: boolean }>;
+    restore: () => void;
+  }
+
+  async function harness(staticPlayer: boolean, respond: () => Response): Promise<Harness> {
+    const { useStore } = await import("../../../src/store.js");
+    const g = globalThis as unknown as Record<string, unknown>;
+    const saved = { fetch: g.fetch, create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    const h: Harness = { fetched: [], blobs: [], clicks: [], restore: () => {} };
+    g.fetch = (async (input: unknown) => {
+      h.fetched.push(String(input));
+      return respond();
+    }) as typeof fetch;
+    URL.createObjectURL = (blob: Blob) => {
+      h.blobs.push(blob);
+      return "blob:http://localhost/archive";
+    };
+    URL.revokeObjectURL = () => {};
+    // Runs after React's root listener, so it sees whether the viewer kept the
+    // browser's own navigation; then stops happy-dom from navigating anywhere.
+    const onClick = (event: Event) => {
+      const a = (event.target as Element | null)?.closest?.("a");
+      if (!a) return;
+      h.clicks.push({ href: a.getAttribute("href") ?? "", download: a.getAttribute("download"), prevented: event.defaultPrevented });
+      event.preventDefault();
+    };
+    document.addEventListener("click", onClick);
+    useStore.setState({ staticPlayer });
+    h.restore = () => {
+      document.removeEventListener("click", onClick);
+      useStore.setState({ staticPlayer: false });
+      g.fetch = saved.fetch;
+      URL.createObjectURL = saved.create;
+      URL.revokeObjectURL = saved.revoke;
+    };
+    return h;
+  }
+
+  const finished = () => loadPack(finishedWorkspace().files);
+  const zip = () => new Response(new Uint8Array([0x50, 0x4b, 3, 4]), { status: 200, headers: { "content-type": "application/octet-stream" } });
+
+  /** Mount, run the steps, and always unmount before the globals come back. */
+  async function inPlayer(staticPlayer: boolean, respond: () => Response, extra: Partial<ViewerPreviewProps>, run: (m: Mounted, h: Harness) => Promise<void>) {
+    const h = await harness(staticPlayer, respond);
+    let m: Mounted | null = null;
+    try {
+      m = await mount(finished(), extra);
+      await run(m, h);
+    } finally {
+      await m?.unmount();
+      h.restore();
+    }
+  }
+
+  test("Download fetches the archive through the worker and saves it under its own name", async () => {
+    await inPlayer(true, zip, {}, async (m, h) => {
+      await m.click(m.q('[data-segment="view:submit"]'));
+      const link = m.q("[data-download]");
+      const href = link?.getAttribute("href") ?? "";
+      expect(href).toStartWith("/content/exports/wechat.zip?r=");
+      await m.click(link);
+      await m.wait(20);
+      expect(h.fetched).toEqual([href]);
+      expect(h.clicks[0]).toEqual({ href, download: "", prevented: true });
+      expect(h.blobs.length).toBe(1);
+      expect(h.blobs[0].size).toBe(4);
+      expect(h.clicks[1]).toEqual({ href: "blob:http://localhost/archive", download: "wechat.zip", prevented: false });
+      expect(m.q("[role=status]")).toBeNull();
+    });
+  });
+
+  test("a download the worker cannot answer says so instead of saving an error page", async () => {
+    await inPlayer(true, () => new Response("Not found in play package", { status: 404 }), {}, async (m, h) => {
+      await m.click(m.q('[data-segment="view:submit"]'));
+      await m.click(m.q('[data-segment="platform:line"]'));
+      await m.click(m.q("[data-download]"));
+      await m.wait(20);
+      expect(h.fetched.length).toBe(1);
+      expect(h.blobs).toEqual([]);
+      expect(h.clicks.length).toBe(1);
+      expect(m.q("[role=status]")?.textContent).toBe("Download failed: HTTP 404");
+    });
+  });
+
+  test("in the app the link stays a plain download link the server answers", async () => {
+    await inPlayer(false, zip, { editing: true }, async (m, h) => {
+      await m.click(m.q('[data-segment="view:submit"]'));
+      await m.click(m.q("[data-download]"));
+      await m.wait(20);
+      expect(h.clicks.length).toBe(1);
+      expect(h.clicks[0].prevented).toBe(false);
+      expect(h.fetched).toEqual([]);
+    });
   });
 });

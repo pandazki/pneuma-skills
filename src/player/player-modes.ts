@@ -41,6 +41,7 @@ const playerModes: Record<string, () => Promise<ModeDefinition>> = {
   remotion: () => import("../../modes/remotion/pneuma-mode.js").then((m) => m.default),
   slide: () => import("../../modes/slide/pneuma-mode.js").then((m) => m.default),
   sprite: () => import("../../modes/sprite/pneuma-mode.js").then((m) => m.default),
+  sticker: () => import("../../modes/sticker/pneuma-mode.js").then((m) => m.default),
   webcraft: () => import("../../modes/webcraft/pneuma-mode.js").then((m) => m.default),
   wordtaste: () => import("../../modes/wordtaste/pneuma-mode.js").then((m) => m.default),
 };
