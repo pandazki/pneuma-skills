@@ -52,7 +52,7 @@ export const TAKE_REQUEST_DEFAULTS = Object.freeze({ quality: "medium", backgrou
  * key: bump it whenever `sticker-media.mjs` changes what a deliverable's
  * bytes would be, and every export of that platform turns stale.
  */
-export const EXPORT_RECIPES = Object.freeze({ wechat: 1, telegram: 1, line: 1 });
+export const EXPORT_RECIPES = Object.freeze({ wechat: 2, telegram: 2, line: 2 });
 
 /** Planning figures said before a paid step. fal reports no usage for GIF jobs. */
 export const ESTIMATES = Object.freeze({

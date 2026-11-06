@@ -904,21 +904,31 @@ export function exportStill(spec, artPath) {
   const probe = ffprobeJson(artPath, "stream=width,height");
   const s = (probe.streams ?? [])[0];
   if (!s?.width) throw new Error(`ffprobe could not read ${artPath}`);
-  let [frame] = decodeFrames(artPath, { width: s.width, height: s.height });
+  const [frame] = decodeFrames(artPath, { width: s.width, height: s.height });
   const src = { width: s.width, height: s.height };
   const attempts = [];
   if (spec.alpha === "transparent") {
-    frame = cleanStillAlpha(frame).rgba;
+    // The alpha step runs twice: on the art (its haze), then on the resized
+    // frame (lanczos rings a 1–4 alpha a few px outside the outline).
     const geo = geometryChain(src, { kind: spec.fit, width: spec.width, height: spec.height });
+    const resized = resizeRgba(cleanStillAlpha(frame).rgba, src, geo);
+    const sized = cleanStillAlpha(resized).rgba;
     attempts.push({ format: "png", ext: "png" });
     for (const colors of PALETTE_COLORS) attempts.push({ format: "png-palette", ext: "png", colors });
-    return fitStill(attempts, (a) => encodeStill({ frame, width: src.width, height: src.height, chain: geo.chain, format: a.format, colors: a.colors }), spec);
+    return fitStill(attempts, (a) => encodeStill({ frame: sized, width: geo.width, height: geo.height, chain: "format=rgba", format: a.format, colors: a.colors }), spec);
   }
   const geo = geometryChain(src, { kind: "cover", width: spec.width, height: spec.height });
   const chain = `format=rgba,${geo.chain},format=rgb24`;
   attempts.push({ format: "png-opaque", ext: "png" });
   if (spec.formats.includes("jpg")) for (const quality of [2, 4, 6, 8, 12]) attempts.push({ format: "jpg", ext: "jpg", quality });
   return fitStill(attempts, (a) => encodeStill({ frame, width: src.width, height: src.height, chain, format: a.format, quality: a.quality }), spec);
+}
+
+/** One RGBA frame through a geometry chain, back as RGBA at the chain's size. */
+function resizeRgba(frame, src, geo) {
+  const r = run("ffmpeg", ["-v", "error", ...rawInput(src.width, src.height, "1"), "-vf", geo.chain, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"], { step: "resize", input: frame });
+  if (r.stdout.length !== geo.width * geo.height * 4) throw new Error(`resize: expected ${geo.width}×${geo.height} RGBA, got ${r.stdout.length} bytes`);
+  return r.stdout;
 }
 
 function fitStill(attempts, encode, spec) {

@@ -91,6 +91,27 @@ function decode(path: string, width: number, height: number, codec?: string) {
   return frames;
 }
 
+/** Semi-transparent pixels with no pixel of alpha ≥ 128 within 2 px: haze, not an anti-aliased edge. */
+function detachedSemi(f: Buffer, w: number, h: number) {
+  let n = 0;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const a = f[(y * w + x) * 4 + 3];
+      if (a === 0 || a >= 128) continue;
+      let near = false;
+      for (let dy = -2; dy <= 2 && !near; dy += 1) {
+        for (let dx = -2; dx <= 2 && !near; dx += 1) {
+          const xx = x + dx;
+          const yy = y + dy;
+          if (xx >= 0 && yy >= 0 && xx < w && yy < h && f[(yy * w + xx) * 4 + 3] >= 128) near = true;
+        }
+      }
+      if (!near) n += 1;
+    }
+  }
+  return n;
+}
+
 const alphaAt = (frame: Buffer, width: number, x: number, y: number) => frame[(y * width + x) * 4 + 3];
 const clearPixels = (frames: Buffer[]) => frames.reduce((n, f) => n + [...f].filter((_, i) => i % 4 === 3 && f[i] === 0).length, 0);
 
@@ -148,6 +169,11 @@ describe.skipIf(!MEDIA)("sticker export on real media", () => {
     for (const [x, y] of ring) expect(alphaAt(c, 240, x, y)).toBe(0);
     for (const [x, y] of [[0, 0], [239, 0], [0, 239], [239, 239]]) expect(alphaAt(c, 240, x, y)).toBe(0);
     expect(readFileSync(cover).length).toBeLessThanOrEqual(500_000);
+    // No stray alpha anywhere: every semi-transparent pixel of every transparent still sits on the outline.
+    for (const [platform, name, w, h] of [["wechat", "cover", 240, 240], ["wechat", "icon", 50, 50], ["telegram", "thumb", 100, 100], ["line", "tab", 96, 74]] as const) {
+      const [f] = decode(join(ws, "exports", platform, `${name}.png`), w, h);
+      expect({ name, detached: detachedSemi(f, w, h) }).toEqual({ name, detached: 0 });
+    }
     expect(ffprobe(join(ws, "exports", "wechat", "icon.png"), "stream=width,height").streams[0]).toMatchObject({ width: 50, height: 50 });
     for (const [name, w, h] of [["banner", 750, 400], ["reward-guide", 750, 560], ["reward-thanks", 750, 750]] as const) {
       const file = join(ws, "exports", "wechat", `${name}.png`);
