@@ -32,6 +32,10 @@ describe("isCoarseAddress — coarse keys drive a navigation first", () => {
     ["anime-series scene card (also backlot's script scene)", { scene: "office-night" }],
     ["anime-series bible card", { bible: "style" }],
     ["anime-series episode board", { episode: "ep01" }],
+    ["sticker inspector", { sticker: "s01" }],
+    ["sticker art kind", { art: "portrait" }],
+    ["sticker submission tab", { platform: "line" }],
+    ["sticker character (anime-series' key)", { character: true }],
   ];
 
   for (const [label, address] of coarse) {
@@ -70,6 +74,12 @@ describe("isCoarseAddress — fine keys resolve in place", () => {
     expect(isCoarseAddress({ time: 13.2 })).toBe(false);
     expect(isCoarseAddress({ take: "ep01-a-clip-2" })).toBe(false);
     expect(isCoarseAddress({ episode: "ep01", part: "A", shot: 5 })).toBe(true);
+  });
+
+  test("sticker's take and frame are fine — they move the stage of the open sticker", () => {
+    expect(isCoarseAddress({ take: "s01-take-2" })).toBe(false);
+    expect(isCoarseAddress({ frame: 3 })).toBe(false);
+    expect(isCoarseAddress({ sticker: "s01", frame: 3 })).toBe(true);
   });
 
   test("an empty or absent address shoots the current viewport", () => {
