@@ -450,18 +450,23 @@ function neededArt(pack) {
   return S.ART_KINDS.filter((k) => kinds.has(k));
 }
 
+/** gen's targets: `S.genTargets` (shared with quote and nextStep), with the stickers and their states. */
 function stickerTargets(pack, doc, v) {
-  const only = listFlag(v.only);
-  for (const id of only) if (!pack.stickers.some((s) => s.id === id)) fail(`--only: no sticker '${id}' in pack.json (${pack.stickers.map((s) => s.id).join(", ") || "none"})`);
-  const chosen = pack.stickers.filter((s) => !only.length || only.includes(s.id));
-  const out = [];
-  const skipped = [];
-  for (const s of chosen) {
-    const state = S.stickerState(pack, doc, s.id);
-    if (v.redo || state.status === "empty" || state.status === "failed") out.push({ sticker: s, state });
-    else skipped.push({ id: s.id, status: state.status });
+  let plan;
+  try {
+    plan = S.genTargets(pack, doc, { only: listFlag(v.only), redo: Boolean(v.redo) });
+  } catch (error) {
+    fail(errorMessage(error));
   }
-  return { targets: out, skipped };
+  const targets = plan.targets.map((t) => ({ sticker: pack.stickers.find((s) => s.id === t.id), state: S.stickerState(pack, doc, t.id) }));
+  return { targets, skipped: plan.skipped, uncertain: plan.uncertain };
+}
+
+/** One line for the stickers a plain gen leaves because their last call may have been billed. */
+function uncertainLine(uncertain) {
+  if (!uncertain.length) return null;
+  const ids = uncertain.map((u) => u.id).join(",");
+  return `not sent again: ${uncertain.map((u) => `${u.id} (${u.take} failed, billing unknown: ${u.reason})`).join("; ")} — it may have been charged. Retry only with the user's yes: sticker.mjs gen --only ${ids} (or --redo)`;
 }
 
 function artTargets(pack, doc, v) {
@@ -503,13 +508,14 @@ async function cmdQuote(v) {
     items.push({ step: "art", count: kinds.length, kinds, each: est, seconds: S.ESTIMATES.imageSeconds });
     lines.push(`art: ${kinds.length ? kinds.join(", ") : "nothing missing"} — ${kinds.length} image(s) × ${costText(est)} · ${S.ESTIMATES.imageSeconds[0]}–${S.ESTIMATES.imageSeconds[1]} s each (OpenRouter, ${model})${skipped.length ? ` · already made: ${skipped.map((s) => s.kind).join(", ")}` : ""}`);
   } else {
-    const { targets, skipped } = stickerTargets(pack, doc, v);
+    const { targets, skipped, uncertain } = stickerTargets(pack, doc, v);
     const est = gifEstimate();
     const m = pack.motion;
-    items.push({ step: "stickers", count: targets.length, stickers: targets.map((t) => t.sticker.id), each: est, seconds: S.ESTIMATES.gifSeconds });
+    items.push({ step: "stickers", count: targets.length, stickers: targets.map((t) => t.sticker.id), uncertain, each: est, seconds: S.ESTIMATES.gifSeconds });
     lines.push(`stickers: ${targets.length ? targets.map((t) => t.sticker.id).join(", ") : "nothing missing"} — ${targets.length} GIF take(s) of ${m.frames} × ${m.size}² at ${m.frameMs} ms × ${costText(est)}; range $${S.ESTIMATES.gifRangeUsd[0]}–${S.ESTIMATES.gifRangeUsd[1]} each`);
     if (targets.length) lines.push(`time: ≈ ${S.ESTIMATES.gifSeconds} s per take, ${concurrency} at a time → ≈ ${wallSeconds(targets.length, S.ESTIMATES.gifSeconds, concurrency)} s`);
     if (skipped.length) lines.push(`skipped (already have takes; --redo re-rolls): ${skipped.map((s) => `${s.id} ${s.status}`).join(", ")}`);
+    if (uncertain.length) lines.push(uncertainLine(uncertain));
   }
   const total = items.reduce((sum, i) => sum + (Number.isFinite(i.each?.usd) ? i.each.usd * i.count : 0), 0);
   const unpriced = items.some((i) => i.count && !Number.isFinite(i.each?.usd));
@@ -686,10 +692,13 @@ async function cmdGen(v) {
   const deadlineMs = (parseNumber(v["deadline-s"], "--deadline-s", { min: 30, max: 3600 }) ?? 600) * 1000;
   let doc = await loadProjectOrNull(ws);
   const anchor = requireAnchor(ws, pack, doc);
-  const { targets, skipped } = stickerTargets(pack, doc, v);
+  const { targets, skipped, uncertain } = stickerTargets(pack, doc, v);
   for (const s of skipped) note(`skip ${s.id}: ${s.status}${s.status === "generating" ? " (another take is in flight; --redo supersedes it)" : " — already has takes; --redo re-rolls"}`);
+  if (uncertain.length) note(uncertainLine(uncertain));
   if (!targets.length) {
-    emit(v, { command: "gen", results: [], skipped }, ["nothing to generate — every chosen sticker already has takes (--redo re-rolls)"]);
+    emit(v, { command: "gen", results: [], skipped, uncertain }, [uncertain.length
+      ? `nothing generated — ${uncertain.map((u) => u.id).join(", ")} may already have been charged; see above`
+      : "nothing to generate — every chosen sticker already has takes (--redo re-rolls)"]);
     return;
   }
   const request = S.stickerRequest(pack);
@@ -746,7 +755,7 @@ async function cmdGen(v) {
   const landed = rows.filter((r) => r.ok).length;
   const after = await loadProjectOrNull(ws);
   const next = S.nextStep(pack, after);
-  emit(v, { command: "gen", results: rows, skipped, next }, [
+  emit(v, { command: "gen", results: rows, skipped, uncertain, next }, [
     `takes: ${landed} of ${rows.length} landed`,
     ...paidLines(rows),
     `cost: this run ${rows.length} call(s) ≈ ${money(round4(rows.reduce((s, r) => s + (r.billing === "none" ? 0 : r.cost?.usd ?? 0), 0)))} (estimate — fal reports no usage for GIF jobs) · ${await projectCostLine(ws)}`,

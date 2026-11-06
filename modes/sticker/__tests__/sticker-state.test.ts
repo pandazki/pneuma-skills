@@ -8,7 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ASSET_STATUSES, dropAssets, statusOf } from "../../_shared/scripts/craft-project.mjs";
+import { ASSET_STATUSES, dropAssets, failAsset, statusOf } from "../../_shared/scripts/craft-project.mjs";
 import * as S from "../skill/scripts/sticker-state.mjs";
 import type { CheckRow, Measure, Platform } from "../skill/scripts/sticker-state.mjs";
 import { addImage, addTake, emptyDoc, exportAll, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
@@ -566,6 +566,61 @@ describe("checks", () => {
     expect(S.PLATFORM_PROFILES.telegram.sticker).toMatchObject({ edge: 512, maxDurationMs: 3000, fps: 30, maxBytes: 256_000 });
     expect(S.PLATFORM_PROFILES.line.sticker).toMatchObject({ maxWidth: 320, maxHeight: 270, minLongSide: 270, minFrames: 5, maxFrames: 20, maxLoopMs: 4000, maxPlays: 4, maxBytes: 1_000_000 });
     expect(S.PLATFORM_PROFILES.line.count.allowed).toEqual([8, 16, 24]);
+  });
+});
+
+describe("what gen makes", () => {
+  /** s01 empty · s02 failed, billing unknown · s03 failed, billing none · s04 a ready take · s05 unknown, then none. */
+  function mixed() {
+    const raw = rawPack();
+    raw.stickers.forEach((s: { take: string | null }) => (s.take = null));
+    const pack = packFrom(raw);
+    const doc = emptyDoc();
+    addImage(doc, "character-1", "character/anchor-1.png");
+    addTake(doc, pack, "s02", 1, { status: "failed" });
+    addTake(doc, pack, "s03", 1, { status: "generating" });
+    failAsset(doc, { id: "s03-take-1", reason: "connect ECONNREFUSED", billing: "none" }, 1793000900000);
+    addTake(doc, pack, "s04", 1);
+    addTake(doc, pack, "s05", 1, { status: "failed" });
+    addTake(doc, pack, "s05", 2, { status: "generating" });
+    failAsset(doc, { id: "s05-take-2", reason: "connect ECONNREFUSED", billing: "none" }, 1793000900000);
+    for (const sid of ["s06", "s07", "s08"]) addTake(doc, pack, sid, 1);
+    return { pack, doc };
+  }
+
+  test("a plain gen never sends again a call that may have been billed; a failure that never left is retried", () => {
+    const { pack, doc } = mixed();
+    const plan = S.genTargets(pack, doc);
+    expect(plan.targets.map((t) => t.id)).toEqual(["s01", "s03", "s05"]);
+    expect(plan.uncertain).toEqual([{ id: "s02", take: "s02-take-1", reason: "upstream error" }]);
+    expect(plan.skipped.map((s) => [s.id, s.status])).toEqual([["s04", "pick"], ["s06", "pick"], ["s07", "pick"], ["s08", "pick"]]);
+  });
+
+  test("naming the sticker, or --redo, is the explicit retry", () => {
+    const { pack, doc } = mixed();
+    const named = S.genTargets(pack, doc, { only: ["s02", "s04"] });
+    expect(named.targets.map((t) => t.id)).toEqual(["s02"]);
+    expect(named.uncertain).toEqual([]);
+    expect(named.skipped.map((s) => s.id)).toEqual(["s04"]);
+    expect(S.genTargets(pack, doc, { redo: true }).targets.map((t) => t.id)).toEqual(pack.stickers.map((s) => s.id));
+    expect(() => S.genTargets(pack, doc, { only: ["s09"] })).toThrow("--only: no sticker 's09' in pack.json");
+  });
+
+  test("next step agrees with gen: it names what gen would make, then asks before an uncertain retry", () => {
+    const { pack, doc } = mixed();
+    const step = S.nextStep(pack, doc);
+    expect(step).toMatchObject({ id: "generate", command: "sticker.mjs gen --only s01,s03,s05", stickers: ["s01", "s03", "s05"] });
+    expect(step.line).toContain("s02");
+    expect(step.line).toContain("billing unknown");
+    // Once those have takes, the uncertain one is the step — retried only by name.
+    for (const sid of ["s01", "s03", "s05"]) {
+      const n = S.nextNumber(doc, `${sid}-take-`);
+      addTake(doc, pack, sid, n);
+    }
+    const ask = S.nextStep(pack, doc);
+    expect(ask).toMatchObject({ id: "generate", command: "sticker.mjs gen --only s02", stickers: ["s02"] });
+    expect(ask.line).toContain("may have been charged");
+    expect(S.genTargets(pack, doc).targets).toEqual([]);
   });
 });
 

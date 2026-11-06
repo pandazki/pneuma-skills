@@ -437,6 +437,14 @@ export interface StickerState {
 }
 export function stickerState(pack: Pack, project: ProjectInput, sid: string): StickerState;
 export function stickerStates(pack: Pack, project: ProjectInput): StickerState[];
+/** What `sticker.mjs gen` makes; gen, quote and nextStep all read this. */
+export interface GenPlan {
+  targets: { id: string; status: StickerStatus }[];
+  skipped: { id: string; status: StickerStatus }[];
+  /** Latest take failed with billing unknown: a plain gen leaves them; `only` naming them retries. */
+  uncertain: { id: string; take: string | null; reason: string }[];
+}
+export function genTargets(pack: Pack, project: ProjectInput, options?: { only?: string[]; redo?: boolean }): GenPlan;
 export function anchorState(pack: Pack, project: ProjectInput): { anchor: string | null; ready: boolean; reason: string | null };
 
 // ---------------------------------------------------------------------------

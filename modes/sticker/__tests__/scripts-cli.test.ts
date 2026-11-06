@@ -302,16 +302,29 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     expect(failed.failure).toMatchObject({ billing: "unknown" });
     expect(failed.requestId).toBe("mock-request-failed");
     expect(assetOf(dir, "s02-take-1").status).toBe("failed");
-    const rerun = ok(dir, ["gen"]);
+    // It may have been charged: a plain rerun, its quote and the next step leave it, and say how to retry.
+    const quote = ok(dir, ["quote"]);
+    expect(quote.items[0]).toMatchObject({ count: 0, stickers: [], uncertain: [{ id: "s02", take: "s02-take-1" }] });
+    expect(run(dir, ["quote"]).out).toContain("s02 (s02-take-1 failed, billing unknown");
+    const plain = run(dir, ["gen", "--json", "--at", String(T0)]);
+    expect(plain.code).toBe(0);
+    expect(JSON.parse(plain.out)).toMatchObject({ results: [], uncertain: [{ id: "s02", take: "s02-take-1" }] });
+    expect(plain.err).toContain("gen --only s02");
+    expect(gifCalls(dir)).toHaveLength(3);
+    expect(ok(dir, ["status"]).next).toMatchObject({ id: "generate", command: "sticker.mjs gen --only s02" });
+    // Naming it is the explicit retry.
+    const rerun = ok(dir, ["gen", "--only", "s02"]);
     expect(rerun.results.map((x: { id: string }) => x.id)).toEqual(["s02-take-2"]);
     expect(gifCalls(dir).map((c: { output: string }) => c.output.split("/stickers/")[1])).toEqual(["s01/take-1.gif", "s02/take-1.gif", "s03/take-1.gif", "s02/take-2.gif"]);
   });
 
-  test("a request that provably never left is recorded as not billed", () => {
+  test("a request that provably never left is recorded as not billed, and a plain rerun retries it", () => {
     const dir = workspace({ stickers: 1 });
     expect(run(dir, ["gen"], { MOCK_FAIL: "refused" }).code).toBe(1);
     expect(edgeOf(dir, "s01-take-1").operation.params.failure).toMatchObject({ billing: "none" });
     expect(summarizeCosts(project(dir)).notBilled).toEqual(["s01-take-1"]);
+    expect(ok(dir, ["quote"]).items[0]).toMatchObject({ count: 1, stickers: ["s01"], uncertain: [] });
+    expect(ok(dir, ["gen"]).results.map((x: { id: string; ok: boolean }) => [x.id, x.ok])).toEqual([["s01-take-2", true]]);
   });
 
   test("a generated file is never overwritten: a stray take file pushes the id on", () => {
