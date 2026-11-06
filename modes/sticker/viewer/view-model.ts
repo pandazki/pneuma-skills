@@ -19,6 +19,7 @@ import type { ViewerAddress } from "../../../core/types/viewer-contract.js";
 import { ART_KINDS, PLATFORMS } from "../skill/scripts/sticker-state.mjs";
 import type { ArtKind, Platform, StickerPack, StickerView, TakeView } from "../domain.js";
 import { findArt, findSticker } from "../domain.js";
+import type { FramesState } from "./players.js";
 
 export type View = "panel" | "chat" | "submit";
 export type Plate = "light" | "dark";
@@ -68,6 +69,28 @@ export function stageTake(sticker: StickerView | null, position: Pick<Position, 
 /** How many frames a ready take has: what sticker.mjs measured, else what the pack asks for. */
 export function frameCount(take: TakeView, value: StickerPack): number {
   return take.measure?.frames ?? value.pack?.motion.frames ?? 0;
+}
+
+export type FrameVerdict = { done: false } | { done: true; shown: true } | { done: true; shown: false; reason: string };
+
+/**
+ * Whether frame `frame` of the take at `url` can be on the stage, given the
+ * decoder's state: shown once that take's frames are decoded and include
+ * it; not shown — with why — when the browser cannot decode GIF frames, the
+ * decode failed, or the take decoded to fewer frames; otherwise still
+ * waiting (decoding, or the state still belongs to another take).
+ */
+export function frameVerdict(frames: FramesState, url: string | null, frame: number): FrameVerdict {
+  if (frames.status === "unsupported") {
+    return { done: true, shown: false, reason: `This browser cannot decode GIF frames (no ImageDecoder): the stage plays the whole take, not frame ${frame}.` };
+  }
+  if (!("url" in frames) || frames.url !== url) return { done: false };
+  if (frames.status === "error") return { done: true, shown: false, reason: `The frames could not be decoded (${frames.message}): the stage plays the whole take, not frame ${frame}.` };
+  if (frames.status !== "ready") return { done: false };
+  if (frame >= frames.frames.length) {
+    return { done: true, shown: false, reason: `The take decoded to ${frames.frames.length} frames, so frame ${frame} cannot be shown: the stage plays the whole take.` };
+  }
+  return { done: true, shown: true };
 }
 
 /** The position as an address — what every selection carries and the agent can send back. */

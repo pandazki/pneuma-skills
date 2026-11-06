@@ -47,6 +47,7 @@ import { Btn, Chip, Icon, Segmented } from "./ui.js";
 import {
   PLATE_COLORS,
   START,
+  frameVerdict,
   positionAddress,
   resolveAddress,
   resolveSetView,
@@ -195,30 +196,33 @@ export default function StickerPreview(props: ViewerPreviewProps) {
   }, [frames, position.frame, apply]);
 
   /**
-   * Resolves once a frame address is on screen (its frames decoded), or with
-   * a note for the agent when it cannot be (no ImageDecoder, a decode error,
-   * still decoding after 5 s). Anything else is on screen at once.
+   * Resolves with null once a frame address is on screen (its take's frames
+   * decoded and long enough), or with why it cannot be: no ImageDecoder, a
+   * decode error, fewer frames than recorded, still decoding after 5 s.
+   * Anything that is not a frame is on screen at once.
    */
   const arrival = useCallback(
     (target: Position): Promise<string | null> => {
       if (target.view !== "panel" || target.frame === null || !valueRef.current) return Promise.resolve(null);
+      const frame = target.frame;
       const sticker = target.focus?.type === "sticker" ? findSticker(valueRef.current, target.focus.id) : null;
       const expected = mediaUrl(base, stageTake(sticker, target));
       return new Promise((resolve) => {
         let settled = false;
-        const done = (note: string | null) => {
+        const done = (failure: string | null) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          resolve(note);
+          resolve(failure);
         };
-        const timer = setTimeout(() => done(`Frame ${target.frame} was still decoding after ${FRAME_ARRIVAL_TIMEOUT_MS / 1000} s; the stage may still show the loop.`), FRAME_ARRIVAL_TIMEOUT_MS);
+        const timer = setTimeout(
+          () => done(`Frame ${frame} was still decoding after ${FRAME_ARRIVAL_TIMEOUT_MS / 1000} s: the stage plays the whole take.`),
+          FRAME_ARRIVAL_TIMEOUT_MS,
+        );
         const check = () => {
-          const f = framesRef.current;
-          if (f.status === "unsupported") return done(`This browser cannot decode GIF frames (no ImageDecoder): the stage plays the whole take, not frame ${target.frame}.`);
-          if (f.status === "ready" && f.url === expected) return done(null);
-          if (f.status === "error" && f.url === expected) return done(`The frames could not be decoded (${f.message}); the stage plays the whole take.`);
-          waiters.current.push(check);
+          const verdict = frameVerdict(framesRef.current, expected, frame);
+          if (!verdict.done) waiters.current.push(check);
+          else done(verdict.shown ? null : verdict.reason);
         };
         check();
       });
@@ -333,14 +337,27 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     [apply, viewState],
   );
 
-  /** Move, then answer once the target is on screen (a frame waits for its decode). */
+  /**
+   * Move, then answer once the target is on screen. A frame waits for its
+   * decode; a frame that cannot be shown is a failure — a `navigate-to` +
+   * `capture` caller would otherwise screenshot the playing loop as that
+   * frame — and the stage lets go of it, so the reply's `data` and the
+   * screen agree: the sticker, playing.
+   */
   const navigate = useCallback(
     (address: unknown, answer: (result: ViewerActionResult) => void) => {
       const { result, target } = runAddress(address);
       if (!target) return answer(result);
-      void arrival(target).then((note) => answer(note ? { ...result, message: note, data: viewState() } : { ...result, data: viewState() }));
+      void arrival(target).then((failure) => {
+        if (target.frame === null) return answer({ ...result, data: viewState() });
+        const here = posRef.current;
+        const still = here.view === "panel" && here.frame === target.frame && here.take === target.take && JSON.stringify(here.focus) === JSON.stringify(target.focus);
+        if (!failure && still) return answer({ ...result, data: viewState() });
+        if (still) apply({ ...here, frame: null });
+        answer({ success: false, message: failure ?? `Frame ${target.frame} was replaced by a later move before it was shown.`, data: viewState() });
+      });
     },
-    [runAddress, arrival, viewState],
+    [runAddress, arrival, viewState, apply],
   );
 
   const { actionRequest, onActionResult } = props;
