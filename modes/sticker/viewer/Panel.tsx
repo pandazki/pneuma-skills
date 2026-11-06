@@ -216,6 +216,7 @@ function CharacterCard({ value, plate, base, t, selected, onOpen }: { value: Sti
   const pack = value.pack!;
   const ready = character?.candidates.filter((c) => c.status === "ready") ?? [];
   const anchorUrl = mediaUrl(base, character?.anchor.ready ? character.asset : null);
+  const unread = value.projectError !== null;
   return (
     <section>
       <SectionTitle>{t.character}</SectionTitle>
@@ -231,14 +232,14 @@ function CharacterCard({ value, plate, base, t, selected, onOpen }: { value: Sti
             <img src={anchorUrl} alt={t.character} crossOrigin="anonymous" draggable={false} className="h-[88%] w-[88%] select-none object-contain" />
           ) : (
             <span className="px-4 text-center text-[11.5px]" style={{ color: plateInk(plate) }}>
-              {ready.length ? t.candidatesToPick(ready.length) : t.noCharacter}
+              {unread ? t.unread : ready.length ? t.candidatesToPick(ready.length) : t.noCharacter}
             </span>
           )}
         </Plate>
         <div className="border-t border-cc-border bg-cc-surface/50 px-2.5 py-2">
           <div className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-cc-muted">{t.style}</div>
           <div className="line-clamp-2 text-[11.5px] leading-[1.45] text-cc-fg/90">{pack.character.style}</div>
-          {character && !character.anchor.ready && character.anchor.anchor ? (
+          {!unread && character && !character.anchor.ready && character.anchor.anchor ? (
             <div className="mt-1 text-[10.5px] text-cc-warning">{character.anchor.reason}</div>
           ) : null}
         </div>
@@ -247,7 +248,7 @@ function CharacterCard({ value, plate, base, t, selected, onOpen }: { value: Sti
   );
 }
 
-function ArtRow({ art, plate, base, t, selected, onOpen }: { art: ArtKindView; plate: PlateKind; base: string; t: StickerStrings; selected: boolean; onOpen: () => void }) {
+function ArtRow({ art, plate, base, t, unread, selected, onOpen }: { art: ArtKindView; plate: PlateKind; base: string; t: StickerStrings; unread: boolean; selected: boolean; onOpen: () => void }) {
   const ready = art.asset?.status === "ready" ? art.asset : null;
   return (
     <button
@@ -260,7 +261,7 @@ function ArtRow({ art, plate, base, t, selected, onOpen }: { art: ArtKindView; p
       <Thumb brief={ready} plate={plate} base={base} size={36} alt={t.artKind(art.kind)} />
       <div className="min-w-0">
         <div className="text-[12px] font-medium text-cc-fg">{t.artKind(art.kind)}</div>
-        <div className="truncate font-mono text-[10.5px] text-cc-muted">{art.picked ?? (art.candidates.length ? t.notPicked : t.noneYet)}</div>
+        <div className="truncate font-mono text-[10.5px] text-cc-muted">{art.picked ?? (unread ? t.statusUnknown : art.candidates.length ? t.notPicked : t.noneYet)}</div>
       </div>
     </button>
   );
@@ -269,6 +270,7 @@ function ArtRow({ art, plate, base, t, selected, onOpen }: { art: ArtKindView; p
 function PackFacts({ value, t, keys }: { value: StickerPack; t: StickerStrings; keys: KeysKnown }) {
   const pack = value.pack!;
   const cost = value.cost;
+  const unread = value.projectError !== null;
   return (
     <section className="flex flex-col gap-2.5">
       <SectionTitle>{t.pack}</SectionTitle>
@@ -277,9 +279,9 @@ function PackFacts({ value, t, keys }: { value: StickerPack; t: StickerStrings; 
         <div className="flex flex-wrap gap-1">
           {value.platforms.length ? (
             value.platforms.map((p) => (
-              <Chip key={p.platform} tone={p.tally.fail ? "error" : p.tally.warn ? "warning" : "success"} title={t.checksTally(p.tally.pass, p.tally.warn, p.tally.fail)}>
+              <Chip key={p.platform} tone={unread ? "neutral" : p.tally.fail ? "error" : p.tally.warn ? "warning" : "success"} title={unread ? t.unread : t.checksTally(p.tally.pass, p.tally.warn, p.tally.fail)}>
                 {p.profile.label}
-                <span className="opacity-75">{p.tally.fail ? `· ${p.tally.fail}` : ""}</span>
+                <span className="opacity-75">{!unread && p.tally.fail ? `· ${p.tally.fail}` : ""}</span>
               </Chip>
             ))
           ) : (
@@ -293,9 +295,9 @@ function PackFacts({ value, t, keys }: { value: StickerPack; t: StickerStrings; 
       </div>
       <div>
         <div className="text-[10.5px] text-cc-muted">{t.spend}</div>
-        <div data-spend className="whitespace-nowrap font-mono text-[15px] font-semibold tabular-nums text-cc-fg">≈ {fmtUsd(cost.total)}</div>
-        <div className="text-[10.5px] leading-[1.45] text-cc-muted">{t.spendNote}</div>
-        {cost.inFlight.length || cost.uncertain.length || cost.unpriced.length ? (
+        <div data-spend className="whitespace-nowrap font-mono text-[15px] font-semibold tabular-nums text-cc-fg">{unread ? "—" : `≈ ${fmtUsd(cost.total)}`}</div>
+        <div className="text-[10.5px] leading-[1.45] text-cc-muted">{unread ? t.unreadSpend : t.spendNote}</div>
+        {!unread && cost.inFlight.length || cost.uncertain.length || cost.unpriced.length ? (
           <div className="mt-1 flex flex-col gap-0.5 text-[10.5px]">
             {cost.inFlight.length ? <span className="text-cc-primary">{t.inFlight(cost.inFlight.length)}</span> : null}
             {cost.uncertain.length ? (
@@ -350,6 +352,7 @@ export function Sidebar({
                 plate={position.plate}
                 base={base}
                 t={t}
+                unread={value.projectError !== null}
                 selected={focus?.type === "art" && focus.kind === a.kind}
                 onOpen={() => onFocus({ type: "art", kind: a.kind })}
               />
@@ -365,6 +368,7 @@ export function Sidebar({
 export function CompactBar({ value, position, base, t, onFocus }: { value: StickerPack; position: Position; base: string; t: StickerStrings; onFocus: (focus: Focus) => void }) {
   const character = value.character;
   const rights = value.pack?.rights;
+  const unread = value.projectError !== null;
   return (
     <div data-compact-bar className="mb-3 flex items-center gap-3 rounded-[14px] border border-cc-border bg-cc-surface/50 p-2">
       <button type="button" onClick={() => onFocus({ type: "character" })} className="shrink-0 rounded-lg focus-visible:ring-2 focus-visible:ring-cc-primary/60" aria-label={t.character}>
@@ -375,11 +379,11 @@ export function CompactBar({ value, position, base, t, onFocus }: { value: Stick
         <div className="mt-0.5 flex flex-wrap items-center gap-1">
           {rights ? <Chip tone="success">{t.rightsBasis(rights.basis)}</Chip> : <Chip tone="error">{t.rightsMissing}</Chip>}
           {value.platforms.map((p) => (
-            <Chip key={p.platform} tone={p.tally.fail ? "error" : p.tally.warn ? "warning" : "success"}>
+            <Chip key={p.platform} tone={unread ? "neutral" : p.tally.fail ? "error" : p.tally.warn ? "warning" : "success"}>
               {p.profile.label}
             </Chip>
           ))}
-          <span className="font-mono text-[11px] text-cc-muted">≈ {fmtUsd(value.cost.total)}</span>
+          {unread ? null : <span className="font-mono text-[11px] text-cc-muted">≈ {fmtUsd(value.cost.total)}</span>}
         </div>
       </div>
     </div>

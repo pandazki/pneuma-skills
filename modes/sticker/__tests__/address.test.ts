@@ -163,4 +163,18 @@ describe("extractContext — the address first, then what it names", () => {
     expect(extractStickerContext({ type: "view", content: "the chat preview" }, ws.files)).toContain("On screen: the chat preview");
     expect(extractStickerContext(null, [])).toContain("No pack.json yet");
   });
+
+  test("an unreadable project.json: said first, and nothing it records is guessed", () => {
+    const files = [ws.files[0], { path: "project.json", content: "{" }];
+    const text = extractStickerContext({ type: "sticker", content: "", address: { sticker: "s01", platform: "wechat" } }, files);
+    const lines = text.split("\n");
+    expect(lines[1]).toBe('Address: {"sticker":"s01","platform":"wechat"}');
+    expect(lines[2]).toStartWith("project.json is unreadable (not valid JSON");
+    expect(text).toContain("Status: unknown — project.json is unreadable");
+    expect(text).toContain("Takes: unknown — project.json is unreadable");
+    expect(text).toContain("WeChat export: unknown — project.json is unreadable");
+    expect(text).toContain("Pack: 打工牛马 · 8 sticker(s) · platforms wechat, telegram, line · statuses and spend unknown");
+    expect(text).not.toContain("Next:");
+    expect(text).not.toContain("≈$");
+  });
 });

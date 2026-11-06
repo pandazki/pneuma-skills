@@ -141,6 +141,8 @@ describe("loadPack — empty and broken files", () => {
     expect(value.projectError).toStartWith("not valid JSON");
     expect(value.project).toBeNull();
     expect(new Set(value.stickers.map((s) => s.state.status))).toEqual(new Set(["empty"]));
+    // The rules' next step for "no record at all" is not this pack's next step.
+    expect(value.next).toBeNull();
 
     const otherMode = JSON.parse(files[1].content);
     delete otherMode.sticker;

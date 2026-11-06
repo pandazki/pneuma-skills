@@ -327,6 +327,9 @@ export function SubmitView({
   const staleFiles = counts.stale + counts.missing;
   const listing = (value.pack?.listing[view.platform] ?? {}) as Record<string, string | undefined>;
   const focus = position.focus;
+  // Takes, exports and archives are all recorded in project.json: while it
+  // cannot be read, every check and file state here would be a guess.
+  const unread = value.projectError !== null;
 
   return (
     <div data-submit={view.platform} className="flex flex-col gap-3.5 px-4 pb-8 pt-3">
@@ -339,7 +342,7 @@ export function SubmitView({
           options={value.platforms.map((p) => ({
             value: p.platform,
             label: p.profile.label,
-            badge: p.tally.fail ? (
+            badge: unread ? null : p.tally.fail ? (
               <span className="rounded-full bg-cc-error/15 px-1.5 font-mono text-[10px] text-cc-error">{p.tally.fail}</span>
             ) : p.tally.warn ? (
               <span className="rounded-full bg-cc-warning/15 px-1.5 font-mono text-[10px] text-cc-warning">{p.tally.warn}</span>
@@ -351,7 +354,7 @@ export function SubmitView({
           }))}
         />
         <span className="ml-auto" />
-        {canCommand ? (
+        {canCommand && !unread ? (
           <Btn primary data-command="export-check" onClick={() => onExport(view.platform)}>
             <Icon.Spark size={13} />
             {t.exportCheck}
@@ -372,26 +375,42 @@ export function SubmitView({
             ))}
           </div>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <span className="text-[10.5px] text-cc-muted">{t.archive}</span>
-          <span className="font-mono text-[11px] text-cc-fg/90">{archive.uri}</span>
-          {archive.measure ? <span className="font-mono text-[10.5px] text-cc-muted">{fmtBytes(archive.measure.bytes)} · {archive.measure.entries.length}</span> : null}
-          <Chip tone={STATE_TONE[archive.state]}>{t.archiveState(archive.state)}</Chip>
-          {archive.measure && archive.state === "current" ? (
-            <a
-              data-download={archive.uri}
-              href={fileUrl(base, archive.uri, archive.measure.at)}
-              download
-              className="inline-flex items-center gap-1 rounded-md border border-cc-border px-1.5 py-0.5 text-[11px] text-cc-fg transition-colors hover:border-cc-primary/40 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
-            >
-              <Icon.Download size={11} />
-              {t.download}
-            </a>
-          ) : null}
-        </div>
+        {unread ? null : (
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <span className="text-[10.5px] text-cc-muted">{t.archive}</span>
+            <span className="font-mono text-[11px] text-cc-fg/90">{archive.uri}</span>
+            {archive.measure ? <span className="font-mono text-[10.5px] text-cc-muted">{fmtBytes(archive.measure.bytes)} · {t.archiveFiles(archive.measure.entries.length)}</span> : null}
+            <Chip tone={STATE_TONE[archive.state]}>{t.archiveState(archive.state)}</Chip>
+            {archive.measure && archive.state === "current" ? (
+              <a
+                data-download={archive.uri}
+                href={fileUrl(base, archive.uri, archive.measure.at)}
+                download
+                className="inline-flex items-center gap-1 rounded-md border border-cc-border px-1.5 py-0.5 text-[11px] text-cc-fg transition-colors hover:border-cc-primary/40 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
+              >
+                <Icon.Download size={11} />
+                {t.download}
+              </a>
+            ) : null}
+          </div>
+        )}
       </header>
 
-      {staleFiles ? (
+      {unread ? (
+        <div data-checks-unread role="status" className="rounded-[14px] border border-cc-error/35 bg-cc-error/[0.07] px-3.5 py-3">
+          <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-cc-error">
+            <Icon.Alert size={13} />
+            {t.unreadChecksTitle}
+          </div>
+          <p className="m-0 mt-1 text-[11.5px] leading-[1.55] text-cc-fg/85">{t.unreadChecksBody}</p>
+        </div>
+      ) : null}
+
+      {unread ? (
+        <Listing view={view} t={t} canWrite={canWrite} listing={listing} onListing={(f, text) => onListing(view.platform, f, text)} />
+      ) : null}
+
+      {!unread && staleFiles ? (
         <div data-exports-stale className="flex items-center gap-2 rounded-lg border border-cc-warning/35 bg-cc-warning/[0.08] px-3 py-2 text-[11.5px] text-cc-fg">
           <span className="text-cc-warning">
             <Icon.Alert size={13} />
@@ -400,14 +419,16 @@ export function SubmitView({
         </div>
       ) : null}
 
-      <div className="grid items-start gap-4" style={{ gridTemplateColumns: wide ? "minmax(0, 0.95fr) minmax(0, 1.05fr)" : "minmax(0, 1fr)" }}>
-        <div className="flex min-w-0 flex-col gap-4">
-          <Checklist value={value} view={view} t={t} focus={focus} onRow={onRow} />
-          {wide ? <Listing view={view} t={t} canWrite={canWrite} listing={listing} onListing={(f, text) => onListing(view.platform, f, text)} /> : null}
+      {unread ? null : (
+        <div className="grid items-start gap-4" style={{ gridTemplateColumns: wide ? "minmax(0, 0.95fr) minmax(0, 1.05fr)" : "minmax(0, 1fr)" }}>
+          <div className="flex min-w-0 flex-col gap-4">
+            <Checklist value={value} view={view} t={t} focus={focus} onRow={onRow} />
+            {wide ? <Listing view={view} t={t} canWrite={canWrite} listing={listing} onListing={(f, text) => onListing(view.platform, f, text)} /> : null}
+          </div>
+          <Files value={value} view={view} base={base} plate={position.plate} t={t} focus={focus} />
+          {!wide ? <Listing view={view} t={t} canWrite={canWrite} listing={listing} onListing={(f, text) => onListing(view.platform, f, text)} /> : null}
         </div>
-        <Files value={value} view={view} base={base} plate={position.plate} t={t} focus={focus} />
-        {!wide ? <Listing view={view} t={t} canWrite={canWrite} listing={listing} onListing={(f, text) => onListing(view.platform, f, text)} /> : null}
-      </div>
+      )}
     </div>
   );
 }

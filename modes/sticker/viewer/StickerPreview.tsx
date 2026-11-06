@@ -267,7 +267,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
         return;
       }
       if (scope) {
-        onSelect({ type: "platform", content: `${scope.profile.label}: ${scope.tally.fail} fail, ${scope.tally.warn} warn, ${scope.tally.pass} pass`, label: `${scope.profile.label} submission`, address });
+        onSelect({ type: "platform", content: value.projectError ? `${scope.profile.label}: checks unknown — project.json is unreadable` : `${scope.profile.label}: ${scope.tally.fail} fail, ${scope.tally.warn} warn, ${scope.tally.pass} pass`, label: `${scope.profile.label} submission`, address });
         return;
       }
       onSelect(null);
@@ -487,7 +487,10 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     const focus = position.focus;
     if (focus.type === "sticker" && focusSticker) {
       inspector = (
+        // Keyed by what it shows: another sticker opens at the top (its status
+        // and stale reason), not at the previous one's scroll position.
         <StickerInspector
+          key={focusSticker.id}
           value={value}
           sticker={focusSticker}
           position={position}
@@ -508,6 +511,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     } else if (focus.type === "art" && findArt(value, focus.kind)) {
       inspector = (
         <ArtInspector
+          key={focus.kind}
           value={value}
           kind={focus.kind}
           position={position}
@@ -578,7 +582,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
           </span>
           <div className="min-w-0">
             <div data-pack-title className="truncate text-[14px] font-semibold leading-tight text-cc-fg">{value.title || t.untitled}</div>
-            <div className="text-[11px] text-cc-muted">{t.stickerCount(value.stickers.length, ready)}</div>
+            <div className="text-[11px] text-cc-muted">{t.stickerCount(value.stickers.length, value.projectError ? null : ready)}</div>
           </div>
         </div>
         <Segmented

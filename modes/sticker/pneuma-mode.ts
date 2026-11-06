@@ -43,13 +43,16 @@ function takeLine(sticker: StickerView): string {
     .join("; ")}`;
 }
 
+const UNREAD = "unknown — project.json is unreadable";
+
 function stickerLines(value: StickerPack, sticker: StickerView, address: Record<string, unknown>): string[] {
   const s = sticker.sticker;
+  const unread = value.projectError !== null;
   const lines = [
     `Sticker ${s.id} (${sticker.number} of ${value.stickers.length}): word "${s.word}" · caption ${s.caption ? `"${s.caption}"` : "none (no text in the sticker)"} · emoji ${s.emoji || "none"}`,
     `Action: ${s.action || "(none)"}`,
-    `Status: ${sticker.state.status}${sticker.state.reason ? ` — ${sticker.state.reason}` : ""}`,
-    takeLine(sticker),
+    unread ? `Status: ${UNREAD}` : `Status: ${sticker.state.status}${sticker.state.reason ? ` — ${sticker.state.reason}` : ""}`,
+    unread ? `Takes: ${UNREAD}` : takeLine(sticker),
   ];
   if (s.keepFrames) lines.push(`keepFrames: [${s.keepFrames.join(", ")}]`);
   const take = str(address, "take");
@@ -61,7 +64,8 @@ function stickerLines(value: StickerPack, sticker: StickerView, address: Record<
     lines.push(`Frame: ${frame} of 0–${count - 1} in ${shown?.id ?? "the shown take"} (0-based, as keepFrames and the inspect contact sheet count)`);
   }
   const platform = findPlatform(value, str(address, "platform"));
-  if (platform) {
+  if (platform && unread) lines.push(`${platform.profile.label} export: ${UNREAD}`);
+  else if (platform) {
     const item = platform.exports.items.find((i) => i.kind === "sticker" && i.sticker === s.id);
     const row = platform.rows.find((r) => r.id === `sticker-${s.id}`);
     lines.push(`${platform.profile.label} export: ${item?.file ?? "no file"} — ${item?.state ?? "unknown"}${item?.reason ? ` (${item.reason})` : ""}`);
@@ -86,18 +90,25 @@ export function extractStickerContext(selection: ViewerSelectionContext | null, 
   const lines: string[] = [];
   if (Object.keys(address).length) lines.push(`Address: ${JSON.stringify(address)}`);
   if (selection?.type === "view") lines.push("On screen: the chat preview (the stickers sent in order in a phone-width chat)");
+  // Every take, export and cost is recorded there: say so before anything that depends on it.
+  const unread = value.projectError !== null;
+  if (unread) lines.push(`project.json is unreadable (${value.projectError}) — statuses, takes, exports, checks and spend are unknown until it is fixed; only the sticker scripts write it.`);
 
   const sticker = findSticker(value, str(address, "sticker"));
   const art = findArt(value, str(address, "art"));
   const platform = findPlatform(value, str(address, "platform"));
   if (sticker) {
     lines.push(...stickerLines(value, sticker, address));
+  } else if (address.character === true && unread) {
+    lines.push(`Character: ${UNREAD} · style: ${value.pack.character.style}`);
   } else if (address.character === true && value.character) {
     const c = value.character;
     lines.push(
       `Character: anchor ${c.anchor.anchor ?? "not picked"}${c.anchor.ready ? " (ready)" : c.anchor.reason ? ` — ${c.anchor.reason}` : ""} · candidates: ${c.candidates.map((a) => `${a.id} ${a.status}`).join(", ") || "none"}`,
       `Description: ${value.pack.character.description || "(empty)"} · style: ${value.pack.character.style}`,
     );
+  } else if (art && unread) {
+    lines.push(`Art ${art.kind}: ${UNREAD}`);
   } else if (art) {
     lines.push(
       `Art ${art.kind}: picked ${art.picked ?? "none"}${art.asset ? ` (${art.asset.status})` : ""} · candidates: ${art.candidates.map((a) => `${a.id} ${a.status}`).join(", ") || "none"} · becomes: ${art.becomes.map((b) => `${b.platform} ${b.deliverable}`).join(", ") || "nothing on the chosen platforms"}`,
@@ -110,7 +121,9 @@ export function extractStickerContext(selection: ViewerSelectionContext | null, 
       }
     }
   }
-  if (platform && !sticker && !art) {
+  if (platform && !sticker && !art && unread) {
+    lines.push(`Submission tab: ${platform.profile.label} — checks and exports ${UNREAD}`);
+  } else if (platform && !sticker && !art) {
     const failing = platform.rows.filter((r) => r.level === "fail");
     lines.push(
       `Submission tab: ${platform.profile.label} — ${platform.tally.fail} fail, ${platform.tally.warn} warn, ${platform.tally.pass} pass${failing.length ? ` · failing: ${failing.map((r) => r.label).join(", ")}` : ""}`,
@@ -121,12 +134,15 @@ export function extractStickerContext(selection: ViewerSelectionContext | null, 
   const counts = new Map<string, number>();
   for (const s of value.stickers) counts.set(s.state.status, (counts.get(s.state.status) ?? 0) + 1);
   const cost = value.cost;
-  lines.push(
-    `Pack: ${value.title || "(untitled)"} · ${value.stickers.length} sticker(s) (${[...counts].map(([k, n]) => `${n} ${k}`).join(", ") || "none"}) · platforms ${value.pack.platforms.join(", ")} · ≈${usd(cost.total)} est.${cost.uncertain.length ? ` (incl. ${cost.uncertain.length} failed call(s) whose billing is unknown: ${cost.uncertain.join(", ")})` : ""}${cost.inFlight.length ? ` · in flight: ${cost.inFlight.join(", ")}` : ""}`,
-  );
+  if (unread) {
+    lines.push(`Pack: ${value.title || "(untitled)"} · ${value.stickers.length} sticker(s) · platforms ${value.pack.platforms.join(", ")} · statuses and spend unknown`);
+  } else {
+    lines.push(
+      `Pack: ${value.title || "(untitled)"} · ${value.stickers.length} sticker(s) (${[...counts].map(([k, n]) => `${n} ${k}`).join(", ") || "none"}) · platforms ${value.pack.platforms.join(", ")} · ≈${usd(cost.total)} est.${cost.uncertain.length ? ` (incl. ${cost.uncertain.length} failed call(s) whose billing is unknown: ${cost.uncertain.join(", ")})` : ""}${cost.inFlight.length ? ` · in flight: ${cost.inFlight.join(", ")}` : ""}`,
+    );
+  }
   if (!value.pack.rights) lines.push("Rights: NOT recorded — every paid step refuses until pack.json.rights is written");
   if (value.next) lines.push(`Next: ${value.next.line}`);
-  if (value.projectError) lines.push(`project.json is unreadable: ${value.projectError}`);
   return wrap(lines);
 }
 

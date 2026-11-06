@@ -180,6 +180,16 @@ describe("states", () => {
     const broken = await mount(loadPack([files[0], { path: "project.json", content: "{" }]));
     expect(broken.q("[data-project-error]")?.textContent).toContain("project.json can't be read (not valid JSON");
     expect(new Set(broken.all("[data-sticker]").map((c) => c.getAttribute("data-status")))).toEqual(new Set(["unknown"]));
+    // Nothing recorded in project.json is guessed: no "make the character",
+    // no $0.00, no checklist of missing files.
+    expect(broken.q("[data-next-step]")).toBeNull();
+    expect(broken.q("[data-character-card]")?.textContent).toContain("project.json can't be read");
+    expect(broken.q("[data-spend]")?.textContent).toBe("—");
+    await broken.click(broken.q('[data-segment="view:submit"]'));
+    expect(broken.q("[data-checks-unread]")?.textContent).toContain("Checks wait for project.json");
+    expect(broken.all("[data-check]")).toHaveLength(0);
+    expect(broken.q("[data-files]")).toBeNull();
+    expect(broken.q("[data-listing]")).not.toBeNull();
     await broken.unmount();
   });
 
@@ -205,6 +215,17 @@ describe("states", () => {
     expect(failure).toContain("upstream error");
     expect(failure).toContain("May have been billed");
     expect(m.q("[data-stage]")?.getAttribute("data-stage-take")).toBe("s05-take-1");
+    await m.unmount();
+  });
+
+  test("another sticker's inspector opens at its top, where its status is", async () => {
+    const m = await mount(rich());
+    await m.click(m.q('[data-sticker="s01"]'));
+    const scroller = () => m.q("[data-inspector] .overflow-y-auto") as HTMLElement;
+    scroller().scrollTop = 400;
+    expect(scroller().scrollTop).toBe(400);
+    await m.click(m.q('[data-sticker="s03"]'));
+    expect(scroller().scrollTop).toBe(0);
     await m.unmount();
   });
 

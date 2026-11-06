@@ -102,6 +102,11 @@ export function useGifFrames(url: string | null): FramesState {
       for (const b of bitmaps) b.close();
     };
   }, [url]);
+  // The state lags the URL by one render, and the cleanup above has already
+  // closed the previous URL's bitmaps by the time anything draws them: never
+  // hand out frames (or an error) that belong to another URL.
+  if (!url) return { status: "idle" };
+  if ("url" in state && state.url !== url) return { status: "loading", url };
   return state;
 }
 

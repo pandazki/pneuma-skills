@@ -359,7 +359,9 @@ function build(raw: Json | null, parseErrors: PackIssue[], hasPack: boolean, pro
       const rows = checkPack(pack, rules, platform);
       return { platform, profile: PLATFORM_PROFILES[platform], rows, tally: tally(rows), exports: exportState(pack, rules, platform) };
     }),
-    next: nextStep(pack, rules),
+    // The rules would answer for a pack with no record at all ("make the
+    // character"), which is not this pack: its record exists and is unreadable.
+    next: projectError ? null : nextStep(pack, rules),
   };
 }
 

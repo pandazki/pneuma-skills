@@ -30,7 +30,8 @@ export interface StickerStrings {
 
   // header
   untitled: string;
-  stickerCount: (n: number, ready: number) => string;
+  /** `ready` is null while project.json cannot be read. */
+  stickerCount: (n: number, ready: number | null) => string;
   view: Record<View, string>;
   viewsLabel: string;
   plate: Record<Plate, string>;
@@ -44,6 +45,11 @@ export interface StickerStrings {
   // sidebar
   character: string;
   noCharacter: string;
+  /** project.json cannot be read: the sidebar, art rows and submit checks say so instead of guessing. */
+  unread: string;
+  unreadSpend: string;
+  unreadChecksTitle: string;
+  unreadChecksBody: string;
   candidatesToPick: (n: number) => string;
   style: string;
   description: string;
@@ -130,6 +136,7 @@ export interface StickerStrings {
   exportSummary: (counts: Record<ExportItemState, number>) => string;
   exportsStale: (n: number) => string;
   archive: string;
+  archiveFiles: (n: number) => string;
   archiveState: (state: ExportItemState) => string;
   download: string;
   checklist: string;
@@ -169,12 +176,12 @@ const EN: StickerStrings = {
     "Tell the agent whose sticker it is — a photo, your own character, your pet — and who will use it. It writes pack.json, and the stickers appear here on a chat background as they are drawn.",
   packInvalidTitle: "pack.json can't be drawn",
   packInvalidBody: "These fields need fixing first — the agent can do it:",
-  projectBroken: (e) => `project.json can't be read (${e}). Statuses below leave it out until it is fixed; only the sticker scripts write that file.`,
+  projectBroken: (e) => `project.json can't be read (${e}). Statuses, spend and checks are unknown until it is fixed; only the sticker scripts write that file.`,
   readOnly: "Read-only",
   notSaved: (e) => `Not saved: ${e}`,
 
   untitled: "Sticker pack",
-  stickerCount: (n, ready) => `${n} sticker${n === 1 ? "" : "s"} · ${ready} ready`,
+  stickerCount: (n, ready) => `${n} sticker${n === 1 ? "" : "s"}${ready === null ? "" : ` · ${ready} ready`}`,
   view: { panel: "Panel", chat: "Chat", submit: "Submit" },
   viewsLabel: "View",
   plate: { light: "Light", dark: "Dark" },
@@ -201,6 +208,10 @@ const EN: StickerStrings = {
 
   character: "Character",
   noCharacter: "No character yet",
+  unread: "Unknown — project.json can't be read",
+  unreadSpend: "unknown until project.json can be read",
+  unreadChecksTitle: "Checks wait for project.json",
+  unreadChecksBody: "Every take and exported file is recorded in project.json, which can't be read right now. The listing lives in pack.json and is shown below.",
   candidatesToPick: (n) => `${n} candidate${n === 1 ? "" : "s"} — pick one`,
   style: "Style",
   description: "Description",
@@ -300,6 +311,7 @@ const EN: StickerStrings = {
       .join(" · ") || "nothing to export",
   exportsStale: (n) => `${n} file${n === 1 ? " is" : "s are"} stale or not exported — export again before submitting.`,
   archive: "Upload archive",
+  archiveFiles: (n) => `${n} file${n === 1 ? "" : "s"}`,
   archiveState: (s) => ({ current: "ready", stale: "stale", missing: "not made yet", blocked: "waits for every file" })[s],
   download: "Download",
   checklist: "Checklist",
@@ -343,12 +355,12 @@ const ZH: StickerStrings = {
   noPackBody: "跟 agent 说说这套表情画谁——一张照片、你自己的角色，或是家里的宠物——以及做给谁用。它会写好 pack.json，表情一张张画出来，就会出现在这里的聊天背景上。",
   packInvalidTitle: "pack.json 读不出来",
   packInvalidBody: "先把下面这些字段改对（可以让 agent 来改）：",
-  projectBroken: (e) => `project.json 读不出来（${e}）。在修好之前，下面的状态都没算上它；这个文件只由表情脚本写入。`,
+  projectBroken: (e) => `project.json 读不出来（${e}）。修好之前，状态、花费和检查结果都无从得知；这个文件只由表情脚本写入。`,
   readOnly: "只读",
   notSaved: (e) => `没有保存：${e}`,
 
   untitled: "表情包",
-  stickerCount: (n, ready) => `${n} 张 · ${ready} 张就绪`,
+  stickerCount: (n, ready) => (ready === null ? `${n} 张` : `${n} 张 · ${ready} 张就绪`),
   view: { panel: "面板", chat: "聊天", submit: "提交" },
   viewsLabel: "视图",
   plate: { light: "浅色", dark: "深色" },
@@ -375,6 +387,10 @@ const ZH: StickerStrings = {
 
   character: "角色",
   noCharacter: "还没有角色",
+  unread: "不清楚——project.json 读不出来",
+  unreadSpend: "project.json 修好后才能算",
+  unreadChecksTitle: "检查要等 project.json 修好",
+  unreadChecksBody: "每一版生成和每个导出文件都记在 project.json 里，它现在读不出来。上架信息在 pack.json 里，照常显示在下面。",
   candidatesToPick: (n) => `${n} 个候选，选一个`,
   style: "画风",
   description: "角色描述",
@@ -474,6 +490,7 @@ const ZH: StickerStrings = {
       .join(" · ") || "没有要导出的",
   exportsStale: (n) => `${n} 个文件过期或还没导出——提交前请重新导出。`,
   archive: "上传压缩包",
+  archiveFiles: (n) => `${n} 个文件`,
   archiveState: (s) => ({ current: "已就绪", stale: "已过期", missing: "还没生成", blocked: "等所有文件就绪" })[s],
   download: "下载",
   checklist: "检查清单",
@@ -517,12 +534,12 @@ const JA: StickerStrings = {
   noPackBody: "誰のスタンプか —— 写真、自分のキャラクター、ペット —— と、誰が使うのかを agent に伝えてください。pack.json が書かれ、描けたスタンプから順にここのチャット背景に並びます。",
   packInvalidTitle: "pack.json を表示できません",
   packInvalidBody: "先に次の項目を直してください（agent に頼めます）：",
-  projectBroken: (e) => `project.json を読めません（${e}）。直るまで、下の状態はこのファイルを除いて計算しています。このファイルを書くのはスタンプのスクリプトだけです。`,
+  projectBroken: (e) => `project.json を読めません（${e}）。直るまで、状態・費用・チェック結果は不明です。このファイルを書くのはスタンプのスクリプトだけです。`,
   readOnly: "閲覧のみ",
   notSaved: (e) => `保存されませんでした：${e}`,
 
   untitled: "スタンプ",
-  stickerCount: (n, ready) => `${n} 枚 · 完成 ${ready} 枚`,
+  stickerCount: (n, ready) => (ready === null ? `${n} 枚` : `${n} 枚 · 完成 ${ready} 枚`),
   view: { panel: "パネル", chat: "チャット", submit: "申請" },
   viewsLabel: "表示",
   plate: { light: "ライト", dark: "ダーク" },
@@ -549,6 +566,10 @@ const JA: StickerStrings = {
 
   character: "キャラクター",
   noCharacter: "キャラクターはまだありません",
+  unread: "不明（project.json を読めません）",
+  unreadSpend: "project.json を読めるまで不明",
+  unreadChecksTitle: "チェックは project.json の修復待ち",
+  unreadChecksBody: "すべての生成結果と書き出しファイルは project.json に記録されていますが、今は読めません。ストア情報は pack.json にあるので、下に表示しています。",
   candidatesToPick: (n) => `候補 ${n} 件 —— 1 つ選んでください`,
   style: "スタイル",
   description: "説明",
@@ -648,6 +669,7 @@ const JA: StickerStrings = {
       .join(" · ") || "書き出すものはありません",
   exportsStale: (n) => `${n} 件のファイルが古いか未書き出しです —— 申請前に書き出し直してください。`,
   archive: "アップロード用 ZIP",
+  archiveFiles: (n) => `${n} ファイル`,
   archiveState: (s) => ({ current: "準備完了", stale: "古い", missing: "未作成", blocked: "全ファイル待ち" })[s],
   download: "ダウンロード",
   checklist: "チェックリスト",
