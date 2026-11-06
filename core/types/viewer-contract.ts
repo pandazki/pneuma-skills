@@ -393,6 +393,22 @@ export interface ViewerPreviewProps {
 }
 
 /** UI contract for the content viewer */
+/**
+ * What a viewer's `captureViewport` answers.
+ *
+ * - An image (base64, no `data:` prefix). `note` is a caveat the capture
+ *   result carries as its `message` — e.g. which frame of an animation the
+ *   still shows, when the viewer could not show the one it meant.
+ * - `{ error }`: the viewer is showing an object it cannot draw whole (its
+ *   file did not load, the canvas is tainted). `capture` fails with this
+ *   message instead of falling back to a screenshot of the pane, which would
+ *   report success while the object is clipped or missing. The session
+ *   thumbnail treats it as no image.
+ * - `null` (or a throw): decline — the framework's own strategies run, in
+ *   their usual order.
+ */
+export type ViewportCapture = { data: string; media_type: string; note?: string } | { error: string };
+
 export interface ViewerContract {
   /** Preview component — React component that renders the content */
   PreviewComponent: ComponentType<ViewerPreviewProps>;
@@ -420,6 +436,11 @@ export interface ViewerContract {
   /** Viewer-supported actions — Agent can invoke via the execution channel */
   actions?: ViewerActionDescriptor[];
 
-  /** Capture current viewport screenshot (optional, dynamically injected by PreviewComponent after mount) */
-  captureViewport?: () => Promise<{ data: string; media_type: string } | null>;
+  /**
+   * The viewer's own renderer for a full `capture` (and the session
+   * thumbnail), asked before the framework's generic strategies. See
+   * `ViewportCapture` for what each answer means. Optional; usually wired to
+   * the mounted PreviewComponent through a module-level seam.
+   */
+  captureViewport?: () => Promise<ViewportCapture | null>;
 }

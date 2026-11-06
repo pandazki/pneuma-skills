@@ -35,6 +35,7 @@
  *     without frames) is skipped there — with a note in the result.
  */
 
+import type { ViewportCapture } from "../../core/types/viewer-contract.js";
 import { snapdomFor } from "./iframe-snapdom.js";
 
 export interface CaptureSuccess {
@@ -335,14 +336,15 @@ async function primeScrollReveals(iframe: HTMLIFrameElement): Promise<boolean> {
  * @param previewEl  The element wrapping the mode's PreviewComponent.
  * @param opts.selector  Optional CSS selector — capture just that element.
  * @param opts.captureViewport  The mode viewer's domain renderer, if any
- *   (diagram/draw/sprite/lucid expose one); tried FIRST for a full capture,
- *   before the iframe and Electron strategies.
+ *   (diagram/draw/sprite/lucid/sticker expose one); tried FIRST for a full
+ *   capture, before the iframe and Electron strategies. Its `{ error }` fails
+ *   the capture; `null` or a throw falls through.
  */
 export async function captureViewer(
   previewEl: HTMLElement,
   opts: {
     selector?: string;
-    captureViewport?: (() => Promise<{ data: string; media_type: string } | null>) | null;
+    captureViewport?: (() => Promise<ViewportCapture | null>) | null;
   } = {},
 ): Promise<CaptureResult> {
   const selector = opts.selector?.trim() || undefined;
@@ -464,11 +466,19 @@ export async function captureViewer(
   // viewport means; `null` or a throw is not a failure, it just falls through
   // to the same order as before. Region captures (a selector was given) are
   // unaffected — a renderer answers for the whole viewport, not a sub-element.
+  //
+  // A renderer can also REFUSE (`{ error }`): it is showing an object it
+  // cannot draw whole. That is a failed capture, not a decline — a fallback
+  // screenshot of the pane would report success with the object clipped or
+  // missing (sticker, 2026-11-07: a 479×357 pane cut every sticker in half
+  // and `capture` said success).
   if (opts.captureViewport) {
+    let r: ViewportCapture | null = null;
     try {
-      const r = await opts.captureViewport();
-      if (r?.data) return finalize(`data:${r.media_type};base64,${r.data}`, "viewer-captureViewport");
-    } catch { /* fall through */ }
+      r = await opts.captureViewport();
+    } catch { /* a throw is a decline: fall through */ }
+    if (r && "error" in r) return { ok: false, message: r.error };
+    if (r?.data) return finalize(`data:${r.media_type};base64,${r.data}`, "viewer-captureViewport", r.note || undefined);
   }
   // Same-origin iframe: snapshot the inner document — full page incl. scroll.
   if (iframe && innerDoc) {

@@ -150,6 +150,32 @@ describe("full capture — the mode's own renderer is asked first", () => {
     expect(result.ok && result.method).toBe("electron-full");
   });
 
+  test("a renderer that refuses fails the capture with its reason — nothing else is shot", async () => {
+    // The viewer is showing an object it cannot draw whole (its file did not
+    // load). A fallback screenshot of the viewer pane would be reported as
+    // success while the object is clipped or missing — the failure an agent
+    // cannot see from the result.
+    const preview = previewWithIframe();
+    const electron = installElectronCapture();
+    const result = await captureViewer(preview, {
+      captureViewport: async () => ({ error: "s01-take-1 could not be loaded (HTTP 404)" }),
+    });
+
+    expect(electron.calls).toBe(0);
+    expect(result).toEqual({ ok: false, message: "s01-take-1 could not be loaded (HTTP 404)" });
+  });
+
+  test("a renderer's caveat travels with its image", async () => {
+    const preview = previewWithIframe();
+    installElectronCapture();
+    const result = await captureViewer(preview, {
+      captureViewport: async () => ({ data: PNG_1PX, media_type: "image/png", note: "shows the first kept frame" }),
+    });
+
+    expect(result.ok && result.method).toBe("viewer-captureViewport");
+    expect(result.ok && result.note).toBe("shows the first kept frame");
+  });
+
   test("no renderer at all behaves exactly as before", async () => {
     const preview = previewWithIframe();
     const electron = installElectronCapture();

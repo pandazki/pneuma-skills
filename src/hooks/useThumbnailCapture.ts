@@ -32,6 +32,7 @@ import { getApiBase } from "../utils/api.js";
 
 import { useEffect, useRef } from "react";
 import { snapdom } from "@zumer/snapdom";
+import type { ViewportCapture } from "../../core/types/viewer-contract.js";
 
 const THUMB_WIDTH = 1280;
 const THUMB_HEIGHT = 800;
@@ -167,11 +168,12 @@ function scaleToThumb(dataUrl: string): Promise<string | null> {
  * Capture via viewer's captureViewport() override — returns base64 or null.
  */
 async function captureViaViewer(
-  captureViewport: () => Promise<{ data: string; media_type: string } | null>,
+  captureViewport: () => Promise<ViewportCapture | null>,
 ): Promise<string | null> {
   try {
     const result = await captureViewport();
-    if (!result) return null;
+    // A refusal (`{ error }`) is no thumbnail, like a decline.
+    if (!result || !("data" in result) || !result.data) return null;
     const dataUrl = `data:${result.media_type};base64,${result.data}`;
     return scaleToThumb(dataUrl);
   } catch {
@@ -368,7 +370,7 @@ export function useThumbnailCapture(
   previewRef: React.RefObject<HTMLElement | null>,
   hasViewer: boolean,
   fileVersion: number,
-  captureViewport?: (() => Promise<{ data: string; media_type: string } | null>) | null,
+  captureViewport?: (() => Promise<ViewportCapture | null>) | null,
 ): void {
   const fileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runningRef = useRef(false);

@@ -21,7 +21,7 @@ import type { RefObject } from "react";
 import { useStore } from "../store.js";
 import { getApiBase } from "../utils/api.js";
 import { captureViewer } from "../utils/viewer-capture.js";
-import type { ViewerAddress } from "../../core/types/viewer-contract.js";
+import type { ViewerAddress, ViewportCapture } from "../../core/types/viewer-contract.js";
 import type { ViewerSlice } from "../store/viewer-slice.js";
 
 type ActionResult = { success: boolean; message?: string; data?: Record<string, unknown> };
@@ -148,7 +148,7 @@ function fineSelector(address: ViewerAddress | undefined): string | undefined {
 
 export function useCaptureAction(
   previewRef: RefObject<HTMLElement | null>,
-  captureViewport?: (() => Promise<{ data: string; media_type: string } | null>) | null,
+  captureViewport?: (() => Promise<ViewportCapture | null>) | null,
 ): void {
   const actionRequest = useStore((s) => s.actionRequest);
   const viewerInstanceId = useStore((s) => s.viewerInstanceId);

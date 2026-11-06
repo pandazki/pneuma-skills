@@ -35,6 +35,7 @@ export type {
   ViewerActionResult,
   ViewerCommandDescriptor,
   ViewerLocator,
+  ViewportCapture,
 } from "./viewer-contract.js";
 
 export type { ModeDefinition } from "./mode-definition.js";
