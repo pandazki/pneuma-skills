@@ -205,12 +205,15 @@ and may omit the gallery entry as described below. Resolve visibility only if
 it is still unknown. Cloud registration (**3d**) is conditional on the brief's
 `## Cloud surfaces` decision and the verification pass described there.
 
-#### 3a. Frontend dynamic-import registry — `core/mode-loader.ts`
+#### 3a. Frontend dynamic-import registry — `core/mode-loader.ts` (bundled modes only)
 
-Add an entry to the `builtinModes: Record<string, ModeSource>` map
-so the frontend can dynamic-import the mode's manifest and viewer.
-Without this, the mode 404s when a user opens its URL ("Unknown
-mode: <name>").
+`builtinModes` lists exactly the bundled modes in `modes/distribution.json`
+(`core/__tests__/mode-loader-external.test.ts` pins the equality). A catalog
+mode gets no entry here: it is discovered from its on-disk `manifest.ts` and
+loaded as a built catalog bundle, so skip this step for it. For a bundled
+mode, add an entry to the `builtinModes: Record<string, ModeSource>` map so
+the frontend can dynamic-import the mode's manifest and viewer. Without it,
+a bundled mode 404s when a user opens its URL ("Unknown mode: <name>").
 
 ```ts
 // core/mode-loader.ts — inside `const builtinModes: Record<string, ModeSource> = { ... }`
