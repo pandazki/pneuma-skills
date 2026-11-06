@@ -64,7 +64,6 @@ import {
   riveDecodeWarning, riveIsPixelArt, riveMB, riveMirrorIsCurrent, rivePlan, riveReverseIsCurrent,
 } from "./rive-plan.mjs";
 import { SHADOW_DEFAULTS, SHADOW_RANGES, projectShadow, shadowCanvas, withShadow } from "./shadow.mjs";
-import { zipStore } from "./zip.mjs";
 import {
   BREATHE_FPS, BREATHE_MODES, BreatheError, DEFAULT_BREATHE_DEPTH, DEFAULT_LAG, FRAMES_PER_BREATH, bakeBreathe,
   hasAppendage,
@@ -95,6 +94,12 @@ import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } f
 import { CELL_MARGIN, alphaComponents, cutPoses, layoutPoses, locatePoses } from "./sheet-segment.mjs";
 import { SIZE_SPREAD_WARN, medianOf, motionSize, sizeSpread, sizeWarning } from "./sizes.mjs";
 import { probeGifDelays } from "./gif-frames.mjs";
+
+// zip.mjs is a shared script (modes/_shared/scripts/, listed in the manifest's
+// skill.sharedScripts): an installed skill keeps it beside this CLI, a source
+// checkout resolves it from the shared directory.
+const installedZip = new URL("./zip.mjs", import.meta.url);
+const { zipStore } = await import(existsSync(installedZip) ? installedZip.href : new URL("../../../_shared/scripts/zip.mjs", import.meta.url).href);
 
 const DEFAULT_THRESHOLD = 16;
 const DEFAULT_PAD = 8;

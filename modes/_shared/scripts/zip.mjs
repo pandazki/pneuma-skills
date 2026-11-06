@@ -10,6 +10,10 @@
  *
  * Limits are the classic zip ones, refused rather than silently corrupted:
  * under 65,535 entries and 4 GiB. A sprite export is at most 400 frames.
+ *
+ * Shared (sprite's PNG-sequence and Aseprite exports, sticker's per-platform
+ * upload archives). Output is a pure function of the entries and `date`:
+ * pass a fixed date for byte-identical archives.
  */
 
 const CRC_TABLE = (() => {

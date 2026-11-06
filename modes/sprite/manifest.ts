@@ -149,6 +149,9 @@ const spriteManifest: ModeManifest = {
       "interpolate-video.mjs",
       "motion-transfer.mjs",
       "generate_gif.mjs",
+      // The store-only zip writer the PNG-sequence and Aseprite exports ship
+      // in; sprite-sheet.mjs imports it (shared with the sticker mode).
+      "zip.mjs",
     ],
   },
 

@@ -195,6 +195,8 @@ describe("the skill install surface", () => {
       // interpolating it to 60 fps. Both drive fal through fal-queue.mjs.
       "remove-video-background.mjs",
       "interpolate-video.mjs",
+      // sprite-sheet.mjs imports the shared store-only zip writer.
+      "zip.mjs",
     ]) {
       expect({ script, declared: declared.includes(script) }).toEqual({
         script,
@@ -355,9 +357,9 @@ describe("the skill install surface", () => {
     // shown is a capability the agent has to guess the shape of — which is
     // how `--prompt` gets written for a script that takes a positional.
     const invoked = spriteManifest.skill!.sharedScripts!.filter(
-      // fal-queue.mjs is a dependency of the two video scripts, never a
-      // command the agent runs.
-      (name) => name !== "fal-queue.mjs",
+      // fal-queue.mjs is a dependency of the two video scripts and zip.mjs
+      // of sprite-sheet.mjs's exports — libraries, never commands the agent runs.
+      (name) => name !== "fal-queue.mjs" && name !== "zip.mjs",
     );
     const corpus = skillMarkdown()
       .map((file) => readFileSync(file, "utf-8"))
