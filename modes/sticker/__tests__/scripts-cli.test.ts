@@ -11,9 +11,9 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { summarizeCosts } from "../../_shared/scripts/craft-project.mjs";
 import * as S from "../skill/scripts/sticker-state.mjs";
@@ -239,6 +239,55 @@ describe("sticker.mjs CLI", () => {
     expect(r.stderr.toString()).toContain("ffmpeg/ffprobe: MISSING");
   });
 
+  test("a recorded path outside the workspace is never read: gen refuses before reserving or sending", () => {
+    const dir = workspace({ stickers: 1 });
+    const outside = fresh();
+    writeFileSync(join(outside, "anchor.webp"), webpHeader(64, 64));
+    const doc = project(dir);
+    const anchorAsset = doc.assets.find((a: { id: string }) => a.id === "character-1");
+    const inside = anchorAsset.uri;
+    anchorAsset.uri = relative(dir, join(outside, "anchor.webp"));
+    writeFileSync(join(dir, "project.json"), `${JSON.stringify(doc, null, 2)}\n`);
+    const before = readFileSync(join(dir, "project.json"), "utf-8");
+    const r = run(dir, ["gen"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain(`${anchorAsset.uri} is outside the workspace`);
+    expect(gifCalls(dir)).toEqual([]);
+    expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    // The same file reached through a link inside the workspace is refused too.
+    anchorAsset.uri = inside;
+    writeFileSync(join(dir, "project.json"), `${JSON.stringify(doc, null, 2)}\n`);
+    rmSync(join(dir, inside));
+    symlinkSync(join(outside, "anchor.webp"), join(dir, inside));
+    const linked = run(dir, ["gen"]);
+    expect(linked.code).toBe(1);
+    expect(linked.err).toContain(`${inside} is a symbolic link`);
+    expect(gifCalls(dir)).toEqual([]);
+  });
+
+  test("a symlinked controlled directory is refused: nothing is sent, written or recorded outside", () => {
+    const dir = workspace({ stickers: 1 });
+    const outside = fresh();
+    symlinkSync(outside, join(dir, "stickers"));
+    const r = run(dir, ["gen"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("stickers is a symbolic link");
+    expect(gifCalls(dir)).toEqual([]);
+    expect(readdirSync(outside)).toEqual([]);
+    expect(project(dir).assets.some((a: { id: string }) => a.id.startsWith("s01-"))).toBe(false);
+    // import copies into the workspace: a file from anywhere is fine, a linked target directory is not.
+    rmSync(join(dir, "character"), { recursive: true });
+    symlinkSync(outside, join(dir, "character"));
+    const photo = join(fresh(), "photo.webp");
+    writeFileSync(photo, webpHeader(64, 64));
+    const imported = run(dir, ["import", "--character", "--file", photo]);
+    expect(imported.code).toBe(1);
+    expect(imported.err).toContain("character is a symbolic link");
+    expect(readdirSync(outside)).toEqual([]);
+    rmSync(join(dir, "character"));
+    expect(ok(dir, ["import", "--character", "--file", photo]).uri).toBe("character/anchor-2.webp");
+  });
+
   test("prompts print exactly what gen sends, for making the GIF elsewhere", () => {
     const dir = workspace();
     const out = ok(dir, ["prompts", "--only", "s01,s03"]);
@@ -452,6 +501,26 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     expect(r.err).toContain(`left by sticker.mjs export (pid ${gone.pid}, started 2026-11-06T10:00:00.000Z), which is no longer running`);
     expect(assetOf(dir, "character-2").status).toBe("ready");
     expect(existsSync(join(dir, ".sticker.lock"))).toBe(false);
+  });
+
+  test("export refuses a symlinked platform directory before writing or deleting anything", () => {
+    const dir = workspace({ stickers: 2 });
+    ok(dir, ["gen"]);
+    editPack(dir, (p) => {
+      p.platforms = ["wechat"];
+      p.stickers[0].take = "s01-take-1";
+      p.stickers[1].take = "s02-take-1";
+    });
+    const outside = fresh();
+    writeFileSync(join(outside, "05.gif"), "not ours");
+    mkdirSync(join(dir, "exports"));
+    symlinkSync(outside, join(dir, "exports", "wechat"));
+    const r = run(dir, ["export", "--platform", "wechat"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("exports/wechat is a symbolic link");
+    expect(readdirSync(outside)).toEqual(["05.gif"]);
+    expect(readFileSync(join(outside, "05.gif"), "utf-8")).toBe("not ours");
+    expect(project(dir).assets.some((a: { id: string }) => a.id.startsWith("wechat-"))).toBe(false);
   });
 
   test("picks and edits: a changed caption makes the picked take stale, with the reason", () => {

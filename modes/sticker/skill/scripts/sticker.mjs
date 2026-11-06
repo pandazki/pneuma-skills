@@ -24,9 +24,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -114,14 +114,45 @@ async function generators() {
 // Workspace
 // ---------------------------------------------------------------------------
 
+/**
+ * The workspace and its one path gate. `abs(rel)` is the only way a
+ * workspace path — planned output or a uri read from project.json — becomes
+ * a file path: it refuses a path that leaves the workspace (`../`, absolute)
+ * and any symbolic link on the way below the root (a linked `exports/wechat`
+ * would carry writes and deletions out; a linked file would attach an
+ * outside file as a reference). With no link below the root, the real path
+ * is inside the real root. Files the user brings (`--file`, `--from`) are
+ * read from anywhere and copied in.
+ */
 function workspace(v) {
   const root = resolve(v.dir ?? process.cwd());
+  const abs = (rel) => {
+    const target = resolve(root, String(rel));
+    const inside = relative(root, target);
+    if (!inside || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+      fail(`${rel} is outside the workspace ${root} — sticker.mjs reads and writes only inside it, and project.json must record only paths inside it`);
+    }
+    let current = root;
+    for (const part of inside.split(sep)) {
+      current = join(current, part);
+      let stat;
+      try {
+        stat = lstatSync(current);
+      } catch {
+        break; // the rest does not exist yet
+      }
+      if (stat.isSymbolicLink()) {
+        fail(`${relative(root, current).split(sep).join("/")} is a symbolic link — sticker.mjs reads and writes only real files and directories inside the workspace; replace the link with a real directory or file and run again`);
+      }
+    }
+    return target;
+  };
   return {
     root,
     pack: join(root, "pack.json"),
     project: join(root, "project.json"),
-    rel: (abs) => relative(root, abs).split(sep).join("/"),
-    abs: (rel) => join(root, rel),
+    rel: (file) => relative(root, file).split(sep).join("/"),
+    abs,
   };
 }
 
@@ -756,12 +787,14 @@ async function cmdCharacter(v) {
   const apiKey = gen.imageKey();
   if (!apiKey) fail(noKey("openrouter"));
   const source = fromImage ? await characterSource(ws, pack, now, v.from) : null;
+  // Checked before anything is reserved: the source must be a real file inside the workspace.
+  const sourceFile = source ? ws.abs(source.uri) : null;
   await ensureProject(ws, pack);
   const rows = [];
   const scope = interruptScope();
   try {
     for (let i = 0; i < count && !scope.signal.aborted; i += 1) {
-      rows.push(await characterCandidate(ws, now, scope, gen, { source, model, quality, prompt, apiKey }));
+      rows.push(await characterCandidate(ws, now, scope, gen, { source, sourceFile, model, quality, prompt, apiKey }));
     }
   } finally {
     scope.dispose();
@@ -775,7 +808,7 @@ async function cmdCharacter(v) {
 }
 
 /** One character candidate: the next free id, generated and registered. */
-async function characterCandidate(ws, now, scope, gen, { source, model, quality, prompt, apiKey }) {
+async function characterCandidate(ws, now, scope, gen, { source, sourceFile, model, quality, prompt, apiKey }) {
   const doc = await loadProjectOrNull(ws);
   const n = nextFree(doc, "character-", (k) => ws.abs(S.paths.character(k)));
   const id = S.ids.character(n);
@@ -792,7 +825,7 @@ async function characterCandidate(ws, now, scope, gen, { source, model, quality,
     call: async ({ signal }) => {
       const out = await generateImageInto(ws, gen, {
         prompt, model, quality, aspectRatio: "1:1", background: "transparent", apiKey, signal,
-        imageUrls: source ? [ws.abs(source.uri)] : [],
+        imageUrls: sourceFile ? [sourceFile] : [],
       }, (ext) => S.paths.character(n, ext));
       measured = measureStillSafely(ws.abs(out.rel));
       return { file: ws.abs(out.rel), cost: reportedCost(out.usage) };
@@ -889,12 +922,13 @@ async function cmdGen(v) {
   doc = await loadProjectOrNull(ws);
   const plan = targets.map(({ sticker }) => {
     const n = nextFree(doc, `${sticker.id}-take-`, (k) => ws.abs(S.paths.take(sticker.id, k)));
-    return { sticker, n, id: S.ids.take(sticker.id, n), uri: S.paths.take(sticker.id, n) };
+    const uri = S.paths.take(sticker.id, n);
+    return { sticker, n, id: S.ids.take(sticker.id, n), uri, file: ws.abs(uri) };
   });
   const scope = interruptScope();
   const tasks = plan.map((p) => async () => {
     let measured = null;
-    const options = gifOptions(p.sticker, ws.abs(p.uri));
+    const options = gifOptions(p.sticker, p.file);
     const row = await runPaid(ws, now, scope, {
       reserve: {
         id: p.id, type: "image", name: `${p.sticker.id} ${p.sticker.word || ""} take ${p.n}`.replace(/\s+/g, " ").trim(), op: "generate", uri: p.uri,
@@ -903,10 +937,10 @@ async function cmdGen(v) {
         cost: gifEstimate(),
       },
       call: async ({ signal }) => {
-        mkdirSync(dirname(ws.abs(p.uri)), { recursive: true });
+        mkdirSync(dirname(p.file), { recursive: true });
         const result = await gen.generateGif({ ...options, apiKey, signal, deadlineMs, onStatus: ({ status }) => note(`[${p.id}] fal ${status}`) });
-        measured = measureTakeSafely(ws.abs(p.uri));
-        return { file: ws.abs(p.uri), requestId: result.requestId };
+        measured = measureTakeSafely(p.file);
+        return { file: p.file, requestId: result.requestId };
       },
       updateSidecar: (d, phase) => {
         if (phase === "land" && measured) sidecar(d).measures[p.id] = { ...measured, at: now() };
@@ -1118,9 +1152,38 @@ async function cmdInspect(v, sidArg) {
 // export
 // ---------------------------------------------------------------------------
 
-/** Files an export of `platform` may have written: removed when no deliverable claims them. */
-function ownedExportFile(name) {
+/** A name an export could have written — only for saying which such files export left alone. */
+function exportLikeName(name) {
   return /^\d{2,3}\.(gif|webm|png)$/.test(name) || /^(cover|icon|banner|reward-guide|reward-thanks|thumb|main|tab)\.(png|jpg)$/.test(name);
+}
+
+/**
+ * The files `platform`'s export owns, as recorded before this run: every
+ * uri of a recorded `<platform>-…` export asset, and the archive its sidecar
+ * record names. Export overwrites and deletes only these.
+ */
+function ownedExports(doc, platform) {
+  const owned = new Set((doc?.assets ?? []).filter((a) => a.id.startsWith(`${platform}-`) && a.uri).map((a) => a.uri));
+  const archive = S.sidecarOf(doc).archives[platform];
+  if (typeof archive?.uri === "string") owned.add(archive.uri);
+  return owned;
+}
+
+/**
+ * Why `rel` must not be written, or null. Free: nothing there, or a file the
+ * project records as its own. An unrecorded regular file holding exactly
+ * `bytes` is taken back (a run cut off between writing and recording left
+ * it; exports are deterministic). Anything else is someone else's file.
+ */
+function foreignFile(rel, file, owned, bytes) {
+  let stat;
+  try {
+    stat = lstatSync(file);
+  } catch {
+    return null;
+  }
+  if (stat.isFile() && (owned.has(rel) || readFileSync(file).equals(bytes))) return null;
+  return `${rel} exists but project.json does not record it as this pack's export${stat.isSymbolicLink() ? " (it is a symbolic link)" : ""} — export never overwrites a file it does not own. Move or delete it, then export again`;
 }
 
 function listingText(pack, platform) {
@@ -1166,6 +1229,19 @@ async function cmdExport(v) {
     const doc0 = await loadProjectOrNull(ws);
     const state = S.exportState(pack, doc0, platform);
     const dir = S.paths.exportDir(platform);
+    const archiveRel = S.paths.archive(platform);
+    const listingRel = S.paths.listing(platform);
+    // Every path this platform's export reads or writes passes the workspace
+    // gate before anything is written: a refusal leaves the platform untouched.
+    const dirAbs = ws.abs(dir);
+    const archiveAbs = ws.abs(archiveRel);
+    const listingAbs = ws.abs(listingRel);
+    for (const item of state.items) {
+      if (item.file) ws.abs(item.file);
+      const source = S.deliverableSource(pack, doc0, item).asset;
+      if (source) ws.abs(source.uri);
+    }
+    const owned = ownedExports(doc0, platform);
     const made = [];
     const rows = [];
     for (const item of state.items) {
@@ -1190,8 +1266,16 @@ async function cmdExport(v) {
         process.exitCode = 1;
         continue;
       }
-      const rel = `${dir}/${item.name}.${out.ext}`;
-      media.writeAtomic(ws.abs(rel), out.bytes);
+      const name = `${item.name}.${out.ext}`;
+      const rel = `${dir}/${name}`;
+      const clash = foreignFile(rel, join(dirAbs, name), owned, out.bytes);
+      if (clash) {
+        note(`ERROR: ${clash}`);
+        rows.push({ deliverable: item.deliverable, state: "error", file: rel, reason: clash });
+        process.exitCode = 1;
+        continue;
+      }
+      media.writeAtomic(join(dirAbs, name), out.bytes);
       made.push({ item, rel, source, measure: { ...out.measure, key: item.key, at: now() } });
       if (!out.measure.fit.ok) {
         process.exitCode = 1;
@@ -1221,39 +1305,60 @@ async function cmdExport(v) {
     const gone = doc.assets.filter((a) => a.id.startsWith(`${platform}-`) && !live.has(a.id)).map((a) => a.id);
     for (const id of gone) delete sc.measures[id];
     if (gone.length) craft.dropAssets(doc, gone);
-    // Then every file in the export directory that no live export claims goes:
-    // a dropped sticker's, or a renumbered one's old name. Deleting only now —
-    // after every file is written — keeps a renumbered sticker's new file
-    // (it may have the name a dropped one had).
-    const claimed = new Set(doc.assets.filter((a) => a.id.startsWith(`${platform}-`)).map((a) => basename(a.uri)));
-    if (existsSync(ws.abs(dir))) {
-      for (const name of readdirSync(ws.abs(dir))) if (ownedExportFile(name) && !claimed.has(name)) rmSync(ws.abs(`${dir}/${name}`), { force: true });
+    // Then a file this platform's export owned before this run and that no
+    // export claims now goes: a dropped sticker's, or a renumbered one's old
+    // name. Only now — after every file is written — so a renumbered
+    // sticker's new file (it may have the name a dropped one had) stays.
+    // Files the project never recorded are left alone, and said.
+    const claimed = new Set(doc.assets.filter((a) => a.id.startsWith(`${platform}-`)).map((a) => a.uri));
+    const deleted = [];
+    const leftAlone = [];
+    if (existsSync(dirAbs)) {
+      for (const name of readdirSync(dirAbs).sort()) {
+        const rel = `${dir}/${name}`;
+        if (claimed.has(rel)) continue;
+        if (owned.has(rel)) {
+          rmSync(join(dirAbs, name), { force: true });
+          deleted.push(rel);
+        } else if (exportLikeName(name)) leftAlone.push(name);
+      }
     }
+    if (leftAlone.length) note(`left alone in ${dir} (not recorded as this pack's exports): ${leftAlone.join(", ")}`);
     // The listing text.
-    const listingRel = S.paths.listing(platform);
     const text = listingText(pack, platform);
-    if (!existsSync(ws.abs(listingRel)) || readFileSync(ws.abs(listingRel), "utf-8") !== text) media.writeAtomic(ws.abs(listingRel), text);
+    if (!existsSync(listingAbs) || readFileSync(listingAbs, "utf-8") !== text) media.writeAtomic(listingAbs, text);
     // The archive: every required deliverable, current.
     const after = S.exportState(pack, doc, platform);
     let archiveRow;
     if (after.archive.state === "blocked") {
       archiveRow = { state: "blocked", reason: "not every deliverable is exported and current" };
     } else {
-      const archiveRel = S.paths.archive(platform);
       const members = after.items.filter((i) => i.state === "current");
       const existing = sc.archives[platform];
-      if (existing?.key === after.archive.key && existsSync(ws.abs(archiveRel)) && statSync(ws.abs(archiveRel)).size === existing.bytes) {
+      if (existing?.key === after.archive.key && existsSync(archiveAbs) && statSync(archiveAbs).size === existing.bytes) {
         archiveRow = { state: "current", file: archiveRel };
       } else {
         const bytes = media.archive(members.map((i) => ({ name: basename(i.file), data: readFileSync(ws.abs(i.file)) })));
-        media.writeAtomic(ws.abs(archiveRel), bytes);
-        sc.archives[platform] = { uri: archiveRel, bytes: bytes.length, entries: members.map((i) => basename(i.file)), key: after.archive.key, at: now() };
-        archiveRow = { state: "exported", file: archiveRel, bytes: bytes.length };
+        const clash = foreignFile(archiveRel, archiveAbs, owned, bytes);
+        if (clash) {
+          note(`ERROR: ${clash}`);
+          process.exitCode = 1;
+          archiveRow = { state: "error", file: archiveRel, reason: clash };
+        } else {
+          media.writeAtomic(archiveAbs, bytes);
+          sc.archives[platform] = { uri: archiveRel, bytes: bytes.length, entries: members.map((i) => basename(i.file)), key: after.archive.key, at: now() };
+          archiveRow = { state: "exported", file: archiveRel, bytes: bytes.length };
+        }
       }
     }
     const pruned = tidy(doc);
+    // An archive whose record no longer holds (a member's export is gone) goes with its record.
+    if (pruned.archives.includes(platform) && owned.has(archiveRel) && existsSync(archiveAbs)) {
+      rmSync(archiveAbs, { force: true });
+      deleted.push(archiveRel);
+    }
     if (made.length || gone.length || archiveRow.state === "exported" || pruned.measures.length || pruned.archives.length) io.saveProject(ws.project, doc);
-    report[platform] = { items: rows, archive: archiveRow, removed: gone };
+    report[platform] = { items: rows, archive: archiveRow, removed: gone, deleted, leftAlone };
   }
   const lines = [];
   for (const [platform, r] of Object.entries(report)) {
@@ -1265,7 +1370,9 @@ async function cmdExport(v) {
       else lines.push(`  ${row.deliverable} ERROR — ${row.reason}`);
     }
     if (r.removed.length) lines.push(`  removed: ${r.removed.join(", ")}`);
-    lines.push(`  archive: ${r.archive.state === "blocked" ? `not built — ${r.archive.reason}` : `${r.archive.file}${r.archive.bytes ? ` · ${kb(r.archive.bytes)}` : " (current)"}`}`);
+    if (r.deleted.length) lines.push(`  deleted: ${r.deleted.join(", ")}`);
+    if (r.leftAlone.length) lines.push(`  left alone (not this pack's exports): ${r.leftAlone.join(", ")}`);
+    lines.push(`  archive: ${r.archive.state === "blocked" ? `not built — ${r.archive.reason}` : r.archive.state === "error" ? `NOT WRITTEN — ${r.archive.reason}` : `${r.archive.file}${r.archive.bytes ? ` · ${kb(r.archive.bytes)}` : " (current)"}`}`);
   }
   lines.push(`check with: sticker.mjs check${platforms.length === 1 ? ` --platform ${platforms[0]}` : ""}`);
   emit(v, { command: "export", platforms: report }, lines);
