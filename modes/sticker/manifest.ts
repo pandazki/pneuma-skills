@@ -181,10 +181,12 @@ The user just opened the sticker workspace. Greet them briefly (1-2 sentences) i
 
   init: {
     contentCheckPattern: "pack.json",
-    // The seed is a real run, shipped as it came out: the character redrawn
-    // from the anime-series 牛马 with its provenance, eight everyday
-    // work-chat stickers with their re-rolls kept as takes, all art, and all
-    // three platforms' exports and checks.
+    // The seed is a real run, shipped as it came out and stopped before
+    // export: the character redrawn from the anime-series 牛马 with its
+    // provenance, eight everyday work-chat stickers with their re-rolls kept
+    // as takes, and all art. Exports are left out to keep the catalog
+    // download near 14 MB (31.6 MB with them); `export` rebuilds them free in
+    // about half a minute, byte-identical to the run's own.
     seedFiles: {
       "modes/sticker/seed/niuma/": "./",
     },
