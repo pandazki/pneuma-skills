@@ -757,6 +757,48 @@ export function stickerStates(pack, project) {
   return pack.stickers.map((s) => stickerState(pack, project, s.id));
 }
 
+/**
+ * What `sticker.mjs gen` makes — the one rule gen, quote and `nextStep` read.
+ *
+ *   default    every sticker with no take, and every sticker whose takes all
+ *              failed when the latest failure provably never left (billing
+ *              `none`). A sticker whose latest take failed with billing
+ *              `unknown` may already have been charged: it goes to
+ *              `uncertain`, and a plain gen does not send it again.
+ *   only       the named stickers that are empty or failed. Naming an
+ *              uncertain sticker is the explicit retry.
+ *   redo       every chosen sticker gets a new take, whatever its state.
+ *
+ * Returns `{ targets: [{ id, status }], skipped: [{ id, status }],
+ * uncertain: [{ id, take, reason }] }` in pack order. An unknown `only` id
+ * throws.
+ */
+export function genTargets(pack, project, { only = [], redo = false } = {}) {
+  for (const id of only) {
+    if (!findSticker(pack, id)) throw new Error(`--only: no sticker '${id}' in pack.json (${pack.stickers.map((s) => s.id).join(", ") || "none"})`);
+  }
+  const targets = [];
+  const skipped = [];
+  const uncertain = [];
+  for (const sticker of pack.stickers) {
+    if (only.length && !only.includes(sticker.id)) continue;
+    const state = stickerState(pack, project, sticker.id);
+    if (redo || state.status === "empty") {
+      targets.push({ id: sticker.id, status: state.status });
+      continue;
+    }
+    if (state.status !== "failed") {
+      skipped.push({ id: sticker.id, status: state.status });
+      continue;
+    }
+    const latest = takesOf(project, sticker.id).at(-1);
+    const failure = latest?.edge?.operation?.params?.failure ?? null;
+    if (failure?.billing === "none" || only.length) targets.push({ id: sticker.id, status: state.status });
+    else uncertain.push({ id: sticker.id, take: latest?.id ?? null, reason: failure?.reason ?? "no failure recorded" });
+  }
+  return { targets, skipped, uncertain };
+}
+
 /** The picked anchor if it is a ready character asset, else null with why. */
 export function anchorState(pack, project) {
   const anchor = pack.character.anchor;
@@ -857,6 +899,34 @@ export function exportKey(pack, project, platform, item) {
 export function sidecarOf(project) {
   const s = isRecord(project?.[SIDECAR_KEY]) ? project[SIDECAR_KEY] : {};
   return { schema: s.schema ?? SIDECAR_SCHEMA, measures: isRecord(s.measures) ? s.measures : {}, archives: isRecord(s.archives) ? s.archives : {} };
+}
+
+/**
+ * The sidecar with only the records that still describe something, for
+ * `sticker.mjs` to write back on every save: a measurement whose asset the
+ * project records, and a platform's archive record whose `entries` are all
+ * files of that platform's recorded exports. Anything dropped here is
+ * already ignored by `exportState` (which reads the narrower pack-based
+ * set), so pruning changes no state, row or step. Pure: returns a new
+ * sidecar (key order kept) and what it dropped.
+ */
+export function pruneSidecar(project) {
+  const raw = isRecord(project?.[SIDECAR_KEY]) ? project[SIDECAR_KEY] : {};
+  const assets = project?.assets ?? [];
+  const ids = new Set(assets.map((a) => a.id));
+  const measures = {};
+  const archives = {};
+  const dropped = { measures: [], archives: [] };
+  for (const [id, m] of Object.entries(isRecord(raw.measures) ? raw.measures : {})) {
+    if (ids.has(id)) measures[id] = m;
+    else dropped.measures.push(id);
+  }
+  for (const [platform, record] of Object.entries(isRecord(raw.archives) ? raw.archives : {})) {
+    const files = new Set(assets.filter((a) => a.id.startsWith(`${platform}-`) && a.uri).map((a) => a.uri.split("/").pop()));
+    if (isRecord(record) && Array.isArray(record.entries) && record.entries.every((name) => files.has(name))) archives[platform] = record;
+    else dropped.archives.push(platform);
+  }
+  return { sidecar: { ...raw, schema: raw.schema ?? SIDECAR_SCHEMA, measures, archives }, dropped };
 }
 
 /** The archive key: its member files' keys, in order. Null when any member is missing or stale. */
@@ -1131,8 +1201,16 @@ export function nextStep(pack, project) {
   if (!pack.stickers.length) return { id: "stickers", line: "Add stickers to pack.json (id, word, caption, emoji, action)." };
   const states = stickerStates(pack, project);
   const by = (status) => states.filter((s) => s.status === status).map((s) => s.id);
-  const missing = [...by("empty"), ...by("failed")];
-  if (missing.length) return { id: "generate", line: `Generate takes for ${missing.join(", ")}.`, command: `sticker.mjs gen${missing.length === states.length ? "" : ` --only ${missing.join(",")}`}`, stickers: missing };
+  // Exactly what a plain `gen` would make (genTargets), then the stickers it leaves alone.
+  const plan = genTargets(pack, project);
+  const missing = plan.targets.map((t) => t.id);
+  const uncertain = plan.uncertain.map((u) => u.id);
+  const charged = `the last take failed with billing unknown — it may have been charged`;
+  if (missing.length) {
+    const left = uncertain.length ? ` Not included: ${uncertain.join(", ")} (${charged}; retry only with the user's yes: sticker.mjs gen --only ${uncertain.join(",")}).` : "";
+    return { id: "generate", line: `Generate takes for ${missing.join(", ")}.${left}`, command: `sticker.mjs gen${missing.length === states.length ? "" : ` --only ${missing.join(",")}`}`, stickers: missing };
+  }
+  if (uncertain.length) return { id: "generate", line: `${uncertain.join(", ")}: ${charged}. A plain gen does not send it again; ask the user before retrying.`, command: `sticker.mjs gen --only ${uncertain.join(",")}`, stickers: uncertain };
   const generating = by("generating");
   if (generating.length) return { id: "generating", line: `Wait for ${generating.join(", ")} to land.`, stickers: generating };
   const pick = by("pick");

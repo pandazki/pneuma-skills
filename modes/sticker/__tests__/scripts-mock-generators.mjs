@@ -19,6 +19,7 @@
  * MOCK_FAIL_STICKER=s02    only the GIF whose output path is under stickers/s02/ fails
  * MOCK_NO_KEYS=1           report no API keys
  * MOCK_SLEEP_MS=<n>        a GIF "takes" n ms and honours the abort signal
+ * MOCK_IMAGE_SLEEP_MS=<n>  an image "takes" n ms and honours the abort signal
  */
 
 import { spawnSync } from "node:child_process";
@@ -147,8 +148,9 @@ export async function generateGif({ prompt, output, imageUrls = [], frameCount, 
   }
 }
 
-export async function generateImage({ prompt, model, aspectRatio, imageUrls = [], outputDir, filenamePrefix, background }) {
+export async function generateImage({ prompt, model, aspectRatio, imageUrls = [], outputDir, filenamePrefix, background, signal }) {
   log({ kind: "image", prompt, model, aspectRatio, imageUrls, background });
+  if (process.env.MOCK_IMAGE_SLEEP_MS) await sleep(Number(process.env.MOCK_IMAGE_SLEEP_MS), signal);
   maybeFail("image");
   const [width, height] = ASPECTS[aspectRatio] ?? [1024, 1024];
   mkdirSync(outputDir, { recursive: true });

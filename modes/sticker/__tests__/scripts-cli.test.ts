@@ -11,9 +11,9 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { summarizeCosts } from "../../_shared/scripts/craft-project.mjs";
 import * as S from "../skill/scripts/sticker-state.mjs";
@@ -21,6 +21,7 @@ import { rawPack } from "./sticker-fixture.js";
 import { structuralGif } from "./scripts-mock-generators.mjs";
 
 const STICKER = join(import.meta.dir, "..", "skill", "scripts", "sticker.mjs");
+const CRAFT_IO = join(import.meta.dir, "..", "..", "_shared", "scripts", "craft-project-io.mjs");
 const MOCK = join(import.meta.dir, "scripts-mock-generators.mjs");
 const T0 = 1793000000000;
 const HAS_FFPROBE = (() => {
@@ -42,7 +43,7 @@ afterAll(() => {
 interface Run { code: number; out: string; err: string }
 
 function env(dir: string, extra: Record<string, string> = {}) {
-  return { ...process.env, STICKER_GENERATORS: MOCK, MOCK_LOG: join(dir, ".mock-log.jsonl"), MOCK_FAIL: "", MOCK_FAIL_STICKER: "", MOCK_NO_KEYS: "", MOCK_REAL_MEDIA: "", MOCK_SLEEP_MS: "", ...extra };
+  return { ...process.env, STICKER_GENERATORS: MOCK, MOCK_LOG: join(dir, ".mock-log.jsonl"), MOCK_FAIL: "", MOCK_FAIL_STICKER: "", MOCK_NO_KEYS: "", MOCK_REAL_MEDIA: "", MOCK_SLEEP_MS: "", MOCK_IMAGE_SLEEP_MS: "", ...extra };
 }
 
 /** Pinned cwd: Bun loads the cwd's .env, and the repository's holds real keys. */
@@ -238,6 +239,55 @@ describe("sticker.mjs CLI", () => {
     expect(r.stderr.toString()).toContain("ffmpeg/ffprobe: MISSING");
   });
 
+  test("a recorded path outside the workspace is never read: gen refuses before reserving or sending", () => {
+    const dir = workspace({ stickers: 1 });
+    const outside = fresh();
+    writeFileSync(join(outside, "anchor.webp"), webpHeader(64, 64));
+    const doc = project(dir);
+    const anchorAsset = doc.assets.find((a: { id: string }) => a.id === "character-1");
+    const inside = anchorAsset.uri;
+    anchorAsset.uri = relative(dir, join(outside, "anchor.webp"));
+    writeFileSync(join(dir, "project.json"), `${JSON.stringify(doc, null, 2)}\n`);
+    const before = readFileSync(join(dir, "project.json"), "utf-8");
+    const r = run(dir, ["gen"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain(`${anchorAsset.uri} is outside the workspace`);
+    expect(gifCalls(dir)).toEqual([]);
+    expect(readFileSync(join(dir, "project.json"), "utf-8")).toBe(before);
+    // The same file reached through a link inside the workspace is refused too.
+    anchorAsset.uri = inside;
+    writeFileSync(join(dir, "project.json"), `${JSON.stringify(doc, null, 2)}\n`);
+    rmSync(join(dir, inside));
+    symlinkSync(join(outside, "anchor.webp"), join(dir, inside));
+    const linked = run(dir, ["gen"]);
+    expect(linked.code).toBe(1);
+    expect(linked.err).toContain(`${inside} is a symbolic link`);
+    expect(gifCalls(dir)).toEqual([]);
+  });
+
+  test("a symlinked controlled directory is refused: nothing is sent, written or recorded outside", () => {
+    const dir = workspace({ stickers: 1 });
+    const outside = fresh();
+    symlinkSync(outside, join(dir, "stickers"));
+    const r = run(dir, ["gen"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("stickers is a symbolic link");
+    expect(gifCalls(dir)).toEqual([]);
+    expect(readdirSync(outside)).toEqual([]);
+    expect(project(dir).assets.some((a: { id: string }) => a.id.startsWith("s01-"))).toBe(false);
+    // import copies into the workspace: a file from anywhere is fine, a linked target directory is not.
+    rmSync(join(dir, "character"), { recursive: true });
+    symlinkSync(outside, join(dir, "character"));
+    const photo = join(fresh(), "photo.webp");
+    writeFileSync(photo, webpHeader(64, 64));
+    const imported = run(dir, ["import", "--character", "--file", photo]);
+    expect(imported.code).toBe(1);
+    expect(imported.err).toContain("character is a symbolic link");
+    expect(readdirSync(outside)).toEqual([]);
+    rmSync(join(dir, "character"));
+    expect(ok(dir, ["import", "--character", "--file", photo]).uri).toBe("character/anchor-2.webp");
+  });
+
   test("prompts print exactly what gen sends, for making the GIF elsewhere", () => {
     const dir = workspace();
     const out = ok(dir, ["prompts", "--only", "s01,s03"]);
@@ -302,16 +352,29 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     expect(failed.failure).toMatchObject({ billing: "unknown" });
     expect(failed.requestId).toBe("mock-request-failed");
     expect(assetOf(dir, "s02-take-1").status).toBe("failed");
-    const rerun = ok(dir, ["gen"]);
+    // It may have been charged: a plain rerun, its quote and the next step leave it, and say how to retry.
+    const quote = ok(dir, ["quote"]);
+    expect(quote.items[0]).toMatchObject({ count: 0, stickers: [], uncertain: [{ id: "s02", take: "s02-take-1" }] });
+    expect(run(dir, ["quote"]).out).toContain("s02 (s02-take-1 failed, billing unknown");
+    const plain = run(dir, ["gen", "--json", "--at", String(T0)]);
+    expect(plain.code).toBe(0);
+    expect(JSON.parse(plain.out)).toMatchObject({ results: [], uncertain: [{ id: "s02", take: "s02-take-1" }] });
+    expect(plain.err).toContain("gen --only s02");
+    expect(gifCalls(dir)).toHaveLength(3);
+    expect(ok(dir, ["status"]).next).toMatchObject({ id: "generate", command: "sticker.mjs gen --only s02" });
+    // Naming it is the explicit retry.
+    const rerun = ok(dir, ["gen", "--only", "s02"]);
     expect(rerun.results.map((x: { id: string }) => x.id)).toEqual(["s02-take-2"]);
     expect(gifCalls(dir).map((c: { output: string }) => c.output.split("/stickers/")[1])).toEqual(["s01/take-1.gif", "s02/take-1.gif", "s03/take-1.gif", "s02/take-2.gif"]);
   });
 
-  test("a request that provably never left is recorded as not billed", () => {
+  test("a request that provably never left is recorded as not billed, and a plain rerun retries it", () => {
     const dir = workspace({ stickers: 1 });
     expect(run(dir, ["gen"], { MOCK_FAIL: "refused" }).code).toBe(1);
     expect(edgeOf(dir, "s01-take-1").operation.params.failure).toMatchObject({ billing: "none" });
     expect(summarizeCosts(project(dir)).notBilled).toEqual(["s01-take-1"]);
+    expect(ok(dir, ["quote"]).items[0]).toMatchObject({ count: 1, stickers: ["s01"], uncertain: [] });
+    expect(ok(dir, ["gen"]).results.map((x: { id: string; ok: boolean }) => [x.id, x.ok])).toEqual([["s01-take-2", true]]);
   });
 
   test("a generated file is never overwritten: a stray take file pushes the id on", () => {
@@ -336,6 +399,128 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     child.kill("SIGINT");
     expect(await child.exited).toBe(130);
     expect(edgeOf(dir, "s01-take-1").operation.params.failure).toMatchObject({ billing: "unknown" });
+  });
+
+  test("every write keeps the sidecar to what the project records", () => {
+    const dir = workspace({ stickers: 2 });
+    ok(dir, ["gen"]);
+    const orphan = () => {
+      // What a craft drop leaves: the measurement of a dropped asset, the archive record of dropped exports.
+      const doc = project(dir);
+      doc.sticker.measures["wechat-s09"] = doc.sticker.measures["s02-take-1"];
+      doc.sticker.archives.wechat = { uri: "exports/wechat.zip", bytes: 10, entries: ["01.gif"], key: "k", at: T0 };
+      writeFileSync(join(dir, "project.json"), `${JSON.stringify(doc, null, 2)}\n`);
+    };
+    const drop = Bun.spawnSync([process.execPath, CRAFT_IO, "drop", "--path", join(dir, "project.json"), "--id", "s01-take-1"], { cwd: dir, stderr: "pipe" });
+    expect(drop.exitCode).toBe(0);
+    orphan();
+    // A local write (import) …
+    ok(dir, ["import", "--character", "--file", join(dir, "photo.webp")]);
+    expect(Object.keys(project(dir).sticker.measures).sort()).toEqual(["s02-take-1"]);
+    expect(project(dir).sticker.archives).toEqual({});
+    // … and a paid one (runRegistered's writes).
+    orphan();
+    ok(dir, ["gen", "--only", "s01"]);
+    expect(Object.keys(project(dir).sticker.measures).sort()).toEqual(["s01-take-2", "s02-take-1"]);
+    expect(project(dir).sticker.archives).toEqual({});
+  });
+
+  /** Spawn a paid command, interrupt it once `ready()` holds, and give it `graceMs` to exit (then kill it). */
+  async function interrupt(dir: string, argv: string[], extra: Record<string, string>, ready: () => boolean, graceMs = 8000) {
+    const child = Bun.spawn([process.execPath, STICKER, ...argv, "--dir", dir, "--json"], { cwd: dir, stdout: "pipe", stderr: "pipe", env: env(dir, extra) });
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && !ready()) await Bun.sleep(50);
+    expect(ready()).toBe(true);
+    child.kill("SIGINT");
+    const code = await Promise.race([child.exited, Bun.sleep(graceMs).then(() => "still running")]);
+    if (code === "still running") child.kill("SIGKILL");
+    await child.exited;
+    return { code, out: await new Response(child.stdout).text(), err: await new Response(child.stderr).text() };
+  }
+
+  test("one interrupt cancels the whole gen: in-flight takes fail (billing unknown), nothing new is sent, exit 130", async () => {
+    const dir = workspace({ stickers: 8 });
+    const inFlight = () => (project(dir).assets as { status?: string }[]).filter((a) => a.status === "generating").length;
+    const r = await interrupt(dir, ["gen", "--concurrency", "4"], { MOCK_SLEEP_MS: "20000" }, () => inFlight() === 4);
+    expect(r.code).toBe(130);
+    expect(gifCalls(dir)).toHaveLength(4);
+    for (const sid of ["s01", "s02", "s03", "s04"]) {
+      expect(assetOf(dir, `${sid}-take-1`).status).toBe("failed");
+      expect(edgeOf(dir, `${sid}-take-1`).operation.params.failure).toMatchObject({ billing: "unknown" });
+    }
+    for (const sid of ["s05", "s06", "s07", "s08"]) expect(assetOf(dir, `${sid}-take-1`)).toBeUndefined();
+    const out = JSON.parse(r.out);
+    expect(out).toMatchObject({ interrupted: "SIGINT", notStarted: ["s05", "s06", "s07", "s08"] });
+    expect(r.err).toContain("never started (nothing sent): s05, s06, s07, s08");
+  }, 30_000);
+
+  test("one interrupt stops character candidates too: the rest are never sent", async () => {
+    const dir = workspace({ anchor: false });
+    const imageCalls = () => mockLog(dir).filter((e: { kind: string }) => e.kind === "image").length;
+    const r = await interrupt(dir, ["character", "--from", join(dir, "photo.webp"), "--count", "3"], { MOCK_IMAGE_SLEEP_MS: "20000" }, () => imageCalls() === 1);
+    expect(r.code).toBe(130);
+    expect(imageCalls()).toBe(1);
+    expect(edgeOf(dir, "character-1").operation.params.failure).toMatchObject({ billing: "unknown" });
+    expect(assetOf(dir, "character-2")).toBeUndefined();
+    expect(JSON.parse(r.out)).toMatchObject({ interrupted: "SIGINT", notStarted: 2 });
+    expect(r.err).toContain("2 candidate(s) never started");
+  }, 30_000);
+
+  test("one writer at a time: a second mutating command refuses and names the holder; reading commands still answer", async () => {
+    const dir = workspace({ stickers: 2 });
+    writeFileSync(join(dir, "made.gif"), structuralGif(12, { delayCs: 10, width: 480, height: 480 }));
+    const first = Bun.spawn([process.execPath, STICKER, "gen", "--only", "s01", "--dir", dir], { cwd: dir, stdout: "pipe", stderr: "pipe", env: env(dir, { MOCK_SLEEP_MS: "20000" }) });
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && assetOf(dir, "s01-take-1")?.status !== "generating") await Bun.sleep(50);
+    expect(assetOf(dir, "s01-take-1")?.status).toBe("generating");
+    const holder = JSON.parse(readFileSync(join(dir, ".sticker.lock"), "utf-8"));
+    expect(holder).toMatchObject({ pid: first.pid, command: "gen" });
+    for (const argv of [["gen", "--only", "s01", "--redo"], ["import", "--sticker", "s02", "--file", join(dir, "made.gif")], ["export"]]) {
+      const r = run(dir, argv);
+      expect({ argv, code: r.code }).toEqual({ argv, code: 1 });
+      expect(r.err).toContain(`another sticker.mjs gen (pid ${first.pid}`);
+      expect(r.err).toContain("is working in this workspace");
+    }
+    // Nothing was sent or recorded by the refused commands; the take in flight is untouched.
+    expect(gifCalls(dir)).toHaveLength(1);
+    expect(assetOf(dir, "s01-take-1").status).toBe("generating");
+    expect(assetOf(dir, "s02-take-1")).toBeUndefined();
+    for (const argv of [["status"], ["quote"], ["prompts"], ["gen", "--dry-run"]]) expect({ argv, code: run(dir, argv).code }).toEqual({ argv, code: 0 });
+    first.kill("SIGINT");
+    expect(await first.exited).toBe(130);
+    expect(existsSync(join(dir, ".sticker.lock"))).toBe(false);
+  }, 30_000);
+
+  test("a lock whose process is gone is reported and taken over", () => {
+    const dir = workspace({ stickers: 1 });
+    const gone = Bun.spawnSync([process.execPath, "-e", "process.pid"]);
+    expect(gone.exitCode).toBe(0);
+    writeFileSync(join(dir, ".sticker.lock"), JSON.stringify({ pid: gone.pid, command: "export", startedAt: "2026-11-06T10:00:00.000Z" }));
+    const r = run(dir, ["import", "--character", "--file", join(dir, "photo.webp")]);
+    expect(r.code).toBe(0);
+    expect(r.err).toContain(`left by sticker.mjs export (pid ${gone.pid}, started 2026-11-06T10:00:00.000Z), which is no longer running`);
+    expect(assetOf(dir, "character-2").status).toBe("ready");
+    expect(existsSync(join(dir, ".sticker.lock"))).toBe(false);
+  });
+
+  test("export refuses a symlinked platform directory before writing or deleting anything", () => {
+    const dir = workspace({ stickers: 2 });
+    ok(dir, ["gen"]);
+    editPack(dir, (p) => {
+      p.platforms = ["wechat"];
+      p.stickers[0].take = "s01-take-1";
+      p.stickers[1].take = "s02-take-1";
+    });
+    const outside = fresh();
+    writeFileSync(join(outside, "05.gif"), "not ours");
+    mkdirSync(join(dir, "exports"));
+    symlinkSync(outside, join(dir, "exports", "wechat"));
+    const r = run(dir, ["export", "--platform", "wechat"]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("exports/wechat is a symbolic link");
+    expect(readdirSync(outside)).toEqual(["05.gif"]);
+    expect(readFileSync(join(outside, "05.gif"), "utf-8")).toBe("not ours");
+    expect(project(dir).assets.some((a: { id: string }) => a.id.startsWith("wechat-"))).toBe(false);
   });
 
   test("picks and edits: a changed caption makes the picked take stale, with the reason", () => {

@@ -23,9 +23,10 @@
  * Node built-ins plus ffmpeg/ffprobe; no npm dependencies.
  */
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -113,15 +114,122 @@ async function generators() {
 // Workspace
 // ---------------------------------------------------------------------------
 
+/**
+ * The workspace and its one path gate. `abs(rel)` is the only way a
+ * workspace path — planned output or a uri read from project.json — becomes
+ * a file path: it refuses a path that leaves the workspace (`../`, absolute)
+ * and any symbolic link on the way below the root (a linked `exports/wechat`
+ * would carry writes and deletions out; a linked file would attach an
+ * outside file as a reference). With no link below the root, the real path
+ * is inside the real root. Files the user brings (`--file`, `--from`) are
+ * read from anywhere and copied in.
+ */
 function workspace(v) {
   const root = resolve(v.dir ?? process.cwd());
+  const abs = (rel) => {
+    const target = resolve(root, String(rel));
+    const inside = relative(root, target);
+    if (!inside || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+      fail(`${rel} is outside the workspace ${root} — sticker.mjs reads and writes only inside it, and project.json must record only paths inside it`);
+    }
+    let current = root;
+    for (const part of inside.split(sep)) {
+      current = join(current, part);
+      let stat;
+      try {
+        stat = lstatSync(current);
+      } catch {
+        break; // the rest does not exist yet
+      }
+      if (stat.isSymbolicLink()) {
+        fail(`${relative(root, current).split(sep).join("/")} is a symbolic link — sticker.mjs reads and writes only real files and directories inside the workspace; replace the link with a real directory or file and run again`);
+      }
+    }
+    return target;
+  };
   return {
     root,
     pack: join(root, "pack.json"),
     project: join(root, "project.json"),
-    rel: (abs) => relative(root, abs).split(sep).join("/"),
-    abs: (rel) => join(root, rel),
+    rel: (file) => relative(root, file).split(sep).join("/"),
+    abs,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Workspace lock — one writer at a time
+// ---------------------------------------------------------------------------
+
+/** Commands that write project.json or media files; status, quote, prompts, check and inspect never lock. */
+const MUTATING = new Set(["character", "gen", "import", "export"]);
+const LOCK_FILE = ".sticker.lock";
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+function readLock(path) {
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const holder = JSON.parse(raw);
+    return { raw, holder: holder && typeof holder === "object" ? holder : null };
+  } catch {
+    return null;
+  }
+}
+
+const holderText = (h) => `sticker.mjs ${h?.command ?? "?"} (pid ${h?.pid ?? "?"}, started ${h?.startedAt ?? "at an unknown time"})`;
+
+/**
+ * Take the workspace's exclusive write lock: `.sticker.lock`, created
+ * atomically with { pid, command, startedAt } (written beside, then
+ * hard-linked into place, so it is never read half-written). A live holder
+ * refuses this command by name; a holder whose pid is gone is reported and
+ * taken over. Returns `release()`, also run on process exit (a second
+ * interrupt exits at once). Null when the workspace directory does not exist
+ * (the command then fails on its missing pack.json).
+ */
+function lockWorkspace(ws, command) {
+  const path = join(ws.root, LOCK_FILE);
+  const token = randomUUID();
+  const body = `${JSON.stringify({ pid: process.pid, command, startedAt: new Date().toISOString(), token })}\n`;
+  const create = () => {
+    const staged = `${path}.${process.pid}-${token.slice(0, 8)}.tmp`;
+    writeFileSync(staged, body, { flag: "wx" });
+    try {
+      linkSync(staged, path);
+      return true;
+    } catch (error) {
+      if (error?.code === "EEXIST") return false;
+      throw error;
+    } finally {
+      rmSync(staged, { force: true });
+    }
+  };
+  if (!existsSync(ws.root)) return null;
+  // Released between our attempt and our read: one more try.
+  if (!create() && (existsSync(path) || !create())) {
+    const seen = readLock(path);
+    const holder = seen?.holder;
+    const refuse = (h) => fail(`${h ? `another ${holderText(h)} is working in this workspace` : `${path} is held but unreadable`} — nothing was done. Wait for it to finish (status, quote, prompts, check and inspect still work); if no sticker.mjs is running there, delete ${path}`);
+    if (!holder || !Number.isInteger(holder.pid) || pidAlive(holder.pid)) refuse(holder);
+    // The holder is gone. Take over only the lock we judged; a newer one wins.
+    if (readLock(path)?.raw !== seen.raw) refuse(readLock(path)?.holder);
+    rmSync(path, { force: true });
+    if (!create()) refuse(readLock(path)?.holder);
+    note(`WARN: ${LOCK_FILE} was left by ${holderText(holder)}, which is no longer running — taking it over. If it was cut off mid-call, status shows what it left in flight.`);
+  }
+  const release = () => {
+    process.off("exit", release);
+    if (readLock(path)?.holder?.token === token) rmSync(path, { force: true });
+  };
+  process.on("exit", release);
+  return { release };
 }
 
 const PACK_HINT = `pack.json holds { version: 1, rights, platforms, character: { description, style, anchor }, motion, listing, stickers: [{ id, word, caption, emoji, action, take, keepFrames }], art }`;
@@ -156,6 +264,22 @@ async function ensureProject(ws, pack) {
     }));
   }
   return io.loadProject(ws.project, { sidecarKey: S.SIDECAR_KEY });
+}
+
+/**
+ * Before every save: drop sidecar records the project no longer backs
+ * (`S.pruneSidecar` — a craft `drop` leaves them). Returns what went.
+ */
+function tidy(doc) {
+  const { sidecar: kept, dropped } = S.pruneSidecar(doc);
+  doc[S.SIDECAR_KEY] = kept;
+  if (dropped.measures.length || dropped.archives.length) {
+    note(`project.json: dropped the records of files it no longer holds — ${[
+      dropped.measures.length ? `${dropped.measures.length} measurement(s)` : null,
+      dropped.archives.length ? `archive record(s) of ${dropped.archives.join(", ")}` : null,
+    ].filter(Boolean).join(", ")}`);
+  }
+  return dropped;
 }
 
 /** The sidecar with every container present (this CLI is its only writer). */
@@ -259,31 +383,87 @@ async function projectCostLine(ws) {
 }
 
 /**
- * One registered paid call. Returns a row; a failed or interrupted call is
- * reported and sets the exit code.
+ * One cancellation for a whole paid command. The first SIGINT / SIGTERM
+ * aborts every call in flight (runRegistered records each as failed, billing
+ * unknown) and nothing new is reserved or sent after it; a second signal
+ * exits 130 at once. runRegistered's own per-call handlers are off
+ * (`handleSignals: false`), so this scope keeps that contract: per-call
+ * handlers would be gone between calls, and a fresh call would start with a
+ * fresh signal.
  */
-async function runPaid(ws, now, { reserve, call, updateSidecar }) {
+function interruptScope() {
+  const controller = new AbortController();
+  let by = null;
+  const handlers = ["SIGINT", "SIGTERM"].map((name) => {
+    const handler = () => {
+      if (by) process.exit(130);
+      by = name;
+      note(`${name}: cancelling the calls in flight; nothing new is sent (a second ${name} exits at once)`);
+      controller.abort(new DOMException(`received ${name}`, "AbortError"));
+    };
+    process.on(name, handler);
+    return [name, handler];
+  });
+  return {
+    signal: controller.signal,
+    get by() {
+      return by;
+    },
+    dispose() {
+      for (const [name, handler] of handlers) process.off(name, handler);
+    },
+  };
+}
+
+/** After an interrupt: say what was cancelled and what never started, and exit 130. */
+function reportInterrupt(scope, rows, notStarted) {
+  if (!scope.by) return null;
+  process.exitCode = 130;
+  const cancelled = rows.filter((r) => r && !r.ok && r.interrupted).map((r) => r.id);
+  const line = `interrupted by ${scope.by}: ${cancelled.length ? `${cancelled.join(", ")} cancelled — recorded as failed, billing unknown (it may have been charged)` : "nothing was in flight"}; ${notStarted}`;
+  note(line);
+  return line;
+}
+
+/**
+ * One registered paid call under the command's interrupt scope. Returns a
+ * row; a failed or interrupted call is reported and sets the exit code.
+ */
+async function runPaid(ws, now, scope, { reserve, call, updateSidecar }) {
   const { io } = await craftModules();
   const started = Date.now();
-  const outcome = await io.runRegistered({ path: ws.project, sidecarKey: S.SIDECAR_KEY, reserve, call, updateSidecar, now });
+  const outcome = await io.runRegistered({
+    path: ws.project, sidecarKey: S.SIDECAR_KEY, reserve, call, now,
+    signal: scope.signal, handleSignals: false,
+    updateSidecar: (d, phase) => {
+      updateSidecar?.(d, phase);
+      tidy(d);
+    },
+  });
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const cost = outcome.edge?.operation?.params?.cost ?? null;
   if (outcome.ok) {
     note(`cost: ${outcome.asset.id} ${costText(cost)}${cost?.note ? ` — ${cost.note}` : ""}`);
     return { id: outcome.asset.id, ok: true, status: "ready", uri: outcome.asset.uri, cost, seconds, warning: outcome.warning, sidecarError: outcome.sidecarError };
   }
+  const interrupted = scope.by ?? outcome.interrupted ?? null;
+  const exitCode = interrupted ? 130 : outcome.exitCode;
   note(`ERROR: ${outcome.asset.id} failed: ${outcome.reason} (billing: ${outcome.billing})`);
   note(`cost: ${outcome.asset.id} ${outcome.billing === "none" ? "not billed (the request never left)" : `${costText(cost)} — may have been billed`}`);
-  process.exitCode = Math.max(process.exitCode ?? 0, outcome.exitCode);
-  return { id: outcome.asset.id, ok: false, status: "failed", reason: outcome.reason, billing: outcome.billing, cost, seconds, interrupted: outcome.interrupted, exitCode: outcome.exitCode };
+  process.exitCode = Math.max(process.exitCode ?? 0, exitCode);
+  return { id: outcome.asset.id, ok: false, status: "failed", reason: outcome.reason, billing: outcome.billing, cost, seconds, interrupted, exitCode };
 }
 
-/** Run `tasks` with at most `limit` in flight; every task runs whatever the others do. */
-async function pool(tasks, limit) {
+/**
+ * Run `tasks` with at most `limit` in flight; a failure does not stop the
+ * others. Once `signal` aborts, nothing more is dequeued: a task that never
+ * started leaves `undefined` in its slot.
+ */
+async function pool(tasks, limit, signal) {
   const results = new Array(tasks.length);
   let next = 0;
   const worker = async () => {
-    while (next < tasks.length) {
+    while (next < tasks.length && !signal?.aborted) {
       const i = next;
       next += 1;
       results[i] = await tasks[i]();
@@ -330,6 +510,7 @@ async function registerLocal(ws, pack, spec, now, mutate) {
   if (warning) note(`WARN: ${spec.id}: ${warning}`);
   const record = craft.landAsset(doc, { id: spec.id, uri: spec.uri, metadata }, now());
   mutate?.(doc, record);
+  tidy(doc);
   io.saveProject(ws.project, doc);
   return record;
 }
@@ -450,18 +631,23 @@ function neededArt(pack) {
   return S.ART_KINDS.filter((k) => kinds.has(k));
 }
 
+/** gen's targets: `S.genTargets` (shared with quote and nextStep), with the stickers and their states. */
 function stickerTargets(pack, doc, v) {
-  const only = listFlag(v.only);
-  for (const id of only) if (!pack.stickers.some((s) => s.id === id)) fail(`--only: no sticker '${id}' in pack.json (${pack.stickers.map((s) => s.id).join(", ") || "none"})`);
-  const chosen = pack.stickers.filter((s) => !only.length || only.includes(s.id));
-  const out = [];
-  const skipped = [];
-  for (const s of chosen) {
-    const state = S.stickerState(pack, doc, s.id);
-    if (v.redo || state.status === "empty" || state.status === "failed") out.push({ sticker: s, state });
-    else skipped.push({ id: s.id, status: state.status });
+  let plan;
+  try {
+    plan = S.genTargets(pack, doc, { only: listFlag(v.only), redo: Boolean(v.redo) });
+  } catch (error) {
+    fail(errorMessage(error));
   }
-  return { targets: out, skipped };
+  const targets = plan.targets.map((t) => ({ sticker: pack.stickers.find((s) => s.id === t.id), state: S.stickerState(pack, doc, t.id) }));
+  return { targets, skipped: plan.skipped, uncertain: plan.uncertain };
+}
+
+/** One line for the stickers a plain gen leaves because their last call may have been billed. */
+function uncertainLine(uncertain) {
+  if (!uncertain.length) return null;
+  const ids = uncertain.map((u) => u.id).join(",");
+  return `not sent again: ${uncertain.map((u) => `${u.id} (${u.take} failed, billing unknown: ${u.reason})`).join("; ")} — it may have been charged. Retry only with the user's yes: sticker.mjs gen --only ${ids} (or --redo)`;
 }
 
 function artTargets(pack, doc, v) {
@@ -503,13 +689,14 @@ async function cmdQuote(v) {
     items.push({ step: "art", count: kinds.length, kinds, each: est, seconds: S.ESTIMATES.imageSeconds });
     lines.push(`art: ${kinds.length ? kinds.join(", ") : "nothing missing"} — ${kinds.length} image(s) × ${costText(est)} · ${S.ESTIMATES.imageSeconds[0]}–${S.ESTIMATES.imageSeconds[1]} s each (OpenRouter, ${model})${skipped.length ? ` · already made: ${skipped.map((s) => s.kind).join(", ")}` : ""}`);
   } else {
-    const { targets, skipped } = stickerTargets(pack, doc, v);
+    const { targets, skipped, uncertain } = stickerTargets(pack, doc, v);
     const est = gifEstimate();
     const m = pack.motion;
-    items.push({ step: "stickers", count: targets.length, stickers: targets.map((t) => t.sticker.id), each: est, seconds: S.ESTIMATES.gifSeconds });
+    items.push({ step: "stickers", count: targets.length, stickers: targets.map((t) => t.sticker.id), uncertain, each: est, seconds: S.ESTIMATES.gifSeconds });
     lines.push(`stickers: ${targets.length ? targets.map((t) => t.sticker.id).join(", ") : "nothing missing"} — ${targets.length} GIF take(s) of ${m.frames} × ${m.size}² at ${m.frameMs} ms × ${costText(est)}; range $${S.ESTIMATES.gifRangeUsd[0]}–${S.ESTIMATES.gifRangeUsd[1]} each`);
     if (targets.length) lines.push(`time: ≈ ${S.ESTIMATES.gifSeconds} s per take, ${concurrency} at a time → ≈ ${wallSeconds(targets.length, S.ESTIMATES.gifSeconds, concurrency)} s`);
     if (skipped.length) lines.push(`skipped (already have takes; --redo re-rolls): ${skipped.map((s) => `${s.id} ${s.status}`).join(", ")}`);
+    if (uncertain.length) lines.push(uncertainLine(uncertain));
   }
   const total = items.reduce((sum, i) => sum + (Number.isFinite(i.each?.usd) ? i.each.usd * i.count : 0), 0);
   const unpriced = items.some((i) => i.count && !Number.isFinite(i.each?.usd));
@@ -600,40 +787,53 @@ async function cmdCharacter(v) {
   const apiKey = gen.imageKey();
   if (!apiKey) fail(noKey("openrouter"));
   const source = fromImage ? await characterSource(ws, pack, now, v.from) : null;
+  // Checked before anything is reserved: the source must be a real file inside the workspace.
+  const sourceFile = source ? ws.abs(source.uri) : null;
   await ensureProject(ws, pack);
   const rows = [];
-  for (let i = 0; i < count; i += 1) {
-    const doc = await loadProjectOrNull(ws);
-    const n = nextFree(doc, "character-", (k) => ws.abs(S.paths.character(k)));
-    const id = S.ids.character(n);
-    const planned = S.paths.character(n);
-    let measured = null;
-    const row = await runPaid(ws, now, {
-      reserve: {
-        id, type: "image", name: `Character ${n}`, op: "generate", uri: planned,
-        ...(source ? { from: [source.id] } : {}),
-        model, prompt, provider: "openrouter",
-        params: { request: { aspectRatio: "1:1", quality, background: "transparent" } },
-        ...(imageEstimate(doc, model, quality) ? { cost: imageEstimate(doc, model, quality) } : {}),
-      },
-      call: async ({ signal }) => {
-        const out = await generateImageInto(ws, gen, {
-          prompt, model, quality, aspectRatio: "1:1", background: "transparent", apiKey, signal,
-          imageUrls: source ? [ws.abs(source.uri)] : [],
-        }, (ext) => S.paths.character(n, ext));
-        measured = measureStillSafely(ws.abs(out.rel));
-        return { file: ws.abs(out.rel), cost: reportedCost(out.usage) };
-      },
-      updateSidecar: (d, phase) => {
-        if (phase === "land" && measured) sidecar(d).measures[id] = { ...measured, at: now() };
-      },
-    });
-    rows.push(row);
+  const scope = interruptScope();
+  try {
+    for (let i = 0; i < count && !scope.signal.aborted; i += 1) {
+      rows.push(await characterCandidate(ws, now, scope, gen, { source, sourceFile, model, quality, prompt, apiKey }));
+    }
+  } finally {
+    scope.dispose();
   }
-  const lines = ["character candidates:", ...paidLines(rows)];
+  const notStarted = count - rows.length;
+  const stopped = reportInterrupt(scope, rows, `${notStarted} candidate(s) never started (nothing sent)`);
+  const lines = ["character candidates:", ...paidLines(rows), stopped];
   if (rows.some((r) => r.ok)) lines.push(`next: look at them, then set character.anchor in pack.json (e.g. "${rows.find((r) => r.ok).id}")`);
   lines.push(`cost: ${await projectCostLine(ws)}`);
-  emit(v, { command: "character", source: source?.id ?? null, results: rows }, lines);
+  emit(v, { command: "character", source: source?.id ?? null, results: rows, interrupted: scope.by, notStarted }, lines);
+}
+
+/** One character candidate: the next free id, generated and registered. */
+async function characterCandidate(ws, now, scope, gen, { source, sourceFile, model, quality, prompt, apiKey }) {
+  const doc = await loadProjectOrNull(ws);
+  const n = nextFree(doc, "character-", (k) => ws.abs(S.paths.character(k)));
+  const id = S.ids.character(n);
+  const planned = S.paths.character(n);
+  let measured = null;
+  return runPaid(ws, now, scope, {
+    reserve: {
+      id, type: "image", name: `Character ${n}`, op: "generate", uri: planned,
+      ...(source ? { from: [source.id] } : {}),
+      model, prompt, provider: "openrouter",
+      params: { request: { aspectRatio: "1:1", quality, background: "transparent" } },
+      ...(imageEstimate(doc, model, quality) ? { cost: imageEstimate(doc, model, quality) } : {}),
+    },
+    call: async ({ signal }) => {
+      const out = await generateImageInto(ws, gen, {
+        prompt, model, quality, aspectRatio: "1:1", background: "transparent", apiKey, signal,
+        imageUrls: sourceFile ? [sourceFile] : [],
+      }, (ext) => S.paths.character(n, ext));
+      measured = measureStillSafely(ws.abs(out.rel));
+      return { file: ws.abs(out.rel), cost: reportedCost(out.usage) };
+    },
+    updateSidecar: (d, phase) => {
+      if (phase === "land" && measured) sidecar(d).measures[id] = { ...measured, at: now() };
+    },
+  });
 }
 
 /**
@@ -672,6 +872,7 @@ async function supersede(ws, now, takeIds) {
     craft.failAsset(doc, { id, reason: "superseded by gen --redo while still in flight — whether its request ran or was billed is not on record", billing: "unknown" }, now());
     note(`WARN: ${id} was still in flight; recorded as failed (billing unknown) and superseded`);
   }
+  tidy(doc);
   io.saveProject(ws.project, doc);
 }
 
@@ -686,10 +887,13 @@ async function cmdGen(v) {
   const deadlineMs = (parseNumber(v["deadline-s"], "--deadline-s", { min: 30, max: 3600 }) ?? 600) * 1000;
   let doc = await loadProjectOrNull(ws);
   const anchor = requireAnchor(ws, pack, doc);
-  const { targets, skipped } = stickerTargets(pack, doc, v);
+  const { targets, skipped, uncertain } = stickerTargets(pack, doc, v);
   for (const s of skipped) note(`skip ${s.id}: ${s.status}${s.status === "generating" ? " (another take is in flight; --redo supersedes it)" : " — already has takes; --redo re-rolls"}`);
+  if (uncertain.length) note(uncertainLine(uncertain));
   if (!targets.length) {
-    emit(v, { command: "gen", results: [], skipped }, ["nothing to generate — every chosen sticker already has takes (--redo re-rolls)"]);
+    emit(v, { command: "gen", results: [], skipped, uncertain }, [uncertain.length
+      ? `nothing generated — ${uncertain.map((u) => u.id).join(", ")} may already have been charged; see above`
+      : "nothing to generate — every chosen sticker already has takes (--redo re-rolls)"]);
     return;
   }
   const request = S.stickerRequest(pack);
@@ -718,12 +922,14 @@ async function cmdGen(v) {
   doc = await loadProjectOrNull(ws);
   const plan = targets.map(({ sticker }) => {
     const n = nextFree(doc, `${sticker.id}-take-`, (k) => ws.abs(S.paths.take(sticker.id, k)));
-    return { sticker, n, id: S.ids.take(sticker.id, n), uri: S.paths.take(sticker.id, n) };
+    const uri = S.paths.take(sticker.id, n);
+    return { sticker, n, id: S.ids.take(sticker.id, n), uri, file: ws.abs(uri) };
   });
+  const scope = interruptScope();
   const tasks = plan.map((p) => async () => {
     let measured = null;
-    const options = gifOptions(p.sticker, ws.abs(p.uri));
-    const row = await runPaid(ws, now, {
+    const options = gifOptions(p.sticker, p.file);
+    const row = await runPaid(ws, now, scope, {
       reserve: {
         id: p.id, type: "image", name: `${p.sticker.id} ${p.sticker.word || ""} take ${p.n}`.replace(/\s+/g, " ").trim(), op: "generate", uri: p.uri,
         from: [anchor.id], model: gen.gifModelId(request.model), prompt: options.prompt, provider: "fal",
@@ -731,10 +937,10 @@ async function cmdGen(v) {
         cost: gifEstimate(),
       },
       call: async ({ signal }) => {
-        mkdirSync(dirname(ws.abs(p.uri)), { recursive: true });
+        mkdirSync(dirname(p.file), { recursive: true });
         const result = await gen.generateGif({ ...options, apiKey, signal, deadlineMs, onStatus: ({ status }) => note(`[${p.id}] fal ${status}`) });
-        measured = measureTakeSafely(ws.abs(p.uri));
-        return { file: ws.abs(p.uri), requestId: result.requestId };
+        measured = measureTakeSafely(p.file);
+        return { file: p.file, requestId: result.requestId };
       },
       updateSidecar: (d, phase) => {
         if (phase === "land" && measured) sidecar(d).measures[p.id] = { ...measured, at: now() };
@@ -742,13 +948,22 @@ async function cmdGen(v) {
     });
     return { sticker: p.sticker.id, ...row, detail: takeDetail(measured) };
   });
-  const rows = await pool(tasks, concurrency);
+  let ran;
+  try {
+    ran = await pool(tasks, concurrency, scope.signal);
+  } finally {
+    scope.dispose();
+  }
+  const rows = ran.filter(Boolean);
+  const notStarted = plan.filter((_, i) => !ran[i]).map((p) => p.sticker.id);
+  const stopped = reportInterrupt(scope, rows, notStarted.length ? `never started (nothing sent): ${notStarted.join(", ")}` : "every take had started");
   const landed = rows.filter((r) => r.ok).length;
   const after = await loadProjectOrNull(ws);
   const next = S.nextStep(pack, after);
-  emit(v, { command: "gen", results: rows, skipped, next }, [
+  emit(v, { command: "gen", results: rows, skipped, uncertain, interrupted: scope.by, notStarted, next }, [
     `takes: ${landed} of ${rows.length} landed`,
     ...paidLines(rows),
+    stopped,
     `cost: this run ${rows.length} call(s) ≈ ${money(round4(rows.reduce((s, r) => s + (r.billing === "none" ? 0 : r.cost?.usd ?? 0), 0)))} (estimate — fal reports no usage for GIF jobs) · ${await projectCostLine(ws)}`,
     `look before picking: sticker.mjs inspect <id> · next: ${next.line}`,
   ]);
@@ -787,10 +1002,11 @@ async function cmdGenArt(v) {
     const n = nextFree(doc, `art-${kind}-`, (k) => ws.abs(S.paths.art(kind, k)));
     return { kind, n, id: S.ids.art(kind, n), uri: S.paths.art(kind, n), ...S.artPrompt(pack, kind) };
   });
+  const scope = interruptScope();
   const tasks = plan.map((p) => async () => {
     let measured = null;
     const estimate = imageEstimate(doc, model, quality);
-    const row = await runPaid(ws, now, {
+    const row = await runPaid(ws, now, scope, {
       reserve: {
         id: p.id, type: "image", name: `${p.kind} art ${p.n}`, op: "generate", uri: p.uri, from: [anchor.id],
         model, prompt: p.prompt, provider: "openrouter",
@@ -808,10 +1024,19 @@ async function cmdGenArt(v) {
     });
     return { kind: p.kind, ...row };
   });
-  const rows = await pool(tasks, concurrency);
-  emit(v, { command: "gen", art: true, results: rows, skipped }, [
+  let ran;
+  try {
+    ran = await pool(tasks, concurrency, scope.signal);
+  } finally {
+    scope.dispose();
+  }
+  const rows = ran.filter(Boolean);
+  const notStarted = plan.filter((_, i) => !ran[i]).map((p) => p.kind);
+  const stopped = reportInterrupt(scope, rows, notStarted.length ? `never started (nothing sent): ${notStarted.join(", ")}` : "every image had started");
+  emit(v, { command: "gen", art: true, results: rows, skipped, interrupted: scope.by, notStarted }, [
     "art:",
     ...paidLines(rows),
+    stopped,
     rows.some((r) => r.ok) ? "next: look at them, then set art.<kind> in pack.json to the one to use" : null,
     `cost: ${await projectCostLine(ws)}`,
   ]);
@@ -927,9 +1152,38 @@ async function cmdInspect(v, sidArg) {
 // export
 // ---------------------------------------------------------------------------
 
-/** Files an export of `platform` may have written: removed when no deliverable claims them. */
-function ownedExportFile(name) {
+/** A name an export could have written — only for saying which such files export left alone. */
+function exportLikeName(name) {
   return /^\d{2,3}\.(gif|webm|png)$/.test(name) || /^(cover|icon|banner|reward-guide|reward-thanks|thumb|main|tab)\.(png|jpg)$/.test(name);
+}
+
+/**
+ * The files `platform`'s export owns, as recorded before this run: every
+ * uri of a recorded `<platform>-…` export asset, and the archive its sidecar
+ * record names. Export overwrites and deletes only these.
+ */
+function ownedExports(doc, platform) {
+  const owned = new Set((doc?.assets ?? []).filter((a) => a.id.startsWith(`${platform}-`) && a.uri).map((a) => a.uri));
+  const archive = S.sidecarOf(doc).archives[platform];
+  if (typeof archive?.uri === "string") owned.add(archive.uri);
+  return owned;
+}
+
+/**
+ * Why `rel` must not be written, or null. Free: nothing there, or a file the
+ * project records as its own. An unrecorded regular file holding exactly
+ * `bytes` is taken back (a run cut off between writing and recording left
+ * it; exports are deterministic). Anything else is someone else's file.
+ */
+function foreignFile(rel, file, owned, bytes) {
+  let stat;
+  try {
+    stat = lstatSync(file);
+  } catch {
+    return null;
+  }
+  if (stat.isFile() && (owned.has(rel) || readFileSync(file).equals(bytes))) return null;
+  return `${rel} exists but project.json does not record it as this pack's export${stat.isSymbolicLink() ? " (it is a symbolic link)" : ""} — export never overwrites a file it does not own. Move or delete it, then export again`;
 }
 
 function listingText(pack, platform) {
@@ -975,6 +1229,19 @@ async function cmdExport(v) {
     const doc0 = await loadProjectOrNull(ws);
     const state = S.exportState(pack, doc0, platform);
     const dir = S.paths.exportDir(platform);
+    const archiveRel = S.paths.archive(platform);
+    const listingRel = S.paths.listing(platform);
+    // Every path this platform's export reads or writes passes the workspace
+    // gate before anything is written: a refusal leaves the platform untouched.
+    const dirAbs = ws.abs(dir);
+    const archiveAbs = ws.abs(archiveRel);
+    const listingAbs = ws.abs(listingRel);
+    for (const item of state.items) {
+      if (item.file) ws.abs(item.file);
+      const source = S.deliverableSource(pack, doc0, item).asset;
+      if (source) ws.abs(source.uri);
+    }
+    const owned = ownedExports(doc0, platform);
     const made = [];
     const rows = [];
     for (const item of state.items) {
@@ -999,8 +1266,16 @@ async function cmdExport(v) {
         process.exitCode = 1;
         continue;
       }
-      const rel = `${dir}/${item.name}.${out.ext}`;
-      media.writeAtomic(ws.abs(rel), out.bytes);
+      const name = `${item.name}.${out.ext}`;
+      const rel = `${dir}/${name}`;
+      const clash = foreignFile(rel, join(dirAbs, name), owned, out.bytes);
+      if (clash) {
+        note(`ERROR: ${clash}`);
+        rows.push({ deliverable: item.deliverable, state: "error", file: rel, reason: clash });
+        process.exitCode = 1;
+        continue;
+      }
+      media.writeAtomic(join(dirAbs, name), out.bytes);
       made.push({ item, rel, source, measure: { ...out.measure, key: item.key, at: now() } });
       if (!out.measure.fit.ok) {
         process.exitCode = 1;
@@ -1030,38 +1305,60 @@ async function cmdExport(v) {
     const gone = doc.assets.filter((a) => a.id.startsWith(`${platform}-`) && !live.has(a.id)).map((a) => a.id);
     for (const id of gone) delete sc.measures[id];
     if (gone.length) craft.dropAssets(doc, gone);
-    // Then every file in the export directory that no live export claims goes:
-    // a dropped sticker's, or a renumbered one's old name. Deleting only now —
-    // after every file is written — keeps a renumbered sticker's new file
-    // (it may have the name a dropped one had).
-    const claimed = new Set(doc.assets.filter((a) => a.id.startsWith(`${platform}-`)).map((a) => basename(a.uri)));
-    if (existsSync(ws.abs(dir))) {
-      for (const name of readdirSync(ws.abs(dir))) if (ownedExportFile(name) && !claimed.has(name)) rmSync(ws.abs(`${dir}/${name}`), { force: true });
+    // Then a file this platform's export owned before this run and that no
+    // export claims now goes: a dropped sticker's, or a renumbered one's old
+    // name. Only now — after every file is written — so a renumbered
+    // sticker's new file (it may have the name a dropped one had) stays.
+    // Files the project never recorded are left alone, and said.
+    const claimed = new Set(doc.assets.filter((a) => a.id.startsWith(`${platform}-`)).map((a) => a.uri));
+    const deleted = [];
+    const leftAlone = [];
+    if (existsSync(dirAbs)) {
+      for (const name of readdirSync(dirAbs).sort()) {
+        const rel = `${dir}/${name}`;
+        if (claimed.has(rel)) continue;
+        if (owned.has(rel)) {
+          rmSync(join(dirAbs, name), { force: true });
+          deleted.push(rel);
+        } else if (exportLikeName(name)) leftAlone.push(name);
+      }
     }
+    if (leftAlone.length) note(`left alone in ${dir} (not recorded as this pack's exports): ${leftAlone.join(", ")}`);
     // The listing text.
-    const listingRel = S.paths.listing(platform);
     const text = listingText(pack, platform);
-    if (!existsSync(ws.abs(listingRel)) || readFileSync(ws.abs(listingRel), "utf-8") !== text) media.writeAtomic(ws.abs(listingRel), text);
+    if (!existsSync(listingAbs) || readFileSync(listingAbs, "utf-8") !== text) media.writeAtomic(listingAbs, text);
     // The archive: every required deliverable, current.
     const after = S.exportState(pack, doc, platform);
     let archiveRow;
     if (after.archive.state === "blocked") {
       archiveRow = { state: "blocked", reason: "not every deliverable is exported and current" };
     } else {
-      const archiveRel = S.paths.archive(platform);
       const members = after.items.filter((i) => i.state === "current");
       const existing = sc.archives[platform];
-      if (existing?.key === after.archive.key && existsSync(ws.abs(archiveRel)) && statSync(ws.abs(archiveRel)).size === existing.bytes) {
+      if (existing?.key === after.archive.key && existsSync(archiveAbs) && statSync(archiveAbs).size === existing.bytes) {
         archiveRow = { state: "current", file: archiveRel };
       } else {
         const bytes = media.archive(members.map((i) => ({ name: basename(i.file), data: readFileSync(ws.abs(i.file)) })));
-        media.writeAtomic(ws.abs(archiveRel), bytes);
-        sc.archives[platform] = { uri: archiveRel, bytes: bytes.length, entries: members.map((i) => basename(i.file)), key: after.archive.key, at: now() };
-        archiveRow = { state: "exported", file: archiveRel, bytes: bytes.length };
+        const clash = foreignFile(archiveRel, archiveAbs, owned, bytes);
+        if (clash) {
+          note(`ERROR: ${clash}`);
+          process.exitCode = 1;
+          archiveRow = { state: "error", file: archiveRel, reason: clash };
+        } else {
+          media.writeAtomic(archiveAbs, bytes);
+          sc.archives[platform] = { uri: archiveRel, bytes: bytes.length, entries: members.map((i) => basename(i.file)), key: after.archive.key, at: now() };
+          archiveRow = { state: "exported", file: archiveRel, bytes: bytes.length };
+        }
       }
     }
-    if (made.length || gone.length || archiveRow.state === "exported") io.saveProject(ws.project, doc);
-    report[platform] = { items: rows, archive: archiveRow, removed: gone };
+    const pruned = tidy(doc);
+    // An archive whose record no longer holds (a member's export is gone) goes with its record.
+    if (pruned.archives.includes(platform) && owned.has(archiveRel) && existsSync(archiveAbs)) {
+      rmSync(archiveAbs, { force: true });
+      deleted.push(archiveRel);
+    }
+    if (made.length || gone.length || archiveRow.state === "exported" || pruned.measures.length || pruned.archives.length) io.saveProject(ws.project, doc);
+    report[platform] = { items: rows, archive: archiveRow, removed: gone, deleted, leftAlone };
   }
   const lines = [];
   for (const [platform, r] of Object.entries(report)) {
@@ -1073,7 +1370,9 @@ async function cmdExport(v) {
       else lines.push(`  ${row.deliverable} ERROR — ${row.reason}`);
     }
     if (r.removed.length) lines.push(`  removed: ${r.removed.join(", ")}`);
-    lines.push(`  archive: ${r.archive.state === "blocked" ? `not built — ${r.archive.reason}` : `${r.archive.file}${r.archive.bytes ? ` · ${kb(r.archive.bytes)}` : " (current)"}`}`);
+    if (r.deleted.length) lines.push(`  deleted: ${r.deleted.join(", ")}`);
+    if (r.leftAlone.length) lines.push(`  left alone (not this pack's exports): ${r.leftAlone.join(", ")}`);
+    lines.push(`  archive: ${r.archive.state === "blocked" ? `not built — ${r.archive.reason}` : r.archive.state === "error" ? `NOT WRITTEN — ${r.archive.reason}` : `${r.archive.file}${r.archive.bytes ? ` · ${kb(r.archive.bytes)}` : " (current)"}`}`);
   }
   lines.push(`check with: sticker.mjs check${platforms.length === 1 ? ` --platform ${platforms[0]}` : ""}`);
   emit(v, { command: "export", platforms: report }, lines);
@@ -1092,19 +1391,21 @@ async function cmdCheck(v) {
   const out = {};
   const lines = [];
   const mark = { pass: "PASS", warn: "WARN", fail: "FAIL" };
-  // The files the record vouches for must still be the files on disk.
+  // The files the record vouches for — every current deliverable and the
+  // upload archive — must still be the files on disk (present, same size).
   const disk = [];
+  const changed = (rel, bytes) => !existsSync(ws.abs(rel)) || statSync(ws.abs(rel)).size !== bytes;
   for (const platform of platforms) {
     const rows = S.checkPack(pack, doc, platform);
     const tally = S.tally(rows);
-    for (const item of S.exportState(pack, doc, platform).items) {
-      if (item.state === "current" && (!existsSync(ws.abs(item.file)) || statSync(ws.abs(item.file)).size !== item.measure.bytes)) disk.push(item.file);
-    }
+    const state = S.exportState(pack, doc, platform);
+    for (const item of state.items) if (item.state === "current" && changed(item.file, item.measure.bytes)) disk.push(item.file);
+    if (state.archive.state === "current" && changed(state.archive.uri, state.archive.measure.bytes)) disk.push(state.archive.uri);
     out[platform] = { rows, tally };
     lines.push(`${S.PLATFORM_PROFILES[platform].label} (rules checked ${S.PLATFORM_PROFILES[platform].checked}): ${tally.pass} pass · ${tally.warn} warn · ${tally.fail} fail`);
     for (const r of rows) lines.push(`  ${mark[r.level]}  ${r.label}: ${r.detail}`);
   }
-  for (const file of disk) note(`WARN: ${file} is missing or changed on disk since it was exported — run sticker.mjs export again`);
+  for (const file of disk) lines.push(`FAIL  ${file} is missing or changed on disk since it was exported — run sticker.mjs export again`);
   const failed = Object.values(out).some((o) => o.tally.fail > 0) || disk.length > 0;
   if (failed) process.exitCode = 1;
   emit(v, { command: "check", platforms: out, diskMismatch: disk }, lines);
@@ -1118,12 +1419,12 @@ const COMMAND_HELP = [
   ["status", "", "the pack, keys, tools, every sticker's status, exports, checks, cost and the next step"],
   ["quote", "[--only s01,s03] [--redo] | --art [--only portrait,head] | --character [--count 1]", "what the paid command would send and cost, before it is sent (nothing is sent)"],
   ["character", "[--from <image|character-source-n>] [--count 1] [--model flare|sunburst] [--quality high] [--dry-run]", "character candidates (OpenRouter, transparent PNG) from the user's photo or image, or from character.description. Paid; refuses without rights"],
-  ["gen", "[--only s01,s03] [--redo] [--concurrency 4] [--deadline-s 600] [--dry-run]\n                 --art [--only portrait,head] [--redo] [--model] [--quality high] [--dry-run]", "sticker takes (fal GPT Image 2.6 GIF from the anchor) for stickers with no take, or a new take each with --redo; --art makes the art the chosen platforms need. Paid; refuses without rights; a failure does not stop the others; nothing is retried"],
+  ["gen", "[--only s01,s03] [--redo] [--concurrency 4] [--deadline-s 600] [--dry-run]\n                 --art [--only portrait,head] [--redo] [--model] [--quality high] [--dry-run]", "sticker takes (fal GPT Image 2.6 GIF from the anchor) for stickers with no take, or a new take each with --redo; a sticker whose last take failed with billing unknown is listed, not resent (--only <id> retries it); --art makes the art the chosen platforms need. Paid; refuses without rights; a failure does not stop the others; nothing is retried; one interrupt cancels what is in flight, starts nothing new and exits 130"],
   ["prompts", "[--only s01,…] | --art [--only kinds] | --character", "the exact prompts, for making the files elsewhere (ChatGPT) and importing them"],
   ["import", "--sticker <id> --file <gif> | --art <kind> --file <image> | --character --file <image> | --source --file <photo>", "register a file the user brought (upload by human); a take records the current prompt and anchor"],
   ["inspect", "<sticker id> [--take <id>]", "contact sheet of a take on the light and dark chat plates (inspect/<take>-contact.png) and its loop seam, motion and alpha numbers"],
-  ["export", "[--platform wechat|telegram|line|all]", "derive every platform's files from the picked takes and art (ffmpeg), record their measurements, write the listing text and the upload zip. Deterministic: current files are left alone"],
-  ["check", "[--platform wechat|telegram|line|all]", "the platform checklist (the viewer shows the same rows); exits 1 when a row fails"],
+  ["export", "[--platform wechat|telegram|line|all]", "derive every platform's files from the picked takes and art (ffmpeg), record their measurements, write the listing text and the upload zip. Deterministic: current files are left alone; a file it did not record is never overwritten or deleted"],
+  ["check", "[--platform wechat|telegram|line|all]", "the platform checklist (the viewer shows the same rows) and every recorded export and zip against the file on disk; exits 1 when either fails"],
 ];
 
 const COMMON_HELP = `Common: --dir <workspace> (default: cwd) · --json prints one object on stdout · --at <epoch ms> pins timestamps.
@@ -1136,6 +1437,7 @@ export const HELP = `Usage: sticker.mjs <command> [--dir <workspace>] [--json] [
 pack.json is the pack (you and the viewer edit it; this CLI only reads it);
 project.json is machine state written only here. Paid commands refuse
 without rights in pack.json, record before sending and print a cost line.
+character, gen, import and export hold .sticker.lock: one writer at a time.
 
 ${COMMAND_HELP.map(helpEntry).join("\n")}
 
@@ -1211,12 +1513,16 @@ export async function main(argv = process.argv.slice(2)) {
     return 1;
   }
   if (command !== "import" && values.art === "true") values.art = true;
+  let lock = null;
   try {
+    if (MUTATING.has(command) && !values["dry-run"]) lock = lockWorkspace(workspace(values), command);
     await handler(values, positionals[1]);
     return process.exitCode ?? 0;
   } catch (error) {
     process.stderr.write(`ERROR: ${errorMessage(error)}\n`);
     return 1;
+  } finally {
+    lock?.release();
   }
 }
 

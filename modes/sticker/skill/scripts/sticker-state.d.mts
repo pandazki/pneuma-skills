@@ -236,6 +236,8 @@ export interface StickerSidecar {
 }
 
 export type StickerProject = CraftProjectFile<{ sticker: StickerSidecar }>;
+/** The sidecar without records the project no longer backs (measures of absent assets, archives of absent files). */
+export function pruneSidecar(project: ProjectInput): { sidecar: StickerSidecar; dropped: { measures: string[]; archives: string[] } };
 /** A project as read (or null before the first write). */
 type ProjectInput = Pick<CraftProjectFile, "assets" | "provenance"> & { sticker?: unknown } | null | undefined;
 
@@ -437,6 +439,14 @@ export interface StickerState {
 }
 export function stickerState(pack: Pack, project: ProjectInput, sid: string): StickerState;
 export function stickerStates(pack: Pack, project: ProjectInput): StickerState[];
+/** What `sticker.mjs gen` makes; gen, quote and nextStep all read this. */
+export interface GenPlan {
+  targets: { id: string; status: StickerStatus }[];
+  skipped: { id: string; status: StickerStatus }[];
+  /** Latest take failed with billing unknown: a plain gen leaves them; `only` naming them retries. */
+  uncertain: { id: string; take: string | null; reason: string }[];
+}
+export function genTargets(pack: Pack, project: ProjectInput, options?: { only?: string[]; redo?: boolean }): GenPlan;
 export function anchorState(pack: Pack, project: ProjectInput): { anchor: string | null; ready: boolean; reason: string | null };
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -29,6 +29,7 @@ const MEDIA = mediaTierEnabled("sticker");
 announceMediaTierSkip("sticker", "the sticker exporters on real media (export, decode every file, idempotency, edge cases)");
 
 const STICKER = join(import.meta.dir, "..", "skill", "scripts", "sticker.mjs");
+const CRAFT_IO = join(import.meta.dir, "..", "..", "_shared", "scripts", "craft-project-io.mjs");
 const MOCK = join(import.meta.dir, "scripts-mock-generators.mjs");
 const T0 = 1793000000000;
 
@@ -254,6 +255,24 @@ describe.skipIf(!MEDIA)("sticker export on real media", () => {
     expect(check.code).toBe(0);
   });
 
+  test("check holds the upload zip to its record: a truncated or missing zip fails, in the JSON and the exit status", () => {
+    const file = join(ws, "exports", "wechat.zip");
+    const bytes = readFileSync(file);
+    try {
+      writeFileSync(file, bytes.subarray(0, 100));
+      const truncated = run(ws, ["check", "--json"]);
+      expect(truncated.code).toBe(1);
+      expect(JSON.parse(truncated.out).diskMismatch).toEqual(["exports/wechat.zip"]);
+      rmSync(file);
+      const missing = run(ws, ["check"]);
+      expect(missing.code).toBe(1);
+      expect(missing.out).toContain("exports/wechat.zip is missing or changed on disk since it was exported");
+    } finally {
+      writeFileSync(file, bytes);
+    }
+    expect(run(ws, ["check"]).code).toBe(0);
+  });
+
   test("idempotent and deterministic: a rerun writes nothing; re-deriving gives the same bytes", () => {
     const before = hashes(ws);
     const projectBefore = readFileSync(join(ws, "project.json"), "utf-8");
@@ -315,6 +334,94 @@ describe.skipIf(!MEDIA)("sticker export on real media", () => {
     expect(out.measure.motion.steps).toHaveLength(15);
     expect(out.measure.alpha.semi).toBe(0);
   });
+});
+
+describe.skipIf(!MEDIA)("export writes and deletes only what the project owns", () => {
+  let dir = "";
+  const wechat = (name: string) => join(dir, "exports", "wechat", name);
+  const zip = () => join(dir, "exports", "wechat.zip");
+  beforeAll(() => {
+    dir = fresh("sticker-own-");
+    const raw = rawPack();
+    raw.platforms = ["wechat"];
+    raw.character.anchor = null;
+    raw.stickers = raw.stickers.slice(0, 3).map((s: object) => ({ ...s, take: null }));
+    raw.art = {};
+    writeFileSync(join(dir, "pack.json"), JSON.stringify(raw, null, 2));
+    spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=0x8899aa:s=640x480", "-frames:v", "1", join(dir, "photo.png")]);
+    ok(dir, ["character", "--from", join(dir, "photo.png")]);
+    editPack(dir, (p) => {
+      p.character.anchor = "character-1";
+    });
+    ok(dir, ["gen"]);
+    ok(dir, ["gen", "--art"]);
+    editPack(dir, (p) => {
+      p.stickers.forEach((s: { id: string; take: string }) => (s.take = `${s.id}-take-1`));
+      p.art = { portrait: "art-portrait-1", head: "art-head-1", banner: "art-banner-1" };
+    });
+  }, 300_000);
+
+  test("a file at a deliverable's name that the project does not record is refused by name and left as it is", () => {
+    mkdirSync(join(dir, "exports", "wechat"), { recursive: true });
+    writeFileSync(wechat("02.gif"), "the user's own file");
+    writeFileSync(wechat("09.gif"), "another file of theirs");
+    const r = run(dir, ["export", "--json"]);
+    expect(r.code).toBe(1);
+    const row = JSON.parse(r.out).platforms.wechat.items.find((i: { deliverable: string }) => i.deliverable === "s02");
+    expect(row.state).toBe("error");
+    expect(row.reason).toContain("exports/wechat/02.gif exists but project.json does not record it");
+    expect(readFileSync(wechat("02.gif"), "utf-8")).toBe("the user's own file");
+    expect(readFileSync(wechat("09.gif"), "utf-8")).toBe("another file of theirs");
+    expect(readJson(join(dir, "project.json")).assets.some((a: { id: string }) => a.id === "wechat-s02")).toBe(false);
+    expect(existsSync(wechat("01.gif")) && existsSync(wechat("03.gif"))).toBe(true);
+    expect(r.err).toContain("left alone in exports/wechat (not recorded as this pack's exports): 02.gif, 09.gif");
+    // Resolved the way the error says: 02.gif is made, the zip is built, 09.gif stays out of both.
+    rmSync(wechat("02.gif"));
+    const again = ok(dir, ["export"]);
+    expect(again.platforms.wechat.items.filter((i: { state: string }) => i.state === "exported").map((i: { deliverable: string }) => i.deliverable)).toEqual(["s02"]);
+    expect(again.platforms.wechat.archive.state).toBe("exported");
+    expect(readFileSync(wechat("09.gif"), "utf-8")).toBe("another file of theirs");
+    expect(readJson(join(dir, "project.json")).sticker.archives.wechat.entries).not.toContain("09.gif");
+  }, 120_000);
+
+  test("an upload zip the project does not record is refused unless it already holds exactly the archive's bytes", () => {
+    const ours = readFileSync(zip());
+    const drop = (doc: Record<string, any>) => {
+      delete doc.sticker.archives.wechat;
+      writeFileSync(join(dir, "project.json"), `${JSON.stringify(doc, null, 2)}\n`);
+    };
+    drop(readJson(join(dir, "project.json")));
+    writeFileSync(zip(), "their zip");
+    const r = run(dir, ["export", "--json"]);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out).platforms.wechat.archive).toMatchObject({ state: "error" });
+    expect(JSON.parse(r.out).platforms.wechat.archive.reason).toContain("exports/wechat.zip exists but project.json does not record it");
+    expect(readFileSync(zip(), "utf-8")).toBe("their zip");
+    // A run cut off after writing the zip and before recording it: the same bytes are taken back.
+    writeFileSync(zip(), ours);
+    const back = ok(dir, ["export"]);
+    expect(back.platforms.wechat.archive.state).toBe("exported");
+    expect(readFileSync(zip()).equals(ours)).toBe(true);
+    expect(readJson(join(dir, "project.json")).sticker.archives.wechat.bytes).toBe(ours.length);
+  }, 120_000);
+
+  test("a file the project owned and no export claims any more is deleted; the rest stay", () => {
+    // Identical bytes whose record was lost are taken back too.
+    const before = readFileSync(wechat("01.gif"));
+    const dropped = Bun.spawnSync([process.execPath, CRAFT_IO, "drop", "--path", join(dir, "project.json"), "--id", "wechat-s01"], { cwd: dir, stderr: "pipe" });
+    expect(dropped.exitCode).toBe(0);
+    editPack(dir, (p) => {
+      p.stickers.splice(2, 1);
+    });
+    const out = ok(dir, ["export"]);
+    expect(out.platforms.wechat.removed).toEqual(["wechat-s03"]);
+    expect(existsSync(wechat("03.gif"))).toBe(false);
+    expect(readFileSync(wechat("01.gif")).equals(before)).toBe(true);
+    expect(readFileSync(wechat("09.gif"), "utf-8")).toBe("another file of theirs");
+    const doc = readJson(join(dir, "project.json"));
+    expect(doc.assets.find((a: { id: string }) => a.id === "wechat-s01").uri).toBe("exports/wechat/01.gif");
+    expect(doc.sticker.archives.wechat.entries.slice(0, 2)).toEqual(["01.gif", "02.gif"]);
+  }, 120_000);
 });
 
 describe.skipIf(!MEDIA)("exporter edge cases", () => {
