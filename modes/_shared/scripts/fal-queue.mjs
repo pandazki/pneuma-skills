@@ -722,8 +722,13 @@ const DOWNLOAD_IDLE_MS = 60_000;
  * The clock here is an IDLE clock, not a wall clock: fal's CDN has been
  * measured at 6 KB/s for half an hour, and a slow link that keeps
  * delivering must be allowed to finish — only a stream that stops moving
- * for a minute is given up on. A failed attempt is retried with a short
- * back-off; the caller's `signal` aborts immediately and is rethrown as is.
+ * for a minute is given up on. A failed attempt is retried after a
+ * back-off — 3 s, then 6 s, … by default (`attempts`), or the caller's
+ * own schedule (`retryDelaysMs`: one wait per retry, so one more attempt
+ * than waits). A download is free to repeat; a caller whose results are
+ * small and whose CDN has been seen refusing connections for half a minute
+ * (`generate_gif.mjs`) asks for a longer schedule rather than for more
+ * jobs. The caller's `signal` aborts immediately and is rethrown as is.
  *
  * `fetchImpl` and `sleep` are injectable for the same reason the runner's
  * are: a test that had to spend the real back-off would be paying seconds
@@ -731,12 +736,25 @@ const DOWNLOAD_IDLE_MS = 60_000;
  */
 export async function downloadFalFile(url, {
   signal,
-  attempts = DOWNLOAD_ATTEMPTS,
+  attempts: askedAttempts,
+  retryDelaysMs,
   idleMs = DOWNLOAD_IDLE_MS,
   fetchImpl = fetch,
   sleep = abortableSleep,
   onNote = (m) => console.error(m),
 } = {}) {
+  let attempts = askedAttempts ?? DOWNLOAD_ATTEMPTS;
+  let delayBefore = (attempt) => 3000 * attempt;
+  if (retryDelaysMs !== undefined) {
+    if (!Array.isArray(retryDelaysMs) || retryDelaysMs.some((ms) => !Number.isFinite(ms) || ms < 0)) {
+      throw new TypeError("downloadFalFile: retryDelaysMs must be a list of waits in milliseconds");
+    }
+    if (askedAttempts !== undefined && askedAttempts !== retryDelaysMs.length + 1) {
+      throw new TypeError(`downloadFalFile: retryDelaysMs has ${retryDelaysMs.length} waits, which is ${retryDelaysMs.length + 1} attempts, not ${askedAttempts}`);
+    }
+    attempts = retryDelaysMs.length + 1;
+    delayBefore = (attempt) => retryDelaysMs[attempt - 1];
+  }
   let lastError = null;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const idle = new AbortController();
@@ -773,7 +791,7 @@ export async function downloadFalFile(url, {
       lastError = idle.signal.aborted ? new Error(`no bytes for ${Math.round(idleMs / 1000)}s`) : error;
       if (attempt < attempts) {
         onNote(`WARN: download failed (${errorMessage(lastError)}) — retrying (attempt ${attempt} of ${attempts})`);
-        await sleep(3000 * attempt, signal);
+        await sleep(delayBefore(attempt), signal);
       }
     } finally {
       if (idleTimer) clearTimeout(idleTimer);
