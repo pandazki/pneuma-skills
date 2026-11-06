@@ -417,6 +417,43 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     expect(r.err).toContain("2 candidate(s) never started");
   }, 30_000);
 
+  test("one writer at a time: a second mutating command refuses and names the holder; reading commands still answer", async () => {
+    const dir = workspace({ stickers: 2 });
+    writeFileSync(join(dir, "made.gif"), structuralGif(12, { delayCs: 10, width: 480, height: 480 }));
+    const first = Bun.spawn([process.execPath, STICKER, "gen", "--only", "s01", "--dir", dir], { cwd: dir, stdout: "pipe", stderr: "pipe", env: env(dir, { MOCK_SLEEP_MS: "20000" }) });
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && assetOf(dir, "s01-take-1")?.status !== "generating") await Bun.sleep(50);
+    expect(assetOf(dir, "s01-take-1")?.status).toBe("generating");
+    const holder = JSON.parse(readFileSync(join(dir, ".sticker.lock"), "utf-8"));
+    expect(holder).toMatchObject({ pid: first.pid, command: "gen" });
+    for (const argv of [["gen", "--only", "s01", "--redo"], ["import", "--sticker", "s02", "--file", join(dir, "made.gif")], ["export"]]) {
+      const r = run(dir, argv);
+      expect({ argv, code: r.code }).toEqual({ argv, code: 1 });
+      expect(r.err).toContain(`another sticker.mjs gen (pid ${first.pid}`);
+      expect(r.err).toContain("is working in this workspace");
+    }
+    // Nothing was sent or recorded by the refused commands; the take in flight is untouched.
+    expect(gifCalls(dir)).toHaveLength(1);
+    expect(assetOf(dir, "s01-take-1").status).toBe("generating");
+    expect(assetOf(dir, "s02-take-1")).toBeUndefined();
+    for (const argv of [["status"], ["quote"], ["prompts"], ["gen", "--dry-run"]]) expect({ argv, code: run(dir, argv).code }).toEqual({ argv, code: 0 });
+    first.kill("SIGINT");
+    expect(await first.exited).toBe(130);
+    expect(existsSync(join(dir, ".sticker.lock"))).toBe(false);
+  }, 30_000);
+
+  test("a lock whose process is gone is reported and taken over", () => {
+    const dir = workspace({ stickers: 1 });
+    const gone = Bun.spawnSync([process.execPath, "-e", "process.pid"]);
+    expect(gone.exitCode).toBe(0);
+    writeFileSync(join(dir, ".sticker.lock"), JSON.stringify({ pid: gone.pid, command: "export", startedAt: "2026-11-06T10:00:00.000Z" }));
+    const r = run(dir, ["import", "--character", "--file", join(dir, "photo.webp")]);
+    expect(r.code).toBe(0);
+    expect(r.err).toContain(`left by sticker.mjs export (pid ${gone.pid}, started 2026-11-06T10:00:00.000Z), which is no longer running`);
+    expect(assetOf(dir, "character-2").status).toBe("ready");
+    expect(existsSync(join(dir, ".sticker.lock"))).toBe(false);
+  });
+
   test("picks and edits: a changed caption makes the picked take stale, with the reason", () => {
     const dir = workspace({ stickers: 2 });
     ok(dir, ["gen"]);

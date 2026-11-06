@@ -23,7 +23,8 @@
  * Node built-ins plus ffmpeg/ffprobe; no npm dependencies.
  */
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -122,6 +123,82 @@ function workspace(v) {
     rel: (abs) => relative(root, abs).split(sep).join("/"),
     abs: (rel) => join(root, rel),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Workspace lock — one writer at a time
+// ---------------------------------------------------------------------------
+
+/** Commands that write project.json or media files; status, quote, prompts, check and inspect never lock. */
+const MUTATING = new Set(["character", "gen", "import", "export"]);
+const LOCK_FILE = ".sticker.lock";
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+function readLock(path) {
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const holder = JSON.parse(raw);
+    return { raw, holder: holder && typeof holder === "object" ? holder : null };
+  } catch {
+    return null;
+  }
+}
+
+const holderText = (h) => `sticker.mjs ${h?.command ?? "?"} (pid ${h?.pid ?? "?"}, started ${h?.startedAt ?? "at an unknown time"})`;
+
+/**
+ * Take the workspace's exclusive write lock: `.sticker.lock`, created
+ * atomically with { pid, command, startedAt } (written beside, then
+ * hard-linked into place, so it is never read half-written). A live holder
+ * refuses this command by name; a holder whose pid is gone is reported and
+ * taken over. Returns `release()`, also run on process exit (a second
+ * interrupt exits at once). Null when the workspace directory does not exist
+ * (the command then fails on its missing pack.json).
+ */
+function lockWorkspace(ws, command) {
+  const path = join(ws.root, LOCK_FILE);
+  const token = randomUUID();
+  const body = `${JSON.stringify({ pid: process.pid, command, startedAt: new Date().toISOString(), token })}\n`;
+  const create = () => {
+    const staged = `${path}.${process.pid}-${token.slice(0, 8)}.tmp`;
+    writeFileSync(staged, body, { flag: "wx" });
+    try {
+      linkSync(staged, path);
+      return true;
+    } catch (error) {
+      if (error?.code === "EEXIST") return false;
+      throw error;
+    } finally {
+      rmSync(staged, { force: true });
+    }
+  };
+  if (!existsSync(ws.root)) return null;
+  // Released between our attempt and our read: one more try.
+  if (!create() && (existsSync(path) || !create())) {
+    const seen = readLock(path);
+    const holder = seen?.holder;
+    const refuse = (h) => fail(`${h ? `another ${holderText(h)} is working in this workspace` : `${path} is held but unreadable`} — nothing was done. Wait for it to finish (status, quote, prompts, check and inspect still work); if no sticker.mjs is running there, delete ${path}`);
+    if (!holder || !Number.isInteger(holder.pid) || pidAlive(holder.pid)) refuse(holder);
+    // The holder is gone. Take over only the lock we judged; a newer one wins.
+    if (readLock(path)?.raw !== seen.raw) refuse(readLock(path)?.holder);
+    rmSync(path, { force: true });
+    if (!create()) refuse(readLock(path)?.holder);
+    note(`WARN: ${LOCK_FILE} was left by ${holderText(holder)}, which is no longer running — taking it over. If it was cut off mid-call, status shows what it left in flight.`);
+  }
+  const release = () => {
+    process.off("exit", release);
+    if (readLock(path)?.holder?.token === token) rmSync(path, { force: true });
+  };
+  process.on("exit", release);
+  return { release };
 }
 
 const PACK_HINT = `pack.json holds { version: 1, rights, platforms, character: { description, style, anchor }, motion, listing, stickers: [{ id, word, caption, emoji, action, take, keepFrames }], art }`;
@@ -1326,12 +1403,16 @@ export async function main(argv = process.argv.slice(2)) {
     return 1;
   }
   if (command !== "import" && values.art === "true") values.art = true;
+  let lock = null;
   try {
+    if (MUTATING.has(command) && !values["dry-run"]) lock = lockWorkspace(workspace(values), command);
     await handler(values, positionals[1]);
     return process.exitCode ?? 0;
   } catch (error) {
     process.stderr.write(`ERROR: ${errorMessage(error)}\n`);
     return 1;
+  } finally {
+    lock?.release();
   }
 }
 
