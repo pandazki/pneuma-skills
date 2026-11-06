@@ -43,7 +43,7 @@ afterAll(() => {
 interface Run { code: number; out: string; err: string }
 
 function env(dir: string, extra: Record<string, string> = {}) {
-  return { ...process.env, STICKER_GENERATORS: MOCK, MOCK_LOG: join(dir, ".mock-log.jsonl"), MOCK_FAIL: "", MOCK_FAIL_STICKER: "", MOCK_NO_KEYS: "", MOCK_REAL_MEDIA: "", MOCK_SLEEP_MS: "", ...extra };
+  return { ...process.env, STICKER_GENERATORS: MOCK, MOCK_LOG: join(dir, ".mock-log.jsonl"), MOCK_FAIL: "", MOCK_FAIL_STICKER: "", MOCK_NO_KEYS: "", MOCK_REAL_MEDIA: "", MOCK_SLEEP_MS: "", MOCK_IMAGE_SLEEP_MS: "", ...extra };
 }
 
 /** Pinned cwd: Bun loads the cwd's .env, and the repository's holds real keys. */
@@ -375,6 +375,47 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     expect(Object.keys(project(dir).sticker.measures).sort()).toEqual(["s01-take-2", "s02-take-1"]);
     expect(project(dir).sticker.archives).toEqual({});
   });
+
+  /** Spawn a paid command, interrupt it once `ready()` holds, and give it `graceMs` to exit (then kill it). */
+  async function interrupt(dir: string, argv: string[], extra: Record<string, string>, ready: () => boolean, graceMs = 8000) {
+    const child = Bun.spawn([process.execPath, STICKER, ...argv, "--dir", dir, "--json"], { cwd: dir, stdout: "pipe", stderr: "pipe", env: env(dir, extra) });
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && !ready()) await Bun.sleep(50);
+    expect(ready()).toBe(true);
+    child.kill("SIGINT");
+    const code = await Promise.race([child.exited, Bun.sleep(graceMs).then(() => "still running")]);
+    if (code === "still running") child.kill("SIGKILL");
+    await child.exited;
+    return { code, out: await new Response(child.stdout).text(), err: await new Response(child.stderr).text() };
+  }
+
+  test("one interrupt cancels the whole gen: in-flight takes fail (billing unknown), nothing new is sent, exit 130", async () => {
+    const dir = workspace({ stickers: 8 });
+    const inFlight = () => (project(dir).assets as { status?: string }[]).filter((a) => a.status === "generating").length;
+    const r = await interrupt(dir, ["gen", "--concurrency", "4"], { MOCK_SLEEP_MS: "20000" }, () => inFlight() === 4);
+    expect(r.code).toBe(130);
+    expect(gifCalls(dir)).toHaveLength(4);
+    for (const sid of ["s01", "s02", "s03", "s04"]) {
+      expect(assetOf(dir, `${sid}-take-1`).status).toBe("failed");
+      expect(edgeOf(dir, `${sid}-take-1`).operation.params.failure).toMatchObject({ billing: "unknown" });
+    }
+    for (const sid of ["s05", "s06", "s07", "s08"]) expect(assetOf(dir, `${sid}-take-1`)).toBeUndefined();
+    const out = JSON.parse(r.out);
+    expect(out).toMatchObject({ interrupted: "SIGINT", notStarted: ["s05", "s06", "s07", "s08"] });
+    expect(r.err).toContain("never started (nothing sent): s05, s06, s07, s08");
+  }, 30_000);
+
+  test("one interrupt stops character candidates too: the rest are never sent", async () => {
+    const dir = workspace({ anchor: false });
+    const imageCalls = () => mockLog(dir).filter((e: { kind: string }) => e.kind === "image").length;
+    const r = await interrupt(dir, ["character", "--from", join(dir, "photo.webp"), "--count", "3"], { MOCK_IMAGE_SLEEP_MS: "20000" }, () => imageCalls() === 1);
+    expect(r.code).toBe(130);
+    expect(imageCalls()).toBe(1);
+    expect(edgeOf(dir, "character-1").operation.params.failure).toMatchObject({ billing: "unknown" });
+    expect(assetOf(dir, "character-2")).toBeUndefined();
+    expect(JSON.parse(r.out)).toMatchObject({ interrupted: "SIGINT", notStarted: 2 });
+    expect(r.err).toContain("2 candidate(s) never started");
+  }, 30_000);
 
   test("picks and edits: a changed caption makes the picked take stale, with the reason", () => {
     const dir = workspace({ stickers: 2 });

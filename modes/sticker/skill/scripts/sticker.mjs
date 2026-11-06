@@ -275,14 +275,58 @@ async function projectCostLine(ws) {
 }
 
 /**
- * One registered paid call. Returns a row; a failed or interrupted call is
- * reported and sets the exit code.
+ * One cancellation for a whole paid command. The first SIGINT / SIGTERM
+ * aborts every call in flight (runRegistered records each as failed, billing
+ * unknown) and nothing new is reserved or sent after it; a second signal
+ * exits 130 at once. runRegistered's own per-call handlers are off
+ * (`handleSignals: false`), so this scope keeps that contract: per-call
+ * handlers would be gone between calls, and a fresh call would start with a
+ * fresh signal.
  */
-async function runPaid(ws, now, { reserve, call, updateSidecar }) {
+function interruptScope() {
+  const controller = new AbortController();
+  let by = null;
+  const handlers = ["SIGINT", "SIGTERM"].map((name) => {
+    const handler = () => {
+      if (by) process.exit(130);
+      by = name;
+      note(`${name}: cancelling the calls in flight; nothing new is sent (a second ${name} exits at once)`);
+      controller.abort(new DOMException(`received ${name}`, "AbortError"));
+    };
+    process.on(name, handler);
+    return [name, handler];
+  });
+  return {
+    signal: controller.signal,
+    get by() {
+      return by;
+    },
+    dispose() {
+      for (const [name, handler] of handlers) process.off(name, handler);
+    },
+  };
+}
+
+/** After an interrupt: say what was cancelled and what never started, and exit 130. */
+function reportInterrupt(scope, rows, notStarted) {
+  if (!scope.by) return null;
+  process.exitCode = 130;
+  const cancelled = rows.filter((r) => r && !r.ok && r.interrupted).map((r) => r.id);
+  const line = `interrupted by ${scope.by}: ${cancelled.length ? `${cancelled.join(", ")} cancelled — recorded as failed, billing unknown (it may have been charged)` : "nothing was in flight"}; ${notStarted}`;
+  note(line);
+  return line;
+}
+
+/**
+ * One registered paid call under the command's interrupt scope. Returns a
+ * row; a failed or interrupted call is reported and sets the exit code.
+ */
+async function runPaid(ws, now, scope, { reserve, call, updateSidecar }) {
   const { io } = await craftModules();
   const started = Date.now();
   const outcome = await io.runRegistered({
     path: ws.project, sidecarKey: S.SIDECAR_KEY, reserve, call, now,
+    signal: scope.signal, handleSignals: false,
     updateSidecar: (d, phase) => {
       updateSidecar?.(d, phase);
       tidy(d);
@@ -294,18 +338,24 @@ async function runPaid(ws, now, { reserve, call, updateSidecar }) {
     note(`cost: ${outcome.asset.id} ${costText(cost)}${cost?.note ? ` — ${cost.note}` : ""}`);
     return { id: outcome.asset.id, ok: true, status: "ready", uri: outcome.asset.uri, cost, seconds, warning: outcome.warning, sidecarError: outcome.sidecarError };
   }
+  const interrupted = scope.by ?? outcome.interrupted ?? null;
+  const exitCode = interrupted ? 130 : outcome.exitCode;
   note(`ERROR: ${outcome.asset.id} failed: ${outcome.reason} (billing: ${outcome.billing})`);
   note(`cost: ${outcome.asset.id} ${outcome.billing === "none" ? "not billed (the request never left)" : `${costText(cost)} — may have been billed`}`);
-  process.exitCode = Math.max(process.exitCode ?? 0, outcome.exitCode);
-  return { id: outcome.asset.id, ok: false, status: "failed", reason: outcome.reason, billing: outcome.billing, cost, seconds, interrupted: outcome.interrupted, exitCode: outcome.exitCode };
+  process.exitCode = Math.max(process.exitCode ?? 0, exitCode);
+  return { id: outcome.asset.id, ok: false, status: "failed", reason: outcome.reason, billing: outcome.billing, cost, seconds, interrupted, exitCode };
 }
 
-/** Run `tasks` with at most `limit` in flight; every task runs whatever the others do. */
-async function pool(tasks, limit) {
+/**
+ * Run `tasks` with at most `limit` in flight; a failure does not stop the
+ * others. Once `signal` aborts, nothing more is dequeued: a task that never
+ * started leaves `undefined` in its slot.
+ */
+async function pool(tasks, limit, signal) {
   const results = new Array(tasks.length);
   let next = 0;
   const worker = async () => {
-    while (next < tasks.length) {
+    while (next < tasks.length && !signal?.aborted) {
       const i = next;
       next += 1;
       results[i] = await tasks[i]();
@@ -631,38 +681,49 @@ async function cmdCharacter(v) {
   const source = fromImage ? await characterSource(ws, pack, now, v.from) : null;
   await ensureProject(ws, pack);
   const rows = [];
-  for (let i = 0; i < count; i += 1) {
-    const doc = await loadProjectOrNull(ws);
-    const n = nextFree(doc, "character-", (k) => ws.abs(S.paths.character(k)));
-    const id = S.ids.character(n);
-    const planned = S.paths.character(n);
-    let measured = null;
-    const row = await runPaid(ws, now, {
-      reserve: {
-        id, type: "image", name: `Character ${n}`, op: "generate", uri: planned,
-        ...(source ? { from: [source.id] } : {}),
-        model, prompt, provider: "openrouter",
-        params: { request: { aspectRatio: "1:1", quality, background: "transparent" } },
-        ...(imageEstimate(doc, model, quality) ? { cost: imageEstimate(doc, model, quality) } : {}),
-      },
-      call: async ({ signal }) => {
-        const out = await generateImageInto(ws, gen, {
-          prompt, model, quality, aspectRatio: "1:1", background: "transparent", apiKey, signal,
-          imageUrls: source ? [ws.abs(source.uri)] : [],
-        }, (ext) => S.paths.character(n, ext));
-        measured = measureStillSafely(ws.abs(out.rel));
-        return { file: ws.abs(out.rel), cost: reportedCost(out.usage) };
-      },
-      updateSidecar: (d, phase) => {
-        if (phase === "land" && measured) sidecar(d).measures[id] = { ...measured, at: now() };
-      },
-    });
-    rows.push(row);
+  const scope = interruptScope();
+  try {
+    for (let i = 0; i < count && !scope.signal.aborted; i += 1) {
+      rows.push(await characterCandidate(ws, now, scope, gen, { source, model, quality, prompt, apiKey }));
+    }
+  } finally {
+    scope.dispose();
   }
-  const lines = ["character candidates:", ...paidLines(rows)];
+  const notStarted = count - rows.length;
+  const stopped = reportInterrupt(scope, rows, `${notStarted} candidate(s) never started (nothing sent)`);
+  const lines = ["character candidates:", ...paidLines(rows), stopped];
   if (rows.some((r) => r.ok)) lines.push(`next: look at them, then set character.anchor in pack.json (e.g. "${rows.find((r) => r.ok).id}")`);
   lines.push(`cost: ${await projectCostLine(ws)}`);
-  emit(v, { command: "character", source: source?.id ?? null, results: rows }, lines);
+  emit(v, { command: "character", source: source?.id ?? null, results: rows, interrupted: scope.by, notStarted }, lines);
+}
+
+/** One character candidate: the next free id, generated and registered. */
+async function characterCandidate(ws, now, scope, gen, { source, model, quality, prompt, apiKey }) {
+  const doc = await loadProjectOrNull(ws);
+  const n = nextFree(doc, "character-", (k) => ws.abs(S.paths.character(k)));
+  const id = S.ids.character(n);
+  const planned = S.paths.character(n);
+  let measured = null;
+  return runPaid(ws, now, scope, {
+    reserve: {
+      id, type: "image", name: `Character ${n}`, op: "generate", uri: planned,
+      ...(source ? { from: [source.id] } : {}),
+      model, prompt, provider: "openrouter",
+      params: { request: { aspectRatio: "1:1", quality, background: "transparent" } },
+      ...(imageEstimate(doc, model, quality) ? { cost: imageEstimate(doc, model, quality) } : {}),
+    },
+    call: async ({ signal }) => {
+      const out = await generateImageInto(ws, gen, {
+        prompt, model, quality, aspectRatio: "1:1", background: "transparent", apiKey, signal,
+        imageUrls: source ? [ws.abs(source.uri)] : [],
+      }, (ext) => S.paths.character(n, ext));
+      measured = measureStillSafely(ws.abs(out.rel));
+      return { file: ws.abs(out.rel), cost: reportedCost(out.usage) };
+    },
+    updateSidecar: (d, phase) => {
+      if (phase === "land" && measured) sidecar(d).measures[id] = { ...measured, at: now() };
+    },
+  });
 }
 
 /**
@@ -753,10 +814,11 @@ async function cmdGen(v) {
     const n = nextFree(doc, `${sticker.id}-take-`, (k) => ws.abs(S.paths.take(sticker.id, k)));
     return { sticker, n, id: S.ids.take(sticker.id, n), uri: S.paths.take(sticker.id, n) };
   });
+  const scope = interruptScope();
   const tasks = plan.map((p) => async () => {
     let measured = null;
     const options = gifOptions(p.sticker, ws.abs(p.uri));
-    const row = await runPaid(ws, now, {
+    const row = await runPaid(ws, now, scope, {
       reserve: {
         id: p.id, type: "image", name: `${p.sticker.id} ${p.sticker.word || ""} take ${p.n}`.replace(/\s+/g, " ").trim(), op: "generate", uri: p.uri,
         from: [anchor.id], model: gen.gifModelId(request.model), prompt: options.prompt, provider: "fal",
@@ -775,13 +837,22 @@ async function cmdGen(v) {
     });
     return { sticker: p.sticker.id, ...row, detail: takeDetail(measured) };
   });
-  const rows = await pool(tasks, concurrency);
+  let ran;
+  try {
+    ran = await pool(tasks, concurrency, scope.signal);
+  } finally {
+    scope.dispose();
+  }
+  const rows = ran.filter(Boolean);
+  const notStarted = plan.filter((_, i) => !ran[i]).map((p) => p.sticker.id);
+  const stopped = reportInterrupt(scope, rows, notStarted.length ? `never started (nothing sent): ${notStarted.join(", ")}` : "every take had started");
   const landed = rows.filter((r) => r.ok).length;
   const after = await loadProjectOrNull(ws);
   const next = S.nextStep(pack, after);
-  emit(v, { command: "gen", results: rows, skipped, uncertain, next }, [
+  emit(v, { command: "gen", results: rows, skipped, uncertain, interrupted: scope.by, notStarted, next }, [
     `takes: ${landed} of ${rows.length} landed`,
     ...paidLines(rows),
+    stopped,
     `cost: this run ${rows.length} call(s) ≈ ${money(round4(rows.reduce((s, r) => s + (r.billing === "none" ? 0 : r.cost?.usd ?? 0), 0)))} (estimate — fal reports no usage for GIF jobs) · ${await projectCostLine(ws)}`,
     `look before picking: sticker.mjs inspect <id> · next: ${next.line}`,
   ]);
@@ -820,10 +891,11 @@ async function cmdGenArt(v) {
     const n = nextFree(doc, `art-${kind}-`, (k) => ws.abs(S.paths.art(kind, k)));
     return { kind, n, id: S.ids.art(kind, n), uri: S.paths.art(kind, n), ...S.artPrompt(pack, kind) };
   });
+  const scope = interruptScope();
   const tasks = plan.map((p) => async () => {
     let measured = null;
     const estimate = imageEstimate(doc, model, quality);
-    const row = await runPaid(ws, now, {
+    const row = await runPaid(ws, now, scope, {
       reserve: {
         id: p.id, type: "image", name: `${p.kind} art ${p.n}`, op: "generate", uri: p.uri, from: [anchor.id],
         model, prompt: p.prompt, provider: "openrouter",
@@ -841,10 +913,19 @@ async function cmdGenArt(v) {
     });
     return { kind: p.kind, ...row };
   });
-  const rows = await pool(tasks, concurrency);
-  emit(v, { command: "gen", art: true, results: rows, skipped }, [
+  let ran;
+  try {
+    ran = await pool(tasks, concurrency, scope.signal);
+  } finally {
+    scope.dispose();
+  }
+  const rows = ran.filter(Boolean);
+  const notStarted = plan.filter((_, i) => !ran[i]).map((p) => p.kind);
+  const stopped = reportInterrupt(scope, rows, notStarted.length ? `never started (nothing sent): ${notStarted.join(", ")}` : "every image had started");
+  emit(v, { command: "gen", art: true, results: rows, skipped, interrupted: scope.by, notStarted }, [
     "art:",
     ...paidLines(rows),
+    stopped,
     rows.some((r) => r.ok) ? "next: look at them, then set art.<kind> in pack.json to the one to use" : null,
     `cost: ${await projectCostLine(ws)}`,
   ]);
