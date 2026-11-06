@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "rights": {
+    "basis": "original",
+    "note": "Pneuma's own 牛马 mascot: the front view of modes/anime-series/seed/guang-niuma/refs/char-niuma-sheet-2.webp, redrawn as a flat sticker character",
+    "confirmedAt": "2026-11-06"
+  },
+  "platforms": [
+    "wechat",
+    "telegram",
+    "line"
+  ],
+  "character": {
+    "description": "a round chubby pale blue-grey ox calf with no visible neck, small rounded ears, two short cream horns, a single curl of hair on top of the head, big droopy dark eyes under worried brows, a wide cream muzzle with two small nostrils, a thin mint-green collar with a small square cream tag showing a tiny ox face, short stubby legs with dark grey hooves",
+    "style": "thick clean dark outlines, flat colors",
+    "anchor": "character-1"
+  },
+  "motion": {
+    "frames": 16,
+    "frameMs": 120,
+    "size": 512
+  },
+  "listing": {
+    "wechat": {
+      "name": "打工牛马",
+      "intro": "上班的牛马替你回工作群：收到、马上、稍等、辛苦了，还有加班、摸鱼、下班啦和不想上班。",
+      "copyright": "Pneuma"
+    },
+    "telegram": {
+      "title": "打工牛马 Work Ox",
+      "shortName": "dagong_niuma"
+    },
+    "line": {
+      "title": "打工牛马 Work Ox",
+      "creator": "Pneuma",
+      "description": "打工牛马的一天：收到、马上、稍等、辛苦了、加班中、摸鱼、下班啦、不想上班。",
+      "copyright": "Pneuma"
+    }
+  },
+  "stickers": [
+    {
+      "id": "s01",
+      "word": "收到",
+      "caption": "收到",
+      "emoji": "🫡",
+      "action": "stands up straight, gives one firm nod, raises its right front hoof to its brow in a crisp salute, holds it for a beat, then lowers it back to the start pose",
+      "take": "s01-take-1",
+      "keepFrames": null
+    },
+    {
+      "id": "s02",
+      "word": "马上",
+      "caption": "马上",
+      "emoji": "🏃",
+      "action": "runs in place at full speed facing the viewer, short legs pumping, body leaning forward, a determined frown and one sweat drop flying off its head",
+      "take": "s02-take-1",
+      "keepFrames": null
+    },
+    {
+      "id": "s03",
+      "word": "稍等",
+      "caption": "稍等",
+      "emoji": "✋",
+      "action": "holds one front hoof up toward the viewer in a 'wait a moment' gesture, head tilted with an apologetic grin, bobbing gently twice",
+      "take": "s03-take-1",
+      "keepFrames": null
+    },
+    {
+      "id": "s04",
+      "word": "辛苦了",
+      "caption": "辛苦了",
+      "emoji": "🙏",
+      "action": "presses its two front hooves together, bows deeply with eyes closed and a grateful smile, holds the bow for a beat, then straightens up",
+      "take": "s04-take-1",
+      "keepFrames": null
+    },
+    {
+      "id": "s05",
+      "word": "加班",
+      "caption": "加班中",
+      "emoji": "😵",
+      "action": "sits slumped with heavy half-closed eyes and dark rings under them, its head slowly droops forward, jerks back up with wide startled eyes, then starts drooping again",
+      "take": "s05-take-2",
+      "keepFrames": null
+    },
+    {
+      "id": "s06",
+      "word": "摸鱼",
+      "caption": "摸鱼",
+      "emoji": "🐟",
+      "action": "hugs a small blue fish to its chest and strokes it with one hoof, a sly content grin, eyes darting left then right to check that no one is watching",
+      "take": "s06-take-1",
+      "keepFrames": null
+    },
+    {
+      "id": "s07",
+      "word": "下班",
+      "caption": "下班啦",
+      "emoji": "🎉",
+      "action": "jumps straight up with both front hooves thrown in the air and a huge open-mouthed grin, lands, and jumps again",
+      "take": "s07-take-1",
+      "keepFrames": null
+    },
+    {
+      "id": "s08",
+      "word": "不想上班",
+      "caption": "不想上班",
+      "emoji": "😭",
+      "action": "lies on its back on the ground, kicking all four short legs and bawling, big streams of cartoon tears flying from its eyes",
+      "take": "s08-take-1",
+      "keepFrames": null
+    }
+  ],
+  "art": {
+    "portrait": "art-portrait-1",
+    "head": "art-head-2",
+    "banner": "art-banner-1"
+  }
+}

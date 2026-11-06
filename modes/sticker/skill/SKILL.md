@@ -154,7 +154,10 @@ What this session can generate (the scripts also say so in `status`):
 | `quote`, `prompts`, `status`, `inspect`, `export`, `check`, `import` | free (local) | seconds; `export --platform all` for 8 stickers ≈ 25 s |
 
 The seed pack cost ≈ $1.18: one character, nine takes (one re-roll), four
-pieces of art (one re-roll).
+pieces of art (one re-roll). It ships stopped before export: every sticker
+and every piece of art is made and picked, and `status` says the next step
+is `export`. Run `export --platform all` (free, about half a minute) when
+the user wants to see the platform files and checklists.
 
 ## Workflow
 

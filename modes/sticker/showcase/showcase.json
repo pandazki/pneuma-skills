@@ -41,9 +41,9 @@
         "ja": "ストアごとにチェック"
       },
       "description": {
-        "en": "One export makes what each store asks for: 240-pixel GIFs under 500 KB for WeChat with its cover, icon and banner, 512-pixel VP9 video stickers under 256 KB for Telegram, APNGs with a main and tab image for LINE — plus an upload zip and the listing text to paste. Each platform gets a checklist read from its official rules: sizes, bytes, frames, loops, text lengths. The 打工牛马 seed passes all three; submitting stays yours, under your own name.",
-        "zh-CN": "导出一次，每个平台要的东西就都齐了：微信是 240 像素、500 KB 以内的 GIF，外加封面、图标和横幅；Telegram 是 512 像素、256 KB 以内的 VP9 视频表情；LINE 是带主图和标签图的 APNG —— 另外还有上传用的压缩包和可以直接粘贴的上架文案。每个平台一张检查清单，按官方规范逐项核对：尺寸、大小、帧数、循环、文字长度。示例「打工牛马」三个平台全部通过；提交上架还是你自己来，用你自己的名义。",
-        "ja": "書き出し一回で、各ストアが求めるものがそろいます。WeChat には 240 ピクセル・500 KB 以内の GIF とカバー、アイコン、バナー。Telegram には 512 ピクセル・256 KB 以内の VP9 動画スタンプ。LINE にはメイン画像とタブ画像付きの APNG。さらにアップロード用の zip と、貼り付けるだけの掲載文。各プラットフォームには公式の規定から作ったチェックリストがあり、サイズ、容量、フレーム数、ループ、文字数を一項目ずつ確かめます。サンプルの「打工牛马」は 3 つとも合格。申請はあなた自身の名前で、あなたが行います。"
+        "en": "One export makes what each store asks for: 240-pixel GIFs under 500 KB for WeChat with its cover, icon and banner, 512-pixel VP9 video stickers under 256 KB for Telegram, APNGs with a main and tab image for LINE — plus an upload zip and the listing text to paste. Each platform gets a checklist read from its official rules: sizes, bytes, frames, loops, text lengths. Export the 打工牛马 sample and all three come back without a failure; submitting stays yours, under your own name.",
+        "zh-CN": "导出一次，每个平台要的东西就都齐了：微信是 240 像素、500 KB 以内的 GIF，外加封面、图标和横幅；Telegram 是 512 像素、256 KB 以内的 VP9 视频表情；LINE 是带主图和标签图的 APNG —— 另外还有上传用的压缩包和可以直接粘贴的上架文案。每个平台一张检查清单，按官方规范逐项核对：尺寸、大小、帧数、循环、文字长度。示例「打工牛马」导出一次，三个平台都没有不合格项；提交上架还是你自己来，用你自己的名义。",
+        "ja": "書き出し一回で、各ストアが求めるものがそろいます。WeChat には 240 ピクセル・500 KB 以内の GIF とカバー、アイコン、バナー。Telegram には 512 ピクセル・256 KB 以内の VP9 動画スタンプ。LINE にはメイン画像とタブ画像付きの APNG。さらにアップロード用の zip と、貼り付けるだけの掲載文。各プラットフォームには公式の規定から作ったチェックリストがあり、サイズ、容量、フレーム数、ループ、文字数を一項目ずつ確かめます。サンプルの「打工牛马」を書き出せば、3 つとも不合格なし。申請はあなた自身の名前で、あなたが行います。"
       },
       "media": "highlight-platform-checks.png",
       "mediaType": "image"
