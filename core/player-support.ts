@@ -62,6 +62,19 @@ export const WEB_PLAYER_SUPPORTED_MODES: readonly string[] = [
   // Brand book, image comparison, project switching and two-checkpoint replay
   // verified with scripts/smoke-brand.ts; agent/export controls stay hidden.
   "brand",
+  // Renders from pack.json + project.json alone; every take, art file and
+  // export is a `/content/<uri>?r=<createdAt>` URL and nothing calls /api/*.
+  // Verified with scripts/smoke-sticker.ts (the 打工牛马 seed as shipped, then
+  // after `sticker.mjs export --platform all`) in headless Chrome 156: all 8
+  // GIFs animate on both plates, the inspector decodes 16 frames and switches
+  // takes, the chat preview sends, every submit tab plays its real files (the
+  // VP9+alpha WebMs off 206 Range responses through the worker, the APNGs play
+  // twice and Replay restarts them), scrubbing flips between "not exported
+  // yet" and the passing checklists, no input / pick / command renders,
+  // console clean. WebKit 26 shows the dropped-alpha notice on every WebM and
+  // the no-ImageDecoder note in place of the frame strip. The zip Download
+  // fetches through the worker, because browsers send `<a download>` past it.
+  "sticker",
 ];
 
 export function isModeWebPlayable(mode: string | undefined | null): boolean {

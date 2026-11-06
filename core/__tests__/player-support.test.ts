@@ -29,6 +29,7 @@ describe("WEB_PLAYER_SUPPORTED_MODES", () => {
       "bansho",
       "wordtaste",
       "sprite",
+      "sticker",
     ]) {
       expect(WEB_PLAYER_SUPPORTED_MODES).toContain(mode);
     }
@@ -77,6 +78,8 @@ describe("isPackagePlayable", () => {
     // Every sprite package exported before this entry landed — including the
     // one `scripts/smoke-sprite.ts` builds — carries supported: false.
     expect(isPackagePlayable("sprite", false)).toBe(true);
+    // Same for sticker packages shared before its entry landed.
+    expect(isPackagePlayable("sticker", false)).toBe(true);
   });
 
   test("a positive stamp is always trusted", () => {
