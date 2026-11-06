@@ -1,7 +1,8 @@
 /**
  * The two zero-dependency modules `sprite-sheet.mjs` imports for its exports,
  * pinned as modules: `rive.mjs` (the `.riv` writer) and `zip.mjs` (the
- * store-only zip the PNG sequence ships in).
+ * store-only zip the PNG sequence ships in; a shared script in
+ * `modes/_shared/scripts/` since the sticker mode zips its exports too).
  *
  * No ffmpeg here — both modules are pure bytes in, bytes out — so this file
  * runs everywhere the routine suite does. The CLI halves (`export`, `rive`)
@@ -45,7 +46,7 @@ import {
   riveSampleFrames,
   riveScaleFactor,
 } from "../skill/scripts/rive-plan.mjs";
-import { crc32, zipStore } from "../skill/scripts/zip.mjs";
+import { crc32, zipStore } from "../../_shared/scripts/zip.mjs";
 import { MIRRORED, asymmetry, atlasLayout, mirrorAnchorRecord, mirrorRefusal } from "../skill/scripts/mirror.mjs";
 
 /** Stand-in image bytes: the writer embeds them verbatim and never decodes. */
