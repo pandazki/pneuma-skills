@@ -1,0 +1,83 @@
+{
+  "tool": "modes/_shared/scripts/generate_image.mjs (OpenRouter), edit via edit_image.mjs",
+  "model": "openai/gpt-image-2.6-sunburst",
+  "size": "1376x768",
+  "quality": "high",
+  "generatedAt": "2026-11-06",
+  "style": "Use case: ui-mockup for a product launcher gallery card. One landscape 1376x768 image in the \"Ethereal Tech Dark Mockup\" style: deep zinc canvas from #09090b at the edges to #18181b, a faint warm orange radial glow bleeding in from one corner, glassmorphic panels with thin soft borders, rounded corners and soft shadows, orange #f97316 only for selected and interactive states, clean white sans-serif interface text with a clear hierarchy, generous margins. A refined, idealised interface mockup, not a screenshot, no browser chrome, no operating-system chrome.\n\nThe reference images are the real content and must be reproduced faithfully. The character is THIS exact ox: a round chubby pale blue-grey ox calf with no visible neck, small rounded ears, two short cream horns, a single curl of hair on top of the head, big droopy dark eyes under worried brows, a wide cream muzzle with two small nostrils, a thin mint-green collar with a small square cream tag showing a tiny ox-face silhouette, short stubby legs with dark grey hooves; thick clean dark outlines, flat colours, and a white die-cut sticker border around each sticker. Do not substitute another cow, a realistic cow, a black-and-white spotted cow, or change its colours. Each sticker's Chinese caption is lettered under the ox in thick bold black rounded characters with a white outline, exactly as in the reference; copy every Chinese character stroke for stroke and add no other text inside the stickers.",
+  "note": "Each prompt is `style` + the image prompt below. References are built from the shipped seed; scratch copies are not shipped. Finals were flattened to opaque RGB and compressed with pngquant --quality=85-100 --speed 1.",
+  "images": {
+    "hero.png": {
+      "prompt": "Layout — the Sticker Pack workspace of Pneuma in action, a wide dark app window filling the frame:\n- Top bar of the window: a small orange rounded-square sticker icon, the pack title \"打工牛马\" in white with the small grey subtitle \"8 stickers · 8 ready\" under it; a segmented control with three tabs \"Panel\" (selected, orange tint), \"Chat\", \"Submit\"; on the far right a small segmented toggle \"Light | Dark\" with \"Dark\" selected.\n- Left column (narrow): a glass card headed \"CHARACTER\" in small grey uppercase letters, showing the ox from the first reference standing large and centred; under it three small outlined chips \"WeChat\", \"Telegram\", \"LINE\".\n- Centre (the largest area): a 4 by 2 grid of eight dark rounded sticker cards in this exact order, left to right, top row then bottom row, each showing one sticker from the second reference with its caption: 01 收到 (saluting), 02 马上 (running with speed lines and a sweat drop), 03 稍等 (one hoof raised), 04 辛苦了 (bowing, eyes closed), 05 加班中 (exhausted, droopy eyes), 06 摸鱼 (hugging a blue fish), 07 下班啦 (jumping for joy, mouth open), 08 不想上班 (bawling with streams of blue tears). Each card has a tiny grey monospace number 01–08 in its top-left corner and a small green pill \"Ready\" at its bottom. Card 01 has a glowing orange selection border. The stickers are big and crisp — they are the hero of the picture.\n- Right edge: a slim glass agent chat panel with two short bubbles: the user's bubble (orange-tinted, right-aligned) \"A sticker pack of our ox for the work group chat\" and the agent's reply (grey, left-aligned) \"Eight stickers, all drawn from one character.\" and an empty message input at the bottom.",
+      "references": [
+        "modes/sticker/seed/niuma/character/anchor-1.png flattened on #f2f2f2, 512px",
+        "the eight stickers on #111111 in pack order, 4x2 (frames ffmpeg-extracted from the picked takes (modes/sticker/seed/niuma/stickers/sNN/take-N.gif, -fps_mode passthrough): s01 #10, s02 #11, s03 #5, s04 #6, s05 (take-2) #2, s06 #6, s07 #7, s08 #10 (1-based))"
+      ],
+      "calls": [
+        {
+          "take": 1,
+          "cost": 0.046792,
+          "kept": true
+        }
+      ]
+    },
+    "highlight-one-character.png": {
+      "prompt": "Reference images, in order: (1) the starting picture — a soft glossy 3D render of the mascot; (2) the same mascot redrawn once as a flat outlined sticker character; (3) the eight finished stickers, all drawn from picture (2).\n\nLayout — one idea read left to right: one character becomes eight stickers.\n- Left (narrow): a small glass card headed \"START FROM\" in small grey uppercase letters, showing reference (1) in a rounded frame, with a tiny grey line under it: \"a photo, a drawing, or a few lines\".\n- A short glowing orange arrow pointing right.\n- Centre-left: a larger glass card headed \"CHARACTER\" showing reference (2) big and centred on a dark tile, with a small orange-outlined chip under it reading \"drawn once\".\n- From the character card, eight thin glowing orange connector lines fan out to the right, one to each sticker.\n- Right (the largest area): a 4 by 2 grid of eight small dark rounded tiles, each holding one sticker from reference (3) in this exact order, left to right, top row then bottom row: 01 收到 (saluting), 02 马上 (running with speed lines), 03 稍等 (one hoof raised), 04 辛苦了 (bowing, eyes closed), 05 加班中 (exhausted, droopy eyes), 06 摸鱼 (hugging a blue fish), 07 下班啦 (jumping for joy), 08 不想上班 (bawling with blue tears). Each tile has a tiny grey monospace number 01–08 in its top-left corner. Above the grid a small grey label: \"8 stickers · looping GIFs\".\n- The same ox, the same mint-green collar and the same square collar tag must be clearly recognisable in the character card and in all eight stickers.\n- Along the bottom, one centred line of light-grey italic text: \"Drawn once — every sticker is drawn from that same picture.\"\n- No headline, title or subtitle anywhere in the picture: the only words are the labels named above, the eight captions and the bottom line. Give the three stages the full height of the frame instead.",
+      "references": [
+        "modes/sticker/seed/niuma/character/source-1.png flattened on #f2f2f2, 460px",
+        "modes/sticker/seed/niuma/character/anchor-1.png flattened on #f2f2f2, 512px",
+        "the same eight-sticker sheet as the hero"
+      ],
+      "calls": [
+        {
+          "take": 1,
+          "cost": 0.053565,
+          "kept": false,
+          "why": "invented a headline and a subtitle (\"from a single drawing\") the copy does not say; the last prompt line was added after it"
+        },
+        {
+          "take": 2,
+          "cost": 0.05377,
+          "kept": true
+        }
+      ]
+    },
+    "highlight-light-dark.png": {
+      "prompt": "Reference images, in order: (1) the real frame-by-frame contact sheet of the 收到 sticker — its 16 frames laid out on a light grey chat plate (top) and on a near-black chat plate (bottom); (2) three stickers, 收到 (saluting), 下班啦 (jumping for joy) and 摸鱼 (hugging a blue fish), shown on the light plate (top row) and on the dark plate (bottom row) — note the white die-cut border around each sticker that keeps it visible on black.\n\nLayout — one idea: the same stickers, checked on a light chat and on a dark chat. The frame is split into two equal halves by a thin vertical seam of soft orange light.\n- Top centre, sitting on the seam: a small glass segmented toggle \"Light | Dark\", with \"Dark\" in the orange selected state.\n- Left half (light): a rounded chat-preview card with a WeChat-style light grey #EDEDED background, a thin header with the title \"打工牛马\" and the small grey subtitle \"Chat preview\". In the thread: a grey rounded-square avatar on the left with the 收到 sticker beside it; an orange rounded-square avatar on the right with the 下班啦 sticker beside it; then the grey avatar again with the 摸鱼 sticker. Stickers sit directly on the chat background with no speech bubble, large and crisp.\n- Right half (dark): the identical chat-preview card and the identical thread, but in dark mode with a near-black #111111 background and a dark header; the stickers' white die-cut borders stand out clearly against the black.\n- Under each chat card, a slim strip labelled \"Frames\" in small grey letters showing eight consecutive frames of the 收到 sticker from reference (1), with tiny grey frame numbers 0–7: under the left card the frames sit on the light grey plate, under the right card the same frames sit on the near-black plate.\n- No headline, title or subtitle anywhere else; the only words are the labels named above and the sticker captions 收到, 下班啦, 摸鱼.",
+      "references": [
+        "the real contact sheet from `sticker.mjs inspect s01` on the seed (inspect/s01-take-1-contact.png)",
+        "s01, s07, s06 frames on #ededed above the same on #111111"
+      ],
+      "calls": [
+        {
+          "take": 1,
+          "cost": 0.04683,
+          "kept": true
+        }
+      ]
+    },
+    "highlight-platform-checks.png": {
+      "prompt": "Reference image: the 收到 sticker (saluting ox with the caption 收到), on a dark chat plate.\n\nLayout — one idea: one export, three stores, each checked against its own rules. Three equal glass columns side by side, one per store, each a checklist card:\n- Column header: the store name in white — \"WeChat\", \"Telegram\", \"LINE\" — and next to it a small summary pill. WeChat: green \"19 pass\" and grey \"0 fail\". Telegram: green \"15 pass\" and grey \"0 fail\". LINE: green \"17 pass\", amber \"1 warning\" and grey \"0 fail\".\n- Under the header, a small dark tile showing the same 收到 sticker from the reference, with a tiny monospace file chip beside it: WeChat \"01.gif · 240×240\", Telegram \"01.webm · 512×512\", LINE \"01.png · APNG\".\n- Then six checklist rows per column, each with a small green check mark, in small clean white text (secondary details in grey):\n  WeChat: \"GIF 240×240 · loops forever\" / \"319–411 KB each · limit 500 KB\" / \"cover 240×240 · icon 50×50\" / \"banner 750×400\" / \"name, intro, copyright\" / \"wechat.zip · 11 files\"\n  Telegram: \"WEBM VP9 + alpha · 512×512\" / \"173–237 KB each · limit 256 KB\" / \"1.93 s at 30 fps · limit 3 s\" / \"one emoji per sticker\" / \"thumbnail 100×100\" / \"telegram.zip · 9 files\"\n  LINE: \"APNG within 320×270\" / \"412–505 KB each · limit 1 MB\" / \"16 frames · 1.92 s × 2 plays\" / \"main 240×240 · tab 96×74\" / \"title, description, copyright\" / and a last row with a small amber triangle instead of a check: \"ZIP file names — confirm on the upload page\"\n- Below the columns, left: an orange button \"Export all\"; right of it, small grey text \"8 stickers · 3 upload zips · listing text to paste\".\n- No headline, title or subtitle anywhere else. Spell every English word and number exactly as given; the only Chinese characters in the picture are the sticker caption 收到.",
+      "references": [
+        "s01 frame #10 flattened on #111111, 384px"
+      ],
+      "numbers": "every count, size and limit is from `sticker.mjs export --platform all` then `check --platform all` on a copy of the seed (2026-11-06): WeChat 19 pass, Telegram 15 pass, LINE 17 pass + 1 warning, 0 fail",
+      "calls": [
+        {
+          "take": 1,
+          "cost": 0.038548,
+          "kept": true,
+          "why": "came back RGBA with alpha 12-253 although no transparency was asked for; flattened onto #09090b"
+        },
+        {
+          "take": 2,
+          "edit": "Change only the label on the orange button at the bottom left from \"Export all\" to \"Export and check\", widening the button just enough to fit it, and move the grey text to its right so it still sits beside the button. Keep everything else in the image exactly as it is: the three columns, every row of text and every number, the pills, the three 收到 stickers and their captions, the colours and the composition.",
+          "cost": 0.038511,
+          "kept": "bottom band only",
+          "why": "the viewer button reads \"Export and check\" (viewer/strings.ts exportCheck), not \"Export all\"; the edit also changed 01.webm to 01.webp and one separator, so only rows 664+ were kept, blended over a 28px ramp from row 636 onto the flattened take 1"
+        }
+      ]
+    }
+  },
+  "totalCost": 0.278016
+}
