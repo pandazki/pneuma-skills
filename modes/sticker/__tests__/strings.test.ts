@@ -30,6 +30,7 @@ function render(key: string, value: unknown): string[] {
     if (key === "rowLabel") return ["rights", "count", "words", "zip", "listing-name", "cover"].map((id) => String((value as (p: string, r: unknown) => string)("wechat", { id, label: "fallback" })));
     if (key === "deliverableLabel") return ["cover", "icon", "banner"].map((d) => String((value as (p: string, d: string) => string)("wechat", d)));
     if (key === "listingLabel") return ["title", "creator"].map((f) => String((value as (p: string, f: string) => string)("line", f)));
+    if (key === "sourceLabel") return [String((value as (s: unknown) => string)({ url: "https://core.telegram.org/stickers", what: "sticker requirements" }))];
     return [String((value as (...a: unknown[]) => unknown)(...SAMPLE))];
   }
   return Object.values(value as Record<string, string>);
@@ -147,6 +148,9 @@ describe("platform terms", () => {
         expect(Object.keys(STICKER_TERM_TABLES.listing[locale][platform]).sort()).toEqual(Object.keys(profile.text).sort());
       }
     }
+    // The official pages each tab links to are named in Chinese and Japanese too.
+    const urls = Object.values(S.PLATFORM_PROFILES).flatMap((p) => p.sources.map((s) => s.url)).sort();
+    for (const locale of ["zh-CN", "ja"] as const) expect(Object.keys(STICKER_TERM_TABLES.sources[locale]).sort()).toEqual(urls);
   });
 
   test("every checklist row is named in Chinese and Japanese, not with the module's English label", () => {

@@ -109,9 +109,9 @@ export interface StickerStrings {
   emptyHeadline: string;
   /** Read-only: no command to point at. */
   emptyHeadlineQuiet: string;
-  /** A failed sticker a plain "make the missing stickers" leaves: its last call may have been billed. */
+  /** A failed sticker a plain gen leaves: its last call may have been billed. Names no command (read-only shows it too). */
   genLeftUncertain: string;
-  /** A failed sticker a plain "make the missing stickers" retries: its last call never left. */
+  /** A failed sticker a plain gen retries: its last call never left. */
   genRetries: string;
   readyHeadline: string;
   billingUnknown: string;
@@ -174,6 +174,8 @@ export interface StickerStrings {
   /** A listing text field. */
   listingLabel: (platform: Platform, field: string) => string;
   noStickers: string;
+  /** The link text for one of a platform's official pages. */
+  sourceLabel: (source: { url: string; what: string }) => string;
   files: string;
   stickersFiles: string;
   platformArt: string;
@@ -207,6 +209,32 @@ type PlatformTerms = Record<Platform, Record<string, string>>;
 /** Rows that are neither a sticker, a deliverable nor a listing field. */
 const ROW_IDS = ["rights", "platform", "count", "all-animated", "words", "emoji", "zip", "reward-thumb", "zip-naming"] as const;
 type RowTerms = Record<(typeof ROW_IDS)[number], string>;
+
+/**
+ * The official pages each profile cites, by URL. English keeps the
+ * profile's own description; a long one shows the host.
+ */
+type SourceTerms = Record<string, string>;
+const SOURCES_ZH: SourceTerms = {
+  "https://sticker.weixin.qq.com/": "微信表情开放平台",
+  "https://core.telegram.org/stickers": "贴纸要求",
+  "https://core.telegram.org/stickers/webm-vp9-encoding": "视频贴纸编码",
+  "https://core.telegram.org/stickers/import-stickers": "套组限制",
+  "https://core.telegram.org/bots/api": "Bot API 10.3",
+  "https://creator.line.me/en/guideline/animationsticker/": "动态贴图规范",
+  "https://creator.line.me/en/guideline/sticker/": "贴图文字与套组规范",
+};
+const SOURCES_JA: SourceTerms = {
+  "https://sticker.weixin.qq.com/": "WeChat スタンプ公式サイト",
+  "https://core.telegram.org/stickers": "スタンプの要件",
+  "https://core.telegram.org/stickers/webm-vp9-encoding": "動画スタンプのエンコード",
+  "https://core.telegram.org/stickers/import-stickers": "セットの上限",
+  "https://core.telegram.org/bots/api": "Bot API 10.3",
+  "https://creator.line.me/en/guideline/animationsticker/": "アニメーションスタンプのガイドライン",
+  "https://creator.line.me/en/guideline/sticker/": "スタンプの文字とセットのガイドライン",
+};
+const sourceIn = (terms: SourceTerms | null) => (source: { url: string; what: string }) =>
+  terms?.[source.url] ?? (source.what.length > 48 ? new URL(source.url).host : source.what);
 
 function labels(rows: RowTerms, deliverables: PlatformTerms, listing: PlatformTerms): Pick<Chrome, "rowLabel" | "deliverableLabel" | "listingLabel"> {
   const deliverableLabel = (platform: Platform, name: string) => deliverables[platform]?.[name] ?? PLATFORM_PROFILES[platform]?.deliverables[name]?.label ?? name;
@@ -368,8 +396,8 @@ const EN: Chrome = {
   generatingHeadline: (e) => `Generating for ${e}`,
   emptyHeadline: "No take yet — “Make the missing stickers” asks the agent to draw it",
   emptyHeadlineQuiet: "No take yet",
-  genLeftUncertain: "“Make the missing stickers” leaves this one: retry it only on purpose — it may already have been billed.",
-  genRetries: "The request never left, so “Make the missing stickers” tries it again.",
+  genLeftUncertain: "Not redrawn automatically: the last try may already have been billed, so a retry needs an explicit yes.",
+  genRetries: "The request never left, so it is drawn again with the other missing stickers.",
   readyHeadline: "Ready — matches pack.json",
   billingUnknown: "May have been billed: the provider never confirmed either way.",
   billingNone: "Not billed: the request never left this machine.",
@@ -446,6 +474,7 @@ const EN: Chrome = {
   asianWidth: "CJK characters count 2",
   noPlatforms: "The pack names no platform yet.",
   noStickers: "No stickers yet",
+  sourceLabel: sourceIn(null),
 };
 
 const ZH: Chrome = {
@@ -526,8 +555,8 @@ const ZH: Chrome = {
   generatingHeadline: (e) => `已生成 ${e}`,
   emptyHeadline: "还没出图——点“补齐没出图的表情”，agent 会去画",
   emptyHeadlineQuiet: "还没出图",
-  genLeftUncertain: "“补齐没出图的表情”不会重画这一张：上一次可能已经扣费，要重画得你明确说一声。",
-  genRetries: "请求没发出去，“补齐没出图的表情”会再画一次。",
+  genLeftUncertain: "不会自动重画：上一次可能已经扣过费，要重画得另外明确确认。",
+  genRetries: "请求没发出去，补齐缺图时会再画这一张。",
   readyHeadline: "已就绪，和 pack.json 一致",
   billingUnknown: "可能已扣费：服务商没有确认是否收费。",
   billingNone: "未扣费：请求没有发出这台机器。",
@@ -604,6 +633,7 @@ const ZH: Chrome = {
   asianWidth: "中日韩文字按 2 个字符计",
   noPlatforms: "这套表情还没有指定平台。",
   noStickers: "还没有表情",
+  sourceLabel: sourceIn(SOURCES_ZH),
 };
 
 const JA: Chrome = {
@@ -684,8 +714,8 @@ const JA: Chrome = {
   generatingHeadline: (e) => `生成を始めて ${e}`,
   emptyHeadline: "テイクはまだありません ——「足りないスタンプを作る」で agent が描きます",
   emptyHeadlineQuiet: "テイクはまだありません",
-  genLeftUncertain: "「足りないスタンプを作る」ではこの 1 枚は描き直しません。前回すでに課金された可能性があるので、描き直すならはっきり指示してください。",
-  genRetries: "リクエストは送信されていないので、「足りないスタンプを作る」でもう一度描きます。",
+  genLeftUncertain: "自動では描き直しません。前回すでに課金された可能性があるため、描き直すには改めて確認が必要です。",
+  genRetries: "リクエストは送信されていないので、足りないスタンプを作るときにもう一度描きます。",
   readyHeadline: "完成 —— pack.json と一致しています",
   billingUnknown: "課金された可能性あり：プロバイダーからどちらとも確認できていません。",
   billingNone: "課金なし：リクエストはこのマシンから出ていません。",
@@ -762,6 +792,7 @@ const JA: Chrome = {
   asianWidth: "全角文字は 2 文字として数えます",
   noPlatforms: "プラットフォームがまだ指定されていません。",
   noStickers: "スタンプはまだありません",
+  sourceLabel: sourceIn(SOURCES_JA),
 };
 
 // ── Rule messages ──────────────────────────────────────────────────────────
@@ -799,7 +830,9 @@ function enMessages(c: Chrome): MessageTable {
   const status: Record<StickerStatus, string> = { empty: "no take yet", failed: "every take failed", generating: "still generating", pick: "no take picked", ready: "ready", stale: "stale" };
   const field = { description: "character description", style: "character style", word: "word", caption: "caption", action: "action" };
   const motion = { frames: "frame count", frameMs: "frame duration", size: "size" };
-  const unit = (width: boolean) => (width ? "units (CJK characters count 2)" : "characters");
+  /** A text length, with the limit beside it; LINE counts CJK characters as 2. */
+  const len = (length: number, width: boolean, limit?: string) =>
+    width ? `${length} units (CJK characters count 2${limit ? `; ${limit}` : ""})` : `${length} characters${limit ? ` (${limit})` : ""}`;
   const words = (items: { sticker: string; word: string }[]) => items.map((w) => `${w.sticker} “${w.word}”`).join(", ");
   return {
     "stale.sticker-gone": (p) => `${p.sticker} is no longer in the pack`,
@@ -876,10 +909,10 @@ function enMessages(c: Chrome): MessageTable {
     "listing.empty": () => "empty — required",
     "listing.unset": () => "not set (optional)",
     "listing.bad": (p, say) => `“${p.text}”: ${p.problems.map(say).join("; ")}`,
-    "listing.long": (p) => `“${p.text}”: ${p.length} ${unit(p.width)} — up to ${p.best} shows best`,
-    "listing.ok": (p) => `“${p.text}” — ${p.length} ${unit(p.width)}${p.max !== null ? ` (max ${p.max}${p.min !== null ? `, min ${p.min}` : ""})` : ""}`,
-    "text.over": (p) => `${p.length} ${unit(p.width)}, over ${p.max}`,
-    "text.under": (p) => `${p.length} ${unit(p.width)}, under ${p.min}`,
+    "listing.long": (p) => `“${p.text}”: ${len(p.length, p.width)} — up to ${p.best} shows best`,
+    "listing.ok": (p) => `“${p.text}” — ${len(p.length, p.width, p.max !== null ? `max ${p.max}${p.min !== null ? `, min ${p.min}` : ""}` : undefined)}`,
+    "text.over": (p) => `${len(p.length, p.width)}, over ${p.max}`,
+    "text.under": (p) => `${len(p.length, p.width)}, under ${p.min}`,
     "text.punctuation": () => "no punctuation allowed",
     "zip.ok": (p) => `${p.uri} · ${bytes(p.bytes)} · ${p.files} files${p.over !== null ? ` — over ${bytes(p.over)}` : ""}`,
     "zip.blocked": () => "waits until every file is exported and current",
@@ -910,7 +943,9 @@ function zhMessages(c: Chrome): MessageTable {
   const status: Record<StickerStatus, string> = { empty: "还没出图", failed: "每一版都失败了", generating: "还在生成", pick: "还没选用哪一版", ready: "已就绪", stale: "已过期" };
   const field = { description: "角色描述", style: "画风", word: "含义词", caption: "配字", action: "动作" };
   const motion = { frames: "帧数", frameMs: "每帧时长", size: "尺寸" };
-  const n = (length: number, width: boolean) => (width ? `${length} 个单位（中日韩文字算 2 个）` : `${length} 个字`);
+  /** 文字长度，限制写在同一个括号里；LINE 的中日韩文字按 2 计。 */
+  const len = (length: number, width: boolean, limit?: string) =>
+    width ? `长度 ${length}（中日韩文字按 2 计${limit ? `，${limit}` : ""}）` : `${length} 个字${limit ? `（${limit}）` : ""}`;
   const words = (items: { sticker: string; word: string }[]) => items.map((w) => `${w.sticker}「${w.word}」`).join("、");
   return {
     "stale.sticker-gone": (p) => `${p.sticker} 已经不在这套表情里了`,
@@ -986,10 +1021,10 @@ function zhMessages(c: Chrome): MessageTable {
     "listing.empty": () => "还没填——必填",
     "listing.unset": () => "没填（选填）",
     "listing.bad": (p, say) => `“${p.text}”：${p.problems.map(say).join("；")}`,
-    "listing.long": (p) => `“${p.text}”：${n(p.length, p.width)}——${p.best} 个字以内显示效果最好`,
-    "listing.ok": (p) => `“${p.text}”——${n(p.length, p.width)}${p.max !== null ? `（最多 ${p.max}${p.min !== null ? `，最少 ${p.min}` : ""}）` : ""}`,
-    "text.over": (p) => `${n(p.length, p.width)}，超过了 ${p.max}`,
-    "text.under": (p) => `${n(p.length, p.width)}，少于 ${p.min}`,
+    "listing.long": (p) => `“${p.text}”：${len(p.length, p.width)}——${p.best} 个字以内显示效果最好`,
+    "listing.ok": (p) => `“${p.text}”——${len(p.length, p.width, p.max !== null ? `最多 ${p.max}${p.min !== null ? `，最少 ${p.min}` : ""}` : undefined)}`,
+    "text.over": (p) => `${len(p.length, p.width)}，超过了 ${p.max}`,
+    "text.under": (p) => `${len(p.length, p.width)}，少于 ${p.min}`,
     "text.punctuation": () => "不能带标点",
     "zip.ok": (p) => `${p.uri} · ${bytes(p.bytes)} · ${p.files} 个文件${p.over !== null ? `——超过了 ${bytes(p.over)}` : ""}`,
     "zip.blocked": () => "要等所有文件都导出、并且是最新的",
@@ -1020,7 +1055,9 @@ function jaMessages(c: Chrome): MessageTable {
   const status: Record<StickerStatus, string> = { empty: "テイクなし", failed: "すべてのテイクが失敗", generating: "生成中", pick: "テイク未選択", ready: "完成", stale: "古いテイク" };
   const field = { description: "キャラクターの説明", style: "スタイル", word: "意味語", caption: "文字", action: "動き" };
   const motion = { frames: "フレーム数", frameMs: "1 フレームの長さ", size: "サイズ" };
-  const n = (length: number, width: boolean) => (width ? `${length}（全角 2・半角 1 で計算）` : `${length} 文字`);
+  /** 文字数と上限をひとつの括弧に。LINE は全角 2・半角 1 で数えます。 */
+  const len = (length: number, width: boolean, limit?: string) =>
+    width ? `長さ ${length}（全角 2・半角 1 で計算${limit ? `、${limit}` : ""}）` : `${length} 文字${limit ? `（${limit}）` : ""}`;
   const words = (items: { sticker: string; word: string }[]) => items.map((w) => `${w.sticker}「${w.word}」`).join("、");
   return {
     "stale.sticker-gone": (p) => `${p.sticker} はもうセットにありません`,
@@ -1096,10 +1133,10 @@ function jaMessages(c: Chrome): MessageTable {
     "listing.empty": () => "未入力です（必須）",
     "listing.unset": () => "未入力（任意）",
     "listing.bad": (p, say) => `「${p.text}」：${p.problems.map(say).join("／")}`,
-    "listing.long": (p) => `「${p.text}」：${n(p.length, p.width)} —— ${p.best} 文字以内だときれいに表示されます`,
-    "listing.ok": (p) => `「${p.text}」—— ${n(p.length, p.width)}${p.max !== null ? `（上限 ${p.max}${p.min !== null ? `、下限 ${p.min}` : ""}）` : ""}`,
-    "text.over": (p) => `${n(p.length, p.width)}（上限 ${p.max} を超えています）`,
-    "text.under": (p) => `${n(p.length, p.width)}（${p.min} 以上が必要）`,
+    "listing.long": (p) => `「${p.text}」：${len(p.length, p.width)} —— ${p.best} 文字以内だときれいに表示されます`,
+    "listing.ok": (p) => `「${p.text}」—— ${len(p.length, p.width, p.max !== null ? `上限 ${p.max}${p.min !== null ? `、下限 ${p.min}` : ""}` : undefined)}`,
+    "text.over": (p) => `${len(p.length, p.width)}：上限 ${p.max} を超えています`,
+    "text.under": (p) => `${len(p.length, p.width)}：${p.min} 以上が必要です`,
     "text.punctuation": () => "句読点・記号は使えません",
     "zip.ok": (p) => `${p.uri} · ${bytes(p.bytes)} · ${p.files} ファイル${p.over !== null ? ` —— 上限 ${bytes(p.over)} を超えています` : ""}`,
     "zip.blocked": () => "すべてのファイルを最新の状態で書き出すまで作れません",
@@ -1136,6 +1173,7 @@ export const STICKER_TERM_TABLES = {
   rows: { en: ROW_EN, "zh-CN": ROW_ZH, ja: ROW_JA },
   deliverables: { en: DELIVERABLES_EN, "zh-CN": DELIVERABLES_ZH, ja: DELIVERABLES_JA },
   listing: { en: LISTING_EN, "zh-CN": LISTING_ZH, ja: LISTING_JA },
+  sources: { "zh-CN": SOURCES_ZH, ja: SOURCES_JA },
 } as const;
 
 export function resolveLocale(locale: string | undefined): StickerLocale {

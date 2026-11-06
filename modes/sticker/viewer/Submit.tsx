@@ -405,7 +405,7 @@ export function SubmitView({
             <span>{t.rulesRead(view.profile.checked)}</span>
             {view.profile.sources.map((s) => (
               <a key={s.url} href={s.url} target="_blank" rel="noreferrer" title={s.url} className="inline-flex items-center gap-0.5 underline decoration-cc-border underline-offset-2 hover:text-cc-fg">
-                {s.what.length > 48 ? new URL(s.url).host : s.what}
+                {t.sourceLabel(s)}
                 <Icon.Link size={10} />
               </a>
             ))}
