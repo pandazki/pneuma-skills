@@ -112,6 +112,7 @@ describe("prompts", () => {
     expect(p).toContain("Same character size and same ground line in every frame");
     expect(p).toContain("no motion blur, no dust, no semi-transparent effects");
     expect(p).toContain("The last frame flows smoothly back into the first.");
+    expect(p).toContain("Surround the whole character with a thick white sticker border");
     expect(p).toContain("Action: nods twice and salutes.");
     expect(p).toContain('hand-lettered Chinese caption at the bottom, identical and in the same place in every frame, reading exactly: "收到".');
     expect(p).toContain("thick white outline. No other text.");
@@ -123,6 +124,8 @@ describe("prompts", () => {
     expect(p).toContain('It expresses "摸鱼" through pose and face only.');
     expect(p).toContain("No text, letters or symbols anywhere.");
     expect(p).not.toContain("caption");
+    // The white border is about the character on a dark plate, caption or not.
+    expect(p).toContain(S.STICKER_BORDER);
   });
 
   test("the caption's language word follows its script", () => {
@@ -147,6 +150,27 @@ describe("prompts", () => {
     expect(S.artPrompt(pack, "banner").prompt).toContain("not a white background");
     expect(S.artPrompt(pack, "portrait").prompt).toContain("no white outline");
     expect(() => S.artPrompt(pack, "poster" as never)).toThrow("unknown art kind");
+  });
+
+  test("scene art carries the pack's theme; the character art does not", () => {
+    for (const kind of ["banner", "reward-guide", "reward-thanks"] as const) {
+      const p = S.artPrompt(pack, kind).prompt;
+      expect(p).toContain('The sticker pack is called "打工牛马". What it is about: 打工人的日常表情.');
+      expect(p).toContain("not in a place the character's species suggests");
+      expect(p).toContain("do not write them or any other words in the picture");
+    }
+    for (const kind of ["portrait", "head"] as const) expect(S.artPrompt(pack, kind).prompt).not.toContain("打工牛马");
+
+    // The theme follows the chosen platforms' order; LINE's blurb when WeChat is not chosen.
+    const lineOnly = packFrom({ ...rawPack(), platforms: ["line"] });
+    expect(S.packTheme(lineOnly)).toMatchObject({ name: "Work Ox", about: "Everyday office life of an ox" });
+    expect(S.artPrompt(lineOnly, "banner").prompt).toContain('called "Work Ox". What it is about: Everyday office life of an ox.');
+
+    // No listing yet: the stickers' words say what the pack is about.
+    const bare = packFrom({ ...rawPack(), listing: {} });
+    expect(S.artPrompt(bare, "banner").prompt).toContain("Its stickers say: 收到, 好的, 加班, 下班, 摸鱼, 开会, 谢谢, 晚安.");
+    const empty = packFrom({ ...rawPack(), listing: {}, stickers: [], art: {} });
+    expect(S.artPrompt(empty, "banner").prompt).toContain("a lively everyday world that suits the character");
   });
 
   test("the request carries the pack's motion and the probe defaults", () => {

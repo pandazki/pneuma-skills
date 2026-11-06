@@ -388,10 +388,15 @@ export interface PromptInputs {
 }
 export function stickerRequest(pack: Pack): StickerRequest;
 export function stickerPromptInputs(pack: Pack, sticker: Sticker): PromptInputs;
+/** The white die-cut border clause every take carries (the 2026-11-06 outline experiment). */
+export const STICKER_BORDER: string;
 /** THE prompt for a take; recorded on its edge; the viewer recomputes it for staleness. */
 export function stickerPrompt(pack: Pack, sticker: Sticker): string;
 export function characterPrompt(pack: Pack, options?: { fromImage?: boolean }): string;
-export const ART_SPECS: Readonly<Record<ArtKind, { aspectRatio: string; background: "transparent" | "opaque"; body: string }>>;
+/** `themed` kinds are scenes; their prompt carries the pack's theme (`packTheme`). */
+export const ART_SPECS: Readonly<Record<ArtKind, { aspectRatio: string; background: "transparent" | "opaque"; themed: boolean; body: string }>>;
+/** What the pack is about: the first chosen platform's listing name and blurb, and the stickers' words. */
+export function packTheme(pack: Pack): { name: string; about: string; words: string[] };
 export function artPrompt(pack: Pack, kind: ArtKind): { prompt: string; aspectRatio: string; background: "transparent" | "opaque" };
 
 // ---------------------------------------------------------------------------

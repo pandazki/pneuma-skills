@@ -541,11 +541,22 @@ export function stickerPromptInputs(pack, sticker) {
 }
 
 /**
+ * The white die-cut border every take asks for. Without it a dark-outlined
+ * character melts into a dark chat background: in the 2026-11-06 outline
+ * experiment (2 stickers × 2 takes per variant, 512² × 16, the seed's anchor)
+ * the outline, the dark hooves and the motion marks vanished on the #111
+ * plate in 4 of 4 takes without the clause and read in 4 of 4 with it;
+ * identity and captions held in all 8 (record: skill/references/prompting.md).
+ */
+export const STICKER_BORDER = "Surround the whole character with a thick white sticker border, like a die-cut sticker, so it stands out on a dark chat background.";
+
+/**
  * The prompt for a take of `sticker`, assembled from pack.json alone. The CLI
  * sends exactly this and records it on the take's edge; the viewer runs the
  * same function to tell whether a take is stale. The wording is the
  * 2026-11-06 probe prompt that held identity and drew captions without a
- * typo (5 GIFs, 64 frames), plus the character's written identity.
+ * typo (5 GIFs, 64 frames), plus the character's written identity and the
+ * white sticker border (`STICKER_BORDER`).
  */
 export function stickerPrompt(pack, sticker) {
   const { description, style } = pack.character;
@@ -560,6 +571,7 @@ export function stickerPrompt(pack, sticker) {
     "Same character size and same ground line in every frame, the whole character always fully inside the frame with a clear margin.",
     "Exaggerated facial expression that reads at a tiny size.",
     "All shapes solid and crisp: no motion blur, no dust, no semi-transparent effects.",
+    STICKER_BORDER,
     "Fully transparent background.",
     "The last frame flows smoothly back into the first.",
   );
@@ -594,14 +606,53 @@ export function characterPrompt(pack, { fromImage = true } = {}) {
   ].join(" ");
 }
 
-/** What each art kind is: prompt body, OpenRouter aspect ratio and background. */
+/**
+ * What each art kind is: prompt body, OpenRouter aspect ratio and background.
+ * `themed` kinds are scenes: `artPrompt` puts the pack's theme in front of
+ * the body, so the scene belongs to this pack and not to the character's
+ * species (the 2026-11-06 smoke drew an office ox's banner as a farm).
+ * The head prompt names what to leave out: with a full-body anchor attached,
+ * "only the head" alone came back as the whole figure (seed run, 2026-11-06).
+ */
 export const ART_SPECS = Object.freeze({
-  portrait: Object.freeze({ aspectRatio: "1:1", background: "transparent", body: "Front half-body portrait facing the viewer with a happy expression, centered with a small margin. Fully transparent background. No text, no frame, no white outline around the character." }),
-  head: Object.freeze({ aspectRatio: "1:1", background: "transparent", body: "Only the head, front view, bold and simple, filling most of the square with a small margin. Fully transparent background. No text, no frame, no white outline around the character." }),
-  banner: Object.freeze({ aspectRatio: "16:9", background: "opaque", body: "A wide banner scene with the character in a lively everyday setting, full-bleed, colorful, not a white background, nothing important near the edges. No text, no letters, no logos." }),
-  "reward-guide": Object.freeze({ aspectRatio: "4:3", background: "opaque", body: "A cheerful full-bleed scene: the character happily holding out a small cup, inviting a tip. Colorful, not a white background. No text, no letters, no logos." }),
-  "reward-thanks": Object.freeze({ aspectRatio: "1:1", background: "opaque", body: "A warm full-bleed scene: the character bowing to say thank you, small hearts around it. Colorful, not a white background. No text, no letters, no logos." }),
+  portrait: Object.freeze({ aspectRatio: "1:1", background: "transparent", themed: false, body: "Front half-body portrait facing the viewer with a happy expression, centered with a small margin. Fully transparent background. No text, no frame, no white outline around the character." }),
+  head: Object.freeze({ aspectRatio: "1:1", background: "transparent", themed: false, body: "A close-up of the head only, front view, cut off just below the chin: no body, no legs, no hooves in the picture. Bold and simple, the head filling most of the square with a small margin. Fully transparent background. No text, no frame, no white outline around the character." }),
+  banner: Object.freeze({ aspectRatio: "16:9", background: "opaque", themed: true, body: "A wide banner scene set in that world: the character in the middle of one of its typical moments, with a few props that belong there. Full-bleed, colorful, not a white background, nothing important near the edges." }),
+  "reward-guide": Object.freeze({ aspectRatio: "4:3", background: "opaque", themed: true, body: "A cheerful full-bleed scene set in that world: the character happily holding out a small cup, inviting a tip. Colorful, not a white background." }),
+  "reward-thanks": Object.freeze({ aspectRatio: "1:1", background: "opaque", themed: true, body: "A warm full-bleed scene set in that world: the character bowing to say thank you, small hearts around it. Colorful, not a white background." }),
 });
+
+/**
+ * What the pack is about, from its own text: the name and blurb of the
+ * first chosen platform's listing that has them, else the stickers' words.
+ * Empty when the pack says nothing yet.
+ */
+export function packTheme(pack) {
+  const listing = pack.listing ?? {};
+  const pick = (fields) => {
+    for (const platform of pack.platforms) {
+      for (const [p, field] of fields) {
+        const text = p === platform ? listing[p]?.[field]?.trim() : "";
+        if (text) return text;
+      }
+    }
+    return "";
+  };
+  const name = pick([["wechat", "name"], ["telegram", "title"], ["line", "title"]]);
+  const about = pick([["wechat", "intro"], ["line", "description"]]);
+  const words = pack.stickers.map((s) => s.word.trim()).filter(Boolean);
+  return { name, about, words };
+}
+
+function themeSentence(pack) {
+  const { name, about, words } = packTheme(pack);
+  const said = [
+    name ? `The sticker pack is called "${name}".` : null,
+    about ? `What it is about: ${about.replace(/[.。]?$/, ".")}` : words.length ? `Its stickers say: ${words.join(", ")}.` : null,
+  ].filter(Boolean);
+  if (!said.length) return "Set the scene in a lively everyday world that suits the character.";
+  return `${said.join(" ")} Set the scene in the world this pack is about, not in a place the character's species suggests.`;
+}
 
 /** An art kind's request: the anchor goes along as the reference. */
 export function artPrompt(pack, kind) {
@@ -612,7 +663,9 @@ export function artPrompt(pack, kind) {
     "Use the character in the input image exactly: same face, body shape, colors, markings and line style.",
     description.trim() ? `The character: ${description.trim().replace(/\.?$/, ".")}` : null,
     `Style: ${style.trim().replace(/\.?$/, ".")}`,
+    spec.themed ? themeSentence(pack) : null,
     spec.body,
+    spec.themed ? "The pack's name and words are context only: do not write them or any other words in the picture. No text, no letters, no logos." : null,
   ].filter(Boolean).join(" ");
   return { prompt, aspectRatio: spec.aspectRatio, background: spec.background };
 }
