@@ -1,0 +1,52 @@
+{
+  "tagline": {
+    "en": "One character, a whole pack of chat stickers, ready for three stores",
+    "zh-CN": "一个角色，一整套动态表情，三个平台都能上架",
+    "ja": "キャラクターひとつから、3 つのストアに出せる動くスタンプ一式"
+  },
+  "hero": "hero.png",
+  "highlights": [
+    {
+      "title": {
+        "en": "One Character, Eight Stickers",
+        "zh-CN": "一个角色，八张表情",
+        "ja": "ひとつのキャラ、8 枚のスタンプ"
+      },
+      "description": {
+        "en": "Start from a photo, a drawing or a few lines about who it is. The character is redrawn once as a flat outlined sticker figure, and every sticker is drawn from that same picture: 收到 is a salute, 马上 runs in place, 下班啦 jumps for joy — same ox, same collar tag, in every frame. Each sticker is a looping GIF with its caption lettered in by GPT Image 2.6; a wrong caption or a weak pose is re-rolled, and the old take stays so you can still pick it.",
+        "zh-CN": "从一张照片、一张画，或者几句“它是谁”开始。角色先重画成一个扁平描边的表情形象，之后每一张表情都照着这张图来画：「收到」是敬礼，「马上」是原地狂奔，「下班啦」是蹦起来 —— 每一帧都是同一头牛马、同一块项圈牌。每张都是循环播放的 GIF，字由 GPT Image 2.6 直接写在画里；字写错了、动作不到位就重画一张，旧的那张还留着，照样能选。",
+        "ja": "写真でも、絵でも、「どんなキャラか」の数行でも始められます。キャラクターはまずフラットな線画のスタンプ用に一度だけ描き直され、以後すべてのスタンプがその一枚から描かれます。「收到」は敬礼、「马上」はその場で全力ダッシュ、「下班啦」は飛び上がって大喜び —— どのフレームも同じ牛、同じ首輪の札。どれも文字入りのループ GIF で、文字は GPT Image 2.6 が絵の中に書き込みます。文字の誤りや決まらないポーズは描き直し、前のテイクも残るので、あとからそちらを選ぶこともできます。"
+      },
+      "media": "highlight-one-character.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Light and Dark Chat",
+        "zh-CN": "浅色深色都看过",
+        "ja": "ライトでもダークでも"
+      },
+      "description": {
+        "en": "Stickers play on a real chat background, and you switch it between WeChat's light grey and a dark-mode near-black, because a dark outline that reads on one disappears on the other. Every take is laid out frame by frame on both before it is called done, and every sticker carries a white die-cut border so it still stands out at night. Open one to scrub its frames, compare its takes, or watch the whole pack in a chat thread.",
+        "zh-CN": "表情放在真实的聊天背景上播放，浅灰和深色模式的近黑之间一键切换 —— 在浅色里看得清的深色描边，到了深色里可能就没了。每一张出图在算“做好了”之前，都会在两种背景上逐帧排开看一遍；每张表情也都带一圈白色贴纸描边，夜里照样醒目。点开一张可以逐帧看、比较几次出图，也可以把整套放进聊天对话里看实际效果。",
+        "ja": "スタンプは本物のチャット背景の上で再生され、WeChat の明るいグレーとダークモードのほぼ黒をすぐに切り替えられます。明るい背景で見える濃い輪郭線が、暗い背景では消えてしまうからです。どのテイクも、完成と呼ぶ前に両方の背景でフレームごとに並べて確認。どのスタンプにも白いステッカーのふちが付くので、夜の画面でもはっきり見えます。1 枚を開けばフレームを送ったりテイクを見比べたり、セット全体をチャットのやりとりの中で眺めたりできます。"
+      },
+      "media": "highlight-light-dark.png",
+      "mediaType": "image"
+    },
+    {
+      "title": {
+        "en": "Checked for Every Store",
+        "zh-CN": "每个平台逐项检查",
+        "ja": "ストアごとにチェック"
+      },
+      "description": {
+        "en": "One export makes what each store asks for: 240-pixel GIFs under 500 KB for WeChat with its cover, icon and banner, 512-pixel VP9 video stickers under 256 KB for Telegram, APNGs with a main and tab image for LINE — plus an upload zip and the listing text to paste. Each platform gets a checklist read from its official rules: sizes, bytes, frames, loops, text lengths. The 打工牛马 seed passes all three; submitting stays yours, under your own name.",
+        "zh-CN": "导出一次，每个平台要的东西就都齐了：微信是 240 像素、500 KB 以内的 GIF，外加封面、图标和横幅；Telegram 是 512 像素、256 KB 以内的 VP9 视频表情；LINE 是带主图和标签图的 APNG —— 另外还有上传用的压缩包和可以直接粘贴的上架文案。每个平台一张检查清单，按官方规范逐项核对：尺寸、大小、帧数、循环、文字长度。示例「打工牛马」三个平台全部通过；提交上架还是你自己来，用你自己的名义。",
+        "ja": "書き出し一回で、各ストアが求めるものがそろいます。WeChat には 240 ピクセル・500 KB 以内の GIF とカバー、アイコン、バナー。Telegram には 512 ピクセル・256 KB 以内の VP9 動画スタンプ。LINE にはメイン画像とタブ画像付きの APNG。さらにアップロード用の zip と、貼り付けるだけの掲載文。各プラットフォームには公式の規定から作ったチェックリストがあり、サイズ、容量、フレーム数、ループ、文字数を一項目ずつ確かめます。サンプルの「打工牛马」は 3 つとも合格。申請はあなた自身の名前で、あなたが行います。"
+      },
+      "media": "highlight-platform-checks.png",
+      "mediaType": "image"
+    }
+  ]
+}
