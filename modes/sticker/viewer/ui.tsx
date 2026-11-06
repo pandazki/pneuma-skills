@@ -360,8 +360,9 @@ const FIELD =
 
 /**
  * A field that keeps its own draft and commits on blur or Enter (Escape
- * reverts), so typing does not write pack.json once per keystroke. A new
- * value from the file replaces the draft unless the field is being edited.
+ * cancels: the draft is dropped and nothing is written), so typing does not
+ * write pack.json once per keystroke. A new value from the file replaces
+ * the draft unless the field is being edited.
  */
 export function DraftField({
   value,
@@ -384,12 +385,25 @@ export function DraftField({
 }) {
   const [draft, setDraft] = useState(value);
   const editing = useRef(false);
+  // Set by Escape for the blur it causes: that blur's handler still holds
+  // the typed draft, and must not save it.
+  const cancelled = useRef(false);
   useEffect(() => {
     if (!editing.current) setDraft(value);
   }, [value]);
   const commit = () => {
     editing.current = false;
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
     if (draft !== value) onCommit(draft);
+  };
+  const cancel = (el: HTMLInputElement | HTMLTextAreaElement) => {
+    cancelled.current = true;
+    editing.current = false;
+    setDraft(value);
+    el.blur();
   };
   const common = {
     "aria-label": label,
@@ -399,6 +413,7 @@ export function DraftField({
     maxLength,
     onFocus: () => {
       editing.current = true;
+      cancelled.current = false;
     },
     onBlur: commit,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setDraft(e.target.value),
@@ -409,13 +424,8 @@ export function DraftField({
         {...common}
         rows={3}
         onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            editing.current = false;
-            setDraft(value);
-            (e.target as HTMLTextAreaElement).blur();
-          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            (e.target as HTMLTextAreaElement).blur();
-          }
+          if (e.key === "Escape") cancel(e.currentTarget);
+          else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.blur();
         }}
         className={`${FIELD} resize-none leading-[1.5] ${className}`}
       />
@@ -426,12 +436,8 @@ export function DraftField({
       {...common}
       type="text"
       onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        else if (e.key === "Escape") {
-          editing.current = false;
-          setDraft(value);
-          (e.target as HTMLInputElement).blur();
-        }
+        if (e.key === "Enter") e.currentTarget.blur();
+        else if (e.key === "Escape") cancel(e.currentTarget);
       }}
       className={`${FIELD} ${className}`}
     />

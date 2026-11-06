@@ -291,6 +291,35 @@ describe("read-only and editing", () => {
     await m.unmount();
   });
 
+  test("Escape cancels an edit: nothing is written and the field shows the saved text again", async () => {
+    const m = await mount(rich(), { editing: true, onNotifyAgent: () => {} });
+    const { act } = await import("react");
+    /** Type into a field, then press Escape — the blur that follows must not save the draft. */
+    const typeThenEscape = async (selector: string, text: string) => {
+      const el = m.q(selector) as HTMLInputElement | HTMLTextAreaElement;
+      expect(el).toBeTruthy();
+      const before = el.value;
+      await act(async () => {
+        el.focus();
+        const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")!.set!;
+        setter.call(el, text);
+        el.dispatchEvent(new win.Event("input", { bubbles: true }) as unknown as Event);
+        el.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }) as unknown as Event);
+        await sleep(0);
+      });
+      expect((m.q(selector) as HTMLInputElement).value).toBe(before);
+      expect(document.activeElement).not.toBe(el);
+    };
+    await m.click(m.q('[data-sticker="s02"]'));
+    await typeThenEscape('[data-field="caption"]', "不想上班了"); // <input>
+    await typeThenEscape('[data-field="action"]', "dances wildly"); // <textarea>
+    await m.click(m.q('[data-segment="view:submit"]'));
+    await typeThenEscape('[data-field="listing-intro"]', "改过的介绍"); // listing <textarea>
+    await typeThenEscape('[data-field="listing-name"]', "改过"); // listing <input>
+    expect(m.writes).toEqual([]);
+    await m.unmount();
+  });
+
   test("a command reaches the agent with the stickers it is about", async () => {
     const notes: ViewerNotification[] = [];
     const m = await mount(rich(), { editing: true, onNotifyAgent: (n) => notes.push(n) });
