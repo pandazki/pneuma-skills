@@ -158,6 +158,22 @@ async function ensureProject(ws, pack) {
   return io.loadProject(ws.project, { sidecarKey: S.SIDECAR_KEY });
 }
 
+/**
+ * Before every save: drop sidecar records the project no longer backs
+ * (`S.pruneSidecar` — a craft `drop` leaves them). Returns what went.
+ */
+function tidy(doc) {
+  const { sidecar: kept, dropped } = S.pruneSidecar(doc);
+  doc[S.SIDECAR_KEY] = kept;
+  if (dropped.measures.length || dropped.archives.length) {
+    note(`project.json: dropped the records of files it no longer holds — ${[
+      dropped.measures.length ? `${dropped.measures.length} measurement(s)` : null,
+      dropped.archives.length ? `archive record(s) of ${dropped.archives.join(", ")}` : null,
+    ].filter(Boolean).join(", ")}`);
+  }
+  return dropped;
+}
+
 /** The sidecar with every container present (this CLI is its only writer). */
 function sidecar(doc) {
   const s = doc[S.SIDECAR_KEY];
@@ -265,7 +281,13 @@ async function projectCostLine(ws) {
 async function runPaid(ws, now, { reserve, call, updateSidecar }) {
   const { io } = await craftModules();
   const started = Date.now();
-  const outcome = await io.runRegistered({ path: ws.project, sidecarKey: S.SIDECAR_KEY, reserve, call, updateSidecar, now });
+  const outcome = await io.runRegistered({
+    path: ws.project, sidecarKey: S.SIDECAR_KEY, reserve, call, now,
+    updateSidecar: (d, phase) => {
+      updateSidecar?.(d, phase);
+      tidy(d);
+    },
+  });
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const cost = outcome.edge?.operation?.params?.cost ?? null;
   if (outcome.ok) {
@@ -330,6 +352,7 @@ async function registerLocal(ws, pack, spec, now, mutate) {
   if (warning) note(`WARN: ${spec.id}: ${warning}`);
   const record = craft.landAsset(doc, { id: spec.id, uri: spec.uri, metadata }, now());
   mutate?.(doc, record);
+  tidy(doc);
   io.saveProject(ws.project, doc);
   return record;
 }
@@ -678,6 +701,7 @@ async function supersede(ws, now, takeIds) {
     craft.failAsset(doc, { id, reason: "superseded by gen --redo while still in flight — whether its request ran or was billed is not on record", billing: "unknown" }, now());
     note(`WARN: ${id} was still in flight; recorded as failed (billing unknown) and superseded`);
   }
+  tidy(doc);
   io.saveProject(ws.project, doc);
 }
 
@@ -1069,7 +1093,8 @@ async function cmdExport(v) {
         archiveRow = { state: "exported", file: archiveRel, bytes: bytes.length };
       }
     }
-    if (made.length || gone.length || archiveRow.state === "exported") io.saveProject(ws.project, doc);
+    const pruned = tidy(doc);
+    if (made.length || gone.length || archiveRow.state === "exported" || pruned.measures.length || pruned.archives.length) io.saveProject(ws.project, doc);
     report[platform] = { items: rows, archive: archiveRow, removed: gone };
   }
   const lines = [];

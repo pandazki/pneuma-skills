@@ -901,6 +901,34 @@ export function sidecarOf(project) {
   return { schema: s.schema ?? SIDECAR_SCHEMA, measures: isRecord(s.measures) ? s.measures : {}, archives: isRecord(s.archives) ? s.archives : {} };
 }
 
+/**
+ * The sidecar with only the records that still describe something, for
+ * `sticker.mjs` to write back on every save: a measurement whose asset the
+ * project records, and a platform's archive record whose `entries` are all
+ * files of that platform's recorded exports. Anything dropped here is
+ * already ignored by `exportState` (which reads the narrower pack-based
+ * set), so pruning changes no state, row or step. Pure: returns a new
+ * sidecar (key order kept) and what it dropped.
+ */
+export function pruneSidecar(project) {
+  const raw = isRecord(project?.[SIDECAR_KEY]) ? project[SIDECAR_KEY] : {};
+  const assets = project?.assets ?? [];
+  const ids = new Set(assets.map((a) => a.id));
+  const measures = {};
+  const archives = {};
+  const dropped = { measures: [], archives: [] };
+  for (const [id, m] of Object.entries(isRecord(raw.measures) ? raw.measures : {})) {
+    if (ids.has(id)) measures[id] = m;
+    else dropped.measures.push(id);
+  }
+  for (const [platform, record] of Object.entries(isRecord(raw.archives) ? raw.archives : {})) {
+    const files = new Set(assets.filter((a) => a.id.startsWith(`${platform}-`) && a.uri).map((a) => a.uri.split("/").pop()));
+    if (isRecord(record) && Array.isArray(record.entries) && record.entries.every((name) => files.has(name))) archives[platform] = record;
+    else dropped.archives.push(platform);
+  }
+  return { sidecar: { ...raw, schema: raw.schema ?? SIDECAR_SCHEMA, measures, archives }, dropped };
+}
+
 /** The archive key: its member files' keys, in order. Null when any member is missing or stale. */
 export function archiveKey(platform, members) {
   return hashValue({ recipe: EXPORT_RECIPES[platform], members });

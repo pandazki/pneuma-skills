@@ -21,6 +21,7 @@ import { rawPack } from "./sticker-fixture.js";
 import { structuralGif } from "./scripts-mock-generators.mjs";
 
 const STICKER = join(import.meta.dir, "..", "skill", "scripts", "sticker.mjs");
+const CRAFT_IO = join(import.meta.dir, "..", "..", "_shared", "scripts", "craft-project-io.mjs");
 const MOCK = join(import.meta.dir, "scripts-mock-generators.mjs");
 const T0 = 1793000000000;
 const HAS_FFPROBE = (() => {
@@ -349,6 +350,30 @@ describe.skipIf(!HAS_FFPROBE)("sticker.mjs gen and import (landing GIFs needs ff
     child.kill("SIGINT");
     expect(await child.exited).toBe(130);
     expect(edgeOf(dir, "s01-take-1").operation.params.failure).toMatchObject({ billing: "unknown" });
+  });
+
+  test("every write keeps the sidecar to what the project records", () => {
+    const dir = workspace({ stickers: 2 });
+    ok(dir, ["gen"]);
+    const orphan = () => {
+      // What a craft drop leaves: the measurement of a dropped asset, the archive record of dropped exports.
+      const doc = project(dir);
+      doc.sticker.measures["wechat-s09"] = doc.sticker.measures["s02-take-1"];
+      doc.sticker.archives.wechat = { uri: "exports/wechat.zip", bytes: 10, entries: ["01.gif"], key: "k", at: T0 };
+      writeFileSync(join(dir, "project.json"), `${JSON.stringify(doc, null, 2)}\n`);
+    };
+    const drop = Bun.spawnSync([process.execPath, CRAFT_IO, "drop", "--path", join(dir, "project.json"), "--id", "s01-take-1"], { cwd: dir, stderr: "pipe" });
+    expect(drop.exitCode).toBe(0);
+    orphan();
+    // A local write (import) …
+    ok(dir, ["import", "--character", "--file", join(dir, "photo.webp")]);
+    expect(Object.keys(project(dir).sticker.measures).sort()).toEqual(["s02-take-1"]);
+    expect(project(dir).sticker.archives).toEqual({});
+    // … and a paid one (runRegistered's writes).
+    orphan();
+    ok(dir, ["gen", "--only", "s01"]);
+    expect(Object.keys(project(dir).sticker.measures).sort()).toEqual(["s01-take-2", "s02-take-1"]);
+    expect(project(dir).sticker.archives).toEqual({});
   });
 
   test("picks and edits: a changed caption makes the picked take stale, with the reason", () => {

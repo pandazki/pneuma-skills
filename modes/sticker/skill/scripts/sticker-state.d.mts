@@ -236,6 +236,8 @@ export interface StickerSidecar {
 }
 
 export type StickerProject = CraftProjectFile<{ sticker: StickerSidecar }>;
+/** The sidecar without records the project no longer backs (measures of absent assets, archives of absent files). */
+export function pruneSidecar(project: ProjectInput): { sidecar: StickerSidecar; dropped: { measures: string[]; archives: string[] } };
 /** A project as read (or null before the first write). */
 type ProjectInput = Pick<CraftProjectFile, "assets" | "provenance"> & { sticker?: unknown } | null | undefined;
 

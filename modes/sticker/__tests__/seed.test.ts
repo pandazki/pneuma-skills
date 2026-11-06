@@ -7,9 +7,9 @@
  * or make it read as exported, shows up here, not in front of a new user.
  *
  * The export records were removed with `craft-project-io.mjs drop`, which
- * leaves the mode's sidecar alone: the measurements and archive records of
- * those exports are still in project.json, and the last test pins that
- * nothing reads them as exported.
+ * leaves the mode's sidecar alone; the measurements and archive records it
+ * left were then pruned with `pruneSidecar` (what sticker.mjs runs before
+ * every save), so the sidecar holds only records of files the project has.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -70,9 +70,10 @@ describe("the niuma seed", () => {
 
   test("every platform reads as not exported yet: nothing blocked, nothing stale, the next step is export", () => {
     const { pack, project } = load();
-    // What craft's drop left in the sidecar (see the header).
-    expect(Object.keys(project.sticker.measures).filter((id) => EXPORT_ID.test(id))).toHaveLength(30);
-    expect(Object.keys(project.sticker.archives).sort()).toEqual(["line", "telegram", "wechat"]);
+    // No orphan records: every measurement is of a recorded asset, no archive outlives its files.
+    expect(S.pruneSidecar(project).dropped).toEqual({ measures: [], archives: [] });
+    expect(Object.keys(project.sticker.measures).filter((id) => EXPORT_ID.test(id))).toEqual([]);
+    expect(project.sticker.archives).toEqual({});
     for (const platform of pack.platforms) {
       const state = S.exportState(pack, project, platform);
       expect(state.items.map((i) => [i.deliverable, i.state, i.measure])).toEqual(state.items.map((i) => [i.deliverable, "missing", null]));

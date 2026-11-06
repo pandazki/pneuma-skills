@@ -313,6 +313,36 @@ describe("exports", () => {
     expect(S.nextStep(pack, doc).id).toBe("export");
   });
 
+  test("pruneSidecar drops what the project no longer records, keeps the rest in place, and changes no reading", () => {
+    const pack = packFrom(rawPack());
+    const doc = readyDoc(pack);
+    for (const p of pack.platforms) exportAll(doc, pack, p);
+    doc.sticker.measures["s01-take-1"] = { ...S.sidecarOf(doc).measures["wechat-s01"], key: undefined } as Measure;
+    // Nothing to drop: the same sidecar, key for key.
+    const clean = S.pruneSidecar(doc);
+    expect(clean.dropped).toEqual({ measures: [], archives: [] });
+    expect(JSON.stringify(clean.sidecar)).toBe(JSON.stringify(doc.sticker));
+    // A craft drop of WeChat's exports and one take leaves their records behind.
+    dropAssets(doc, [...doc.assets.map((a) => a.id).filter((id) => id.startsWith("wechat-")), "s01-take-1"]);
+    const before = structuredClone(doc);
+    const { sidecar, dropped } = S.pruneSidecar(doc);
+    expect(doc).toEqual(before); // pure
+    expect(dropped.archives).toEqual(["wechat"]);
+    expect(dropped.measures.sort()).toEqual([...S.platformDeliverables(pack, "wechat").map((i) => i.assetId), "s01-take-1"].sort());
+    expect(Object.keys(sidecar)).toEqual(Object.keys(doc.sticker));
+    expect(Object.keys(sidecar.archives).sort()).toEqual(["line", "telegram"]);
+    expect(sidecar.measures["telegram-s01"]).toEqual(doc.sticker.measures["telegram-s01"]);
+    const pruned = { ...doc, sticker: sidecar };
+    for (const p of pack.platforms) {
+      expect(S.exportState(pack, pruned, p)).toEqual(S.exportState(pack, doc, p));
+      expect(S.checkPack(pack, pruned, p)).toEqual(S.checkPack(pack, doc, p));
+    }
+    expect(S.nextStep(pack, pruned)).toEqual(S.nextStep(pack, doc));
+    // An archive with a malformed record, or for a platform with one member gone, goes too.
+    expect(S.pruneSidecar({ ...doc, sticker: { ...doc.sticker, archives: { line: { ...doc.sticker.archives.line!, entries: "01.png" as unknown as string[] } } } }).dropped.archives).toEqual(["line"]);
+    expect(S.pruneSidecar(null).dropped).toEqual({ measures: [], archives: [] });
+  });
+
   test("the export key depends on the inputs and the recipe, nothing else", () => {
     const pack = packFrom(rawPack());
     const doc = readyDoc(pack);
