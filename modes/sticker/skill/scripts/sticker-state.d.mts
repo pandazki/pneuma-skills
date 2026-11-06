@@ -10,6 +10,136 @@
 import type { CraftAsset, CraftProjectFile, CraftProvenanceEdge } from "../../../_shared/scripts/craft-project.mjs";
 
 // ---------------------------------------------------------------------------
+// Messages — what the rules say, as codes (English: `messageText`)
+// ---------------------------------------------------------------------------
+
+/** A stable code, its parameters, and the sticker.mjs command that takes the step, when there is one. */
+export interface Said<C extends string, P> {
+  code: C;
+  params: P;
+  command?: string;
+}
+type None = Record<string, never>;
+type Ids = { stickers: string[] };
+type Size = { width: number; height: number };
+type TextLength = { length: number; width: boolean };
+
+export type StateMessage =
+  // take staleness
+  | Said<"stale.sticker-gone", { sticker: string }>
+  | Said<"stale.no-record", { take: string }>
+  | Said<"stale.changed", { field: "description" | "style" | "word" | "caption" | "action" }>
+  | Said<"stale.no-prompt", None>
+  | Said<"stale.prompt", None>
+  | Said<"stale.motion", { key: "frames" | "frameMs" | "size"; from: number | null; to: number }>
+  | Said<"stale.anchor", { from: string | null; to: string | null }>
+  // a sticker's state
+  | Said<"state.in-flight", { takes: string[] }>
+  | Said<"state.unpicked", None>
+  | Said<"state.pick-not-ready", { take: string; status: string | null }>
+  | Said<"state.ready-takes", { takes: string[] }>
+  | Said<"state.failed", { count: number }>
+  // the character anchor
+  | Said<"anchor.unset", None>
+  | Said<"anchor.not-ready", { anchor: string; status: string | null }>
+  // where an export comes from
+  | Said<"source.no-sticker", None>
+  | Said<"source.sticker", { sticker: string; status: StickerStatus; why: StateMessage[] }>
+  | Said<"source.art-unpicked", { art: ArtKind }>
+  | Said<"source.art-not-ready", { art: ArtKind; asset: string; status: string | null }>
+  // an export's state
+  | Said<"export.not-exported", None>
+  | Said<"export.from-other", { from: string; now: string }>
+  | Said<"export.other-inputs", None>
+  | Said<"export.again", { why: StateMessage }>
+  | Said<"export.optional-none", { why: StateMessage; platform: Platform }>
+  | Said<"export.measured", { problems: StateMessage[]; summary: StateMessage }>
+  // an exported file against its platform's rules
+  | Said<"file.bytes-over", { bytes: number; max: number }>
+  | Said<"file.format", { format: string; expected: string[] }>
+  | Said<"file.size", Size & { expectedWidth: number; expectedHeight: number }>
+  | Said<"file.loop-none", None>
+  | Said<"file.loop-count", { count: number }>
+  | Said<"file.still", None>
+  | Said<"file.codec", { format: string; codec: string | null }>
+  | Said<"file.no-alpha", None>
+  | Said<"file.telegram-edge", Size & { edge: number }>
+  | Said<"file.duration-over", { ms: number; max: number }>
+  | Said<"file.fps-over", { fps: number; max: number }>
+  | Said<"file.audio", None>
+  | Said<"file.outside", Size & { maxWidth: number; maxHeight: number }>
+  | Said<"file.min-side", Size & { min: number }>
+  | Said<"file.frames-range", { frames: number; min: number; max: number }>
+  | Said<"file.loop-long", { ms: number; max: number }>
+  /** `plays` 0 = forever. */
+  | Said<"file.plays-range", { plays: number; min: number; max: number }>
+  | Said<"file.plays-total", { plays: number; ms: number; max: number }>
+  | Said<"file.main-plays", { plays: number; ms: number; min: number; max: number; maxTotal: number }>
+  | Said<"file.identical", None>
+  | Said<"file.not-transparent", None>
+  | Said<"file.margin", { px: number }>
+  | Said<"file.first-frame", { percent: number }>
+  | Said<"file.corner", None>
+  | Said<"file.white-outline", { percent: number }>
+  | Said<"file.not-opaque", None>
+  | Said<"file.white-background", { percent: number }>
+  | Said<"file.take-stale", { why: StateMessage[] }>
+  // what an exported file is
+  | Said<"summary.wechat", Size & { bytes: number; frames: number; loops: boolean }>
+  | Said<"summary.telegram", Size & { alpha: boolean; bytes: number; ms: number; fps: number }>
+  | Said<"summary.line", Size & { bytes: number; frames: number; ms: number; plays: number }>
+  | Said<"summary.still", Size & { format: string; bytes: number }>
+  // checklist rows
+  | Said<"rights.ok", { basis: RightsBasis; confirmedAt: string; note: string }>
+  | Said<"rights.missing", None>
+  | Said<"platform.unchosen", { platform: Platform }>
+  | Said<"count.allowed", { count: number; platform: Platform; allowed: number[] }>
+  | Said<"count.range", { count: number; platform: Platform; min: number; max: number; setMax: number | null }>
+  | Said<"animated.static", Ids>
+  | Said<"animated.all", { count: number }>
+  | Said<"words.bad", { long: { sticker: string; word: string }[]; dupes: { sticker: string; word: string }[]; max: number }>
+  | Said<"words.ok", { count: number; max: number }>
+  | Said<"emoji.bad", { items: { sticker: string; emoji: string }[] }>
+  | Said<"emoji.ok", None>
+  | Said<"listing.empty", { platform: Platform; field: string }>
+  | Said<"listing.unset", None>
+  | Said<"listing.bad", { text: string; problems: StateMessage[] }>
+  | Said<"listing.long", TextLength & { text: string; best: number }>
+  | Said<"listing.ok", TextLength & { text: string; max: number | null; min: number | null }>
+  /** `width`: LINE's count, Asian characters 2. */
+  | Said<"text.over", TextLength & { max: number }>
+  | Said<"text.under", TextLength & { min: number }>
+  | Said<"text.punctuation", None>
+  /** `over`: the byte limit the archive exceeds, else null. */
+  | Said<"zip.ok", { uri: string; bytes: number; files: number; over: number | null }>
+  | Said<"zip.blocked", None>
+  | Said<"zip.missing", { platform: Platform }>
+  | Said<"zip.stale", { platform: Platform }>
+  | Said<"unconfirmed.reward-thumb", None>
+  | Said<"unconfirmed.zip-naming", None>
+  // the next step
+  | Said<"next.rights", None>
+  | Said<"next.anchor", { candidates: string[] }>
+  | Said<"next.describe", None>
+  | Said<"next.character", None>
+  | Said<"next.stickers", None>
+  | Said<"next.generate", Ids & { uncertain: string[] }>
+  | Said<"next.retry", Ids>
+  | Said<"next.generating", Ids>
+  | Said<"next.pick", Ids>
+  | Said<"next.reroll", { stale: { sticker: string; why: StateMessage[] }[] }>
+  | Said<"next.export", { platform: Platform }>
+  | Said<"next.check", { platform: Platform; rows: { id: string; label: string }[] }>
+  | Said<"next.done", None>;
+
+export type MessageCode = StateMessage["code"];
+export type MessageParams<C extends MessageCode> = Extract<StateMessage, { code: C }>["params"];
+/** Every code the rules can say (the keys of the English table). */
+export const MESSAGE_CODES: readonly MessageCode[];
+/** The message in English — what sticker.mjs prints — with ` — <command>` when it has one. Throws on an unknown code. */
+export function messageText(message: StateMessage): string;
+
+// ---------------------------------------------------------------------------
 // pack.json
 // ---------------------------------------------------------------------------
 
@@ -418,13 +548,21 @@ export interface TakeView {
   op: string | null;
 }
 export function takesOf(project: ProjectInput, sid: string): TakeView[];
-export function takeStaleness(pack: Pack, project: ProjectInput, takeId: string): { stale: boolean; reasons: string[] };
+export interface Staleness {
+  stale: boolean;
+  /** `messages` in English. */
+  reasons: string[];
+  messages: StateMessage[];
+}
+export function takeStaleness(pack: Pack, project: ProjectInput, takeId: string): Staleness;
 
 export interface StickerState {
   id: string;
   status: StickerStatus;
-  /** Why (stale reasons joined, what is in flight, what to pick); null for ready / empty. */
+  /** Why (stale reasons joined, what is in flight, what to pick); null for ready / empty. `messages` in English, joined with "; ". */
   reason: string | null;
+  /** The same, as codes; empty for ready / empty. */
+  messages: StateMessage[];
   /** Stale only: each reason. */
   reasons?: string[];
   /** Every take id, in number order. */
@@ -447,7 +585,14 @@ export interface GenPlan {
   uncertain: { id: string; take: string | null; reason: string }[];
 }
 export function genTargets(pack: Pack, project: ProjectInput, options?: { only?: string[]; redo?: boolean }): GenPlan;
-export function anchorState(pack: Pack, project: ProjectInput): { anchor: string | null; ready: boolean; reason: string | null };
+export interface AnchorState {
+  anchor: string | null;
+  ready: boolean;
+  /** `message` in English. */
+  reason: string | null;
+  message: StateMessage | null;
+}
+export function anchorState(pack: Pack, project: ProjectInput): AnchorState;
 
 // ---------------------------------------------------------------------------
 // Exports
@@ -471,7 +616,7 @@ export interface Deliverable {
   optional?: boolean;
 }
 export function platformDeliverables(pack: Pack, platform: Platform): Deliverable[];
-export function deliverableSource(pack: Pack, project: ProjectInput, item: Deliverable): { asset: CraftAsset | null; reason: string | null };
+export function deliverableSource(pack: Pack, project: ProjectInput, item: Deliverable): { asset: CraftAsset | null; reason: string | null; message: StateMessage | null };
 /** Hash of everything the deliverable's bytes depend on; null while its source is missing. */
 export function exportKey(pack: Pack, project: ProjectInput, platform: Platform, item: Deliverable): string | null;
 export function sidecarOf(project: ProjectInput): StickerSidecar;
@@ -484,7 +629,9 @@ export interface ExportItem extends Deliverable {
   measure: Measure | null;
   key: string | null;
   state: ExportItemState;
+  /** `message` in English; null when current. */
   reason: string | null;
+  message: StateMessage | null;
 }
 export interface ExportState {
   platform: Platform;
@@ -516,15 +663,20 @@ export interface CheckRow {
   id: string;
   label: string;
   level: CheckLevel;
+  /** `message` in English (with its command, when it has one). */
   detail: string;
+  message: StateMessage;
   address?: ViewerAddressLike;
 }
 export function checkPack(pack: Pack, project: ProjectInput, platform: Platform): CheckRow[];
 export function tally(rows: CheckRow[]): Record<CheckLevel, number>;
 
 export interface NextStep {
-  id: "rights" | "anchor" | "character" | "stickers" | "generate" | "generating" | "pick" | "reroll" | "export" | "check" | "done";
+  /** `retry`: only stickers whose last take failed with billing unknown are left — a retry is the user's call, never a gap to fill. */
+  id: "rights" | "anchor" | "character" | "stickers" | "generate" | "retry" | "generating" | "pick" | "reroll" | "export" | "check" | "done";
+  /** `message` in English. */
   line: string;
+  message: StateMessage;
   /** The sticker.mjs command that takes the step, when there is one. */
   command?: string;
   stickers?: string[];

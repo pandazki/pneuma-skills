@@ -86,7 +86,7 @@ describe("loadPack — the module's answers, arranged", () => {
     ]);
     const s03 = findSticker(value, "s03")!;
     expect(s03.shown?.id).toBe("s03-take-1");
-    expect(s03.takes[0].staleness).toEqual({ stale: true, reasons: ["caption changed"] });
+    expect(s03.takes[0].staleness).toEqual({ stale: true, reasons: ["caption changed"], messages: [{ code: "stale.changed", params: { field: "caption" } }] });
     const s05 = findSticker(value, "s05")!;
     expect(s05.shown).toBeNull();
     expect(s05.uncertain).toEqual(["s05-take-1"]);
@@ -111,7 +111,7 @@ describe("loadPack — the module's answers, arranged", () => {
       ["head", "art-head-1", ["wechat:icon", "line:tab"]],
       ["banner", "art-banner-1", ["wechat:banner"]],
     ]);
-    expect(value.character?.anchor).toEqual({ anchor: "character-1", ready: true, reason: null });
+    expect(value.character?.anchor).toEqual({ anchor: "character-1", ready: true, reason: null, message: null });
   });
 });
 

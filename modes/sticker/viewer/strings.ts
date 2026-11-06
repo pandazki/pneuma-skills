@@ -195,6 +195,7 @@ const EN: StickerStrings = {
       case "character": return "Make the character";
       case "stickers": return "Write the stickers";
       case "generate": return `Make the missing stickers: ${ids(step, ", ")}`;
+      case "retry": return `Retry on purpose — may already have been billed: ${ids(step, ", ")}`;
       case "generating": return `Waiting for ${ids(step, ", ")} to land`;
       case "pick": return `Pick a take for ${ids(step, ", ")}`;
       case "reroll": return `Re-roll the stale stickers: ${ids(step, ", ")}`;
@@ -375,6 +376,7 @@ const ZH: StickerStrings = {
       case "character": return "先画出角色";
       case "stickers": return "写好每张表情";
       case "generate": return `补齐还没出图的：${ids(step, "、")}`;
+      case "retry": return `要重试得你点头——可能已经扣过费：${ids(step, "、")}`;
       case "generating": return `等 ${ids(step, "、")} 出图`;
       case "pick": return `给 ${ids(step, "、")} 选一版`;
       case "reroll": return `重画这几张：${ids(step, "、")}`;
@@ -555,6 +557,7 @@ const JA: StickerStrings = {
       case "character": return "キャラクターを作る";
       case "stickers": return "スタンプの内容を書く";
       case "generate": return `足りないスタンプを作る：${ids(step, "、")}`;
+      case "retry": return `再生成は確認してから（課金済みの可能性あり）：${ids(step, "、")}`;
       case "generating": return `${ids(step, "、")} の完成待ち`;
       case "pick": return `${ids(step, "、")} のテイクを選ぶ`;
       case "reroll": return `描き直しが必要：${ids(step, "、")}`;

@@ -32,6 +32,7 @@ import type {
 } from "../_shared/scripts/craft-project.mjs";
 import { indexAssets, readProjectFile, statusOf, summarizeCosts } from "../_shared/scripts/craft-project.mjs";
 import type {
+  AnchorState,
   ArtKind,
   CheckLevel,
   CheckRow,
@@ -43,6 +44,7 @@ import type {
   PackIssue,
   Platform,
   PlatformProfile,
+  Staleness,
   Sticker,
   StickerProject,
   StickerState,
@@ -84,6 +86,9 @@ export type {
   Sticker,
   StickerState,
   StickerStatus,
+  StateMessage,
+  MessageCode,
+  MessageParams,
 } from "./skill/scripts/sticker-state.mjs";
 
 export const PACK_PATH = "pack.json";
@@ -121,7 +126,7 @@ export interface TakeView extends AssetBrief {
   /** pack.json picks this take. */
   picked: boolean;
   /** Ready takes only: `takeStaleness` against pack.json as it is now. */
-  staleness: { stale: boolean; reasons: string[] } | null;
+  staleness: Staleness | null;
 }
 
 export interface StickerView {
@@ -140,7 +145,7 @@ export interface StickerView {
 }
 
 export interface CharacterView {
-  anchor: { anchor: string | null; ready: boolean; reason: string | null };
+  anchor: AnchorState;
   /** The anchor's asset, whatever its state. */
   asset: AssetBrief | null;
   candidates: AssetBrief[];

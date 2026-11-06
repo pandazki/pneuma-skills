@@ -615,7 +615,7 @@ export default function StickerPreview(props: ViewerPreviewProps) {
           {value.stickers.length ? (
             <StickerGrid value={value} position={position} base={base} t={t} now={now} columns={columns} onFocus={focusOn} />
           ) : (
-            <Centered title={t.nextStep({ id: "stickers", line: "" })} body={next?.line} />
+            <Centered title={t.nextStep({ id: "stickers", line: "", message: { code: "next.stickers", params: {} } })} body={next?.line} />
           )}
         </div>
         {inspector && inspectorMode === "column" ? (
