@@ -16,9 +16,10 @@ interface FakeBitmap {
 }
 
 let restore: () => void;
+let win: Window;
 
 beforeAll(() => {
-  const win = new Window({ url: "http://localhost/" });
+  win = new Window({ url: "http://localhost/" });
   const g = globalThis as unknown as Record<string, unknown>;
   const saved: Record<string, unknown> = {};
   const set = (key: string, value: unknown) => {
@@ -62,7 +63,14 @@ beforeAll(() => {
   };
 });
 
-afterAll(() => restore());
+// Close the window before the globals go: a media load or timer happy-dom
+// still holds would otherwise land a React setState after `window` is gone,
+// failing whichever test file runs next (seen in the routine suite, 2026-11-07).
+afterAll(async () => {
+  await win.happyDOM.waitUntilComplete();
+  await win.happyDOM.close();
+  restore();
+});
 
 test("switching GIFs never renders the previous GIF's closed bitmaps", async () => {
   const { act, createElement } = await import("react");

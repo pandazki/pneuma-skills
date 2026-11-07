@@ -19,7 +19,7 @@
  * Harness shape follows `modes/anime-series/__tests__/viewer.test.tsx`.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 
 import { MemorySource } from "../../../core/sources/memory.js";
@@ -74,9 +74,24 @@ beforeAll(() => {
   };
 });
 
-afterAll(() => restore());
+// Close the window before the globals go: a media load or timer happy-dom
+// still holds would otherwise land a React setState after `window` is gone,
+// failing whichever test file runs next (seen in the routine suite, 2026-11-07).
+afterAll(async () => {
+  await win.happyDOM.waitUntilComplete();
+  await win.happyDOM.close();
+  restore();
+});
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// A test that fails before its own unmount would leave the viewer mounted,
+// its timers running past this file into others (the "generating" clock
+// ticks every second). Unmount whatever is left after each test.
+const stillMounted = new Set<() => Promise<void>>();
+afterEach(async () => {
+  for (const unmount of [...stillMounted]) await unmount();
+});
 
 interface Mounted {
   host: HTMLElement;
@@ -92,6 +107,18 @@ interface Mounted {
   q: (selector: string) => Element | null;
   all: (selector: string) => Element[];
   unmount: () => Promise<void>;
+}
+
+/**
+ * Fire what a keystroke fires. react-dom decides at its first import whether
+ * the `input` event exists (`canUseDOM`, `isInputEventSupported`); in the
+ * routine suite another file can load it before any DOM, and then `onChange`
+ * is driven only by its fallback, which re-reads the value on `keyup`. Firing
+ * both works either way, and React's value tracker keeps it to one change.
+ */
+function typed(el: Element): void {
+  el.dispatchEvent(new win.Event("input", { bubbles: true }) as unknown as Event);
+  el.dispatchEvent(new win.KeyboardEvent("keyup", { bubbles: true }) as unknown as Event);
 }
 
 async function mount(value: StickerPack, extra: Partial<ViewerPreviewProps> = {}): Promise<Mounted> {
@@ -136,6 +163,13 @@ async function mount(value: StickerPack, extra: Partial<ViewerPreviewProps> = {}
       await sleep(0);
     });
   };
+  const unmount = async () => {
+    if (!stillMounted.delete(unmount)) return;
+    await act(async () => root.unmount());
+    host.remove();
+    source.destroy();
+  };
+  stillMounted.add(unmount);
   await render(props);
   return {
     host,
@@ -160,11 +194,7 @@ async function mount(value: StickerPack, extra: Partial<ViewerPreviewProps> = {}
     },
     q: (selector) => host.querySelector(selector),
     all: (selector) => Array.from(host.querySelectorAll(selector)),
-    unmount: async () => {
-      await act(async () => root.unmount());
-      host.remove();
-      source.destroy();
-    },
+    unmount,
   };
 }
 
@@ -283,7 +313,7 @@ describe("read-only and editing", () => {
       caption.focus();
       const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(caption), "value")!.set!;
       setter.call(caption, "不想上班了");
-      caption.dispatchEvent(new win.Event("input", { bubbles: true }) as unknown as Event);
+      typed(caption);
       caption.blur();
       await sleep(0);
     });
@@ -305,7 +335,7 @@ describe("read-only and editing", () => {
         el.focus();
         const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")!.set!;
         setter.call(el, text);
-        el.dispatchEvent(new win.Event("input", { bubbles: true }) as unknown as Event);
+        typed(el);
         el.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }) as unknown as Event);
         await sleep(0);
       });
