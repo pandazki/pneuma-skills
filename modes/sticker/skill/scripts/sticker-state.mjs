@@ -1468,3 +1468,23 @@ export function nextStep(pack, project) {
   if (confirm.length) return step("confirm", msg("next.confirm", { rows: confirm }), { command: "sticker.mjs check" });
   return step("done", msg("next.done"));
 }
+
+/**
+ * The kept-frames rule, the one authority for both the exporter
+ * (`sticker-media.mjs`) and the viewer (`viewer/view-model.ts::effectiveLoop`):
+ * a take plays `keepFrames` (0-based, in order) or every frame when it is null.
+ * `keepFramesOutOfRange` names the first index the take does not have (or null);
+ * `keptIndices` throws naming it, which is how the exporter refuses such a take.
+ */
+export function keepFramesOutOfRange(count, keepFrames) {
+  if (!keepFrames) return null;
+  const bad = keepFrames.find((i) => i >= count);
+  return bad === undefined ? null : bad;
+}
+
+export function keptIndices(count, keepFrames) {
+  if (!keepFrames) return Array.from({ length: count }, (_, i) => i);
+  const bad = keepFramesOutOfRange(count, keepFrames);
+  if (bad !== null) throw new Error(`keepFrames ${JSON.stringify(keepFrames)} names frame ${bad}, but the take has ${count} frames (0–${count - 1})`);
+  return [...keepFrames];
+}

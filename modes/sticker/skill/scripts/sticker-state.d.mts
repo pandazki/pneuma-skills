@@ -717,3 +717,8 @@ export interface NextStep {
   stickers?: string[];
 }
 export function nextStep(pack: Pack, project: ProjectInput): NextStep;
+
+/** First index in `keepFrames` the take (of `count` frames) does not have, or null. */
+export function keepFramesOutOfRange(count: number, keepFrames: readonly number[] | null): number | null;
+/** The frames a take plays: `keepFrames`, or all; throws naming an index out of range. */
+export function keptIndices(count: number, keepFrames: readonly number[] | null): number[];

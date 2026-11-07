@@ -16,7 +16,7 @@
  */
 
 import type { ViewerAddress } from "../../../core/types/viewer-contract.js";
-import { ART_KINDS, PLATFORMS } from "../skill/scripts/sticker-state.mjs";
+import { ART_KINDS, PLATFORMS, keepFramesOutOfRange, keptIndices } from "../skill/scripts/sticker-state.mjs";
 import type { ArtKind, Platform, StickerPack, StickerView, TakeView } from "../domain.js";
 import { findArt, findSticker } from "../domain.js";
 import type { FramesState } from "./players.js";
@@ -95,7 +95,7 @@ export interface Loop {
 
 /**
  * The loop that ships: the frames the exporter keeps of a take and the
- * delays they keep (`sticker-media.mjs::exportSticker` — `keptIndices`,
+ * delays they keep (`sticker-state.mjs::keptIndices`, shared with `sticker-media.mjs::exportSticker`,
  * then each kept frame's recorded delay). `delays` are the take's recorded
  * ones (`measure.delaysMs`), trusted only when there is one per frame;
  * otherwise every frame lasts `fallbackMs` (the pack's frame time).
@@ -103,11 +103,12 @@ export interface Loop {
  */
 export function effectiveLoop(keepFrames: readonly number[] | null, count: number, delays: readonly number[] | null, fallbackMs: number): Loop {
   const per = delays && delays.length === count ? [...delays] : Array<number>(count).fill(fallbackMs);
-  const all = Array.from({ length: count }, (_, i) => i);
+  const all = keptIndices(count, null);
   if (!keepFrames) return { order: all, delays: per, trimmed: false, outOfRange: null };
-  const missing = keepFrames.find((i) => i >= count);
-  if (missing !== undefined) return { order: all, delays: per, trimmed: false, outOfRange: missing };
-  return { order: [...keepFrames], delays: keepFrames.map((i) => per[i]), trimmed: true, outOfRange: null };
+  const missing = keepFramesOutOfRange(count, keepFrames);
+  if (missing !== null) return { order: all, delays: per, trimmed: false, outOfRange: missing };
+  const order = keptIndices(count, keepFrames);
+  return { order, delays: order.map((i) => per[i]), trimmed: true, outOfRange: null };
 }
 
 export type FrameVerdict ={ done: false } | { done: true; shown: true } | { done: true; shown: false; reason: string };

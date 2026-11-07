@@ -33,7 +33,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { PLATFORM_PROFILES } from "./sticker-state.mjs";
+import { PLATFORM_PROFILES, keptIndices } from "./sticker-state.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -64,7 +64,7 @@ export async function importShared(name, why) {
 const { readGifInfo } = await importShared("generate_gif.mjs", "reading GIF frames");
 const { crc32, zipStore } = await importShared("zip.mjs", "the upload archives");
 
-export { readGifInfo, zipStore };
+export { keptIndices, readGifInfo, zipStore };
 
 // ---------------------------------------------------------------------------
 // Processes
@@ -602,13 +602,6 @@ export function measureStill(path) {
 // Timelines (pure)
 // ---------------------------------------------------------------------------
 
-/** Keep `keepFrames` (0-based) of `count` frames; throws naming an index out of range. */
-export function keptIndices(count, keepFrames) {
-  if (!keepFrames) return Array.from({ length: count }, (_, i) => i);
-  const bad = keepFrames.filter((i) => i >= count);
-  if (bad.length) throw new Error(`keepFrames ${JSON.stringify(keepFrames)} names frame ${bad[0]}, but the take has ${count} frames (0–${count - 1})`);
-  return [...keepFrames];
-}
 
 /**
  * Drop frames to every `step`-th, each kept frame absorbing the delays of

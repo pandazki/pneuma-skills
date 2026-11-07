@@ -40,3 +40,17 @@ describe("effectiveLoop", () => {
     });
   });
 });
+
+describe("one kept-frames rule for the exporter and the viewer", () => {
+  test("the exporter's keptIndices is the pure module's, and the viewer agrees with it", async () => {
+    const S = await import("../skill/scripts/sticker-state.mjs");
+    const M = await import("../skill/scripts/sticker-media.mjs");
+    expect(M.keptIndices).toBe(S.keptIndices);
+    for (const keep of [null, [0, 3, 5], [7, 8, 9, 10, 11, 12, 13, 14, 15]]) {
+      expect(effectiveLoop(keep, 16, null, 120).order).toEqual(S.keptIndices(16, keep));
+    }
+    expect(S.keepFramesOutOfRange(12, [0, 12, 13])).toBe(12);
+    expect(effectiveLoop([0, 12, 13], 12, null, 120).outOfRange).toBe(S.keepFramesOutOfRange(12, [0, 12, 13]));
+    expect(() => S.keptIndices(12, [0, 12])).toThrow("names frame 12, but the take has 12 frames (0–11)");
+  });
+});

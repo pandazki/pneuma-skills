@@ -392,7 +392,6 @@ export interface ViewerPreviewProps {
   locale: string;
 }
 
-/** UI contract for the content viewer */
 /**
  * What a viewer's `captureViewport` answers.
  *
@@ -409,6 +408,7 @@ export interface ViewerPreviewProps {
  */
 export type ViewportCapture = { data: string; media_type: string; note?: string } | { error: string };
 
+/** UI contract for the content viewer */
 export interface ViewerContract {
   /** Preview component — React component that renders the content */
   PreviewComponent: ComponentType<ViewerPreviewProps>;
