@@ -65,6 +65,13 @@ function Notice({ tone, icon, children }: { tone: "success" | "warning" | "error
 function GenPlanLine({ value, sticker, t }: { value: StickerPack; sticker: StickerView; t: StickerStrings }) {
   const plan = value.gen;
   if (!plan) return null;
+  if (plan.uncertain.some((u) => u.id === sticker.id && u.recoverable)) {
+    return (
+      <div data-gen-plan="recover" className="mt-1.5 border-t border-cc-error/20 pt-1.5 font-medium text-cc-fg/85">
+        {t.genRecoverable}
+      </div>
+    );
+  }
   if (plan.uncertain.some((u) => u.id === sticker.id)) {
     return (
       <div data-gen-plan="uncertain" className="mt-1.5 border-t border-cc-error/20 pt-1.5 font-medium text-cc-warning">

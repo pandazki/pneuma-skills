@@ -437,6 +437,55 @@ describe("what a plain gen makes", () => {
   });
 });
 
+describe("a take the service accepted but never delivered", () => {
+  /** s05's only take failed with billing unknown after fal accepted it (request on record): fetching it again is free. */
+  function recoverableFailure(): StickerPack {
+    const raw = rawPack();
+    raw.stickers[4].take = null;
+    const pack = packFrom(raw);
+    const doc = readyDoc(packFrom({ ...raw, stickers: raw.stickers.filter((s: { id: string }) => s.id !== "s05") }));
+    addTake(doc, pack, "s05", 1, { status: "failed", requestId: "req-s05", reason: "download failed (fetch failed)" });
+    return loadPack(filesOf(raw, doc));
+  }
+
+  test("says fetching it again is free — on the card and in the inspector — instead of 'may have been billed'", async () => {
+    const value = recoverableFailure();
+    expect(value.gen?.uncertain.map((u) => [u.id, u.recoverable])).toEqual([["s05", true]]);
+    const m = await mount(value, { editing: true, onNotifyAgent: () => {} });
+    expect(m.q('[data-sticker="s05"]')?.textContent).toContain("fetching it is free");
+    expect(m.q('[data-sticker="s05"]')?.textContent).not.toContain("may have been billed");
+    await m.click(m.q('[data-sticker="s05"]'));
+    expect(m.q("[data-gen-plan]")?.getAttribute("data-gen-plan")).toBe("recover");
+    expect(m.q("[data-gen-plan]")?.textContent).toContain("free");
+    await m.unmount();
+  });
+
+  test("make-missing tells the agent to fetch it, free, by the script's own command — not that it may have been charged", async () => {
+    // s06 has no take yet, so a plain gen has something to make and the command is offered.
+    const raw = rawPack();
+    raw.stickers[4].take = null;
+    raw.stickers[5].take = null;
+    const pack = packFrom(raw);
+    const doc = readyDoc(packFrom({ ...raw, stickers: raw.stickers.filter((s: { id: string }) => s.id !== "s05" && s.id !== "s06") }));
+    addTake(doc, pack, "s05", 1, { status: "failed", requestId: "req-s05", reason: "download failed (fetch failed)" });
+    const notes: ViewerNotification[] = [];
+    const m = await mount(loadPack(filesOf(raw, doc)), { editing: true, onNotifyAgent: (n) => notes.push(n) });
+    await m.click(m.q('[data-command="make-missing"]'));
+    expect(notes[0].message).toContain("make (what a plain gen makes): s06 (empty)");
+    expect(notes[0].message).toContain("sticker.mjs recover --only s05");
+    expect(notes[0].message).not.toContain("may have been charged");
+    await m.unmount();
+  });
+
+  test("read-only says the same, naming no command", async () => {
+    const m = await mount(recoverableFailure(), { editing: false });
+    await m.click(m.q('[data-sticker="s05"]'));
+    expect(m.q("[data-gen-plan]")?.getAttribute("data-gen-plan")).toBe("recover");
+    expect(m.host.innerHTML).not.toContain("sticker.mjs");
+    await m.unmount();
+  });
+});
+
 describe("actions and navigation", () => {
   test("navigate-to answers with what is on screen; unknown stickers and frames are refused by name", async () => {
     const m = await mount(rich());
@@ -769,7 +818,10 @@ describe("warnings are not passes", () => {
     const m = await mount(loadPack(finishedWorkspace().files));
     const bar = m.q("[data-next-step]")!;
     expect(bar.getAttribute("data-tone")).toBe("confirm");
-    expect(m.q("[data-to-confirm]")?.textContent).toBe("1 to confirm by hand");
+    // The rules' last step names what is left; the chip opens it.
+    expect(bar.getAttribute("data-next-step")).toBe("confirm");
+    expect(bar.textContent).toContain("Nothing fails — 1 item to confirm by hand");
+    expect(m.q("[data-to-confirm]")?.textContent).toBe("Open LINE");
     await m.click(m.q("[data-to-confirm]"));
     expect(m.q("[data-submit]")?.getAttribute("data-submit")).toBe("line");
     expect(m.q("[data-no-fails]")?.textContent).toContain("Nothing fails — 1 item needs your own check");
@@ -795,7 +847,8 @@ describe("warnings are not passes", () => {
     await m.click(m.q('[data-segment="view:submit"]'));
     expect(m.q('[data-segment="platform:wechat"]')?.textContent).toContain("微信");
     expect(m.q("[data-submit]")?.textContent).not.toContain("WeChat");
-    expect(m.q("[data-to-confirm]")?.textContent).toBe("1 项要你自己核对");
+    expect(m.q("[data-to-confirm]")?.textContent).toBe("打开 LINE");
+    expect(m.q("[data-next-step]")?.textContent).not.toContain("WeChat");
     await m.unmount();
   });
 });

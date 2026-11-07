@@ -60,6 +60,8 @@ export interface StickerStrings {
   commandSent: string;
   /** The last step with warnings left: how many rows a person still has to confirm by hand. */
   toConfirm: (n: number) => string;
+  /** When the step already says what to confirm: the chip opens that platform's tab. */
+  openTab: (platform: string) => string;
 
   // sidebar
   character: string;
@@ -111,6 +113,8 @@ export interface StickerStrings {
   statusUnknown: string;
   noCaption: string;
   mayBeBilled: string;
+  /** A failed take the service accepted and never delivered: fetching it again costs nothing. */
+  recoverableShort: string;
   notBilled: string;
   elapsed: (seconds: number) => string;
   openSticker: (number: string, word: string) => string;
@@ -128,6 +132,8 @@ export interface StickerStrings {
   genLeftUncertain: string;
   /** A failed sticker a plain gen retries: its last call never left. */
   genRetries: string;
+  /** A failed sticker whose take the service accepted and never delivered: fetched again for free, not redrawn. Names no command. */
+  genRecoverable: string;
   readyHeadline: string;
   billingUnknown: string;
   billingNone: string;
@@ -380,6 +386,7 @@ const EN: Chrome = {
   exportCheck: "Export and check",
   commandSent: "Sent to the agent",
   toConfirm: (n) => `${n} to confirm by hand`,
+  openTab: (p) => `Open ${p}`,
 
   character: "Character",
   noCharacter: "No character yet",
@@ -432,6 +439,7 @@ const EN: Chrome = {
   statusUnknown: "Unknown",
   noCaption: "no caption",
   mayBeBilled: "may have been billed",
+  recoverableShort: "not delivered — fetching it is free",
   notBilled: "not billed",
   elapsed: elapsedEn,
   openSticker: (number, word) => `Open sticker ${number} ${word}`,
@@ -445,6 +453,7 @@ const EN: Chrome = {
   emptyHeadlineQuiet: "No take yet",
   genLeftUncertain: "Not redrawn automatically: the last try may already have been billed, so a retry needs an explicit yes.",
   genRetries: "The request never left, so it is drawn again with the other missing stickers.",
+  genRecoverable: "The image service accepted this job but the file never arrived: fetching it again is free — nothing is redrawn or billed again.",
   readyHeadline: "Ready — this take matches the sticker's text and character",
   billingUnknown: "May have been billed: the provider never confirmed either way.",
   billingNone: "Not billed: the request never left this machine.",
@@ -554,7 +563,8 @@ const ZH: Chrome = {
   makeMissing: "补齐没出图的表情",
   exportCheck: "导出并检查",
   commandSent: "已发给 agent",
-  toConfirm: (n) => `${n} 项要你自己核对`,
+  toConfirm: (n) => `${n} 项要你亲自确认`,
+  openTab: (p) => tightCjk(`打开 ${p}`),
 
   character: "角色",
   noCharacter: "还没有角色",
@@ -607,6 +617,7 @@ const ZH: Chrome = {
   statusUnknown: "状态未知",
   noCaption: "无配字",
   mayBeBilled: "可能已扣费",
+  recoverableShort: "没收到——可以免费取回",
   notBilled: "未扣费",
   elapsed: elapsedZh,
   openSticker: (number, word) => `打开第 ${number} 张 ${word}`,
@@ -620,6 +631,7 @@ const ZH: Chrome = {
   emptyHeadlineQuiet: "还没出图",
   genLeftUncertain: "不会自动重画：上一次可能已经扣过费，要重画得另外明确确认。",
   genRetries: "请求没发出去，补齐缺图时会再画这一张。",
+  genRecoverable: "生成服务已经接下这一张，只是文件没收到：取回不再扣费，也不用重画。",
   readyHeadline: "已就绪：这一版和现在的配字、角色一致",
   billingUnknown: "可能已扣费：服务商没有确认是否收费。",
   billingNone: "未扣费：请求没有发出这台机器。",
@@ -685,7 +697,7 @@ const ZH: Chrome = {
   needsAttention: (n) => `需要处理 · ${n}`,
   passing: (n) => `已通过 · ${n}`,
   allPass: "所有检查都通过了，压缩包可以直接上传。",
-  noFailsConfirm: (n) => `没有未通过的项；提交前还有 ${n} 项要你自己核对。`,
+  noFailsConfirm: (n) => `没有不合格项；提交前还有 ${n} 项要你亲自确认。`,
   notExportedYet: (n) => `还没导出 · ${n}`,
   shownAt: (p) => `按 ${p}% 显示`,
   level: { pass: "通过", warn: "提醒", fail: "未通过" },
@@ -729,7 +741,8 @@ const JA: Chrome = {
   makeMissing: "足りないスタンプを作る",
   exportCheck: "書き出してチェック",
   commandSent: "agent に送りました",
-  toConfirm: (n) => `手動で確認 ${n} 件`,
+  toConfirm: (n) => `手で確認 ${n} 件`,
+  openTab: (p) => `${p} を開く`,
 
   character: "キャラクター",
   noCharacter: "キャラクターはまだありません",
@@ -782,6 +795,7 @@ const JA: Chrome = {
   statusUnknown: "状態不明",
   noCaption: "文字なし",
   mayBeBilled: "課金された可能性あり",
+  recoverableShort: "未着 —— 無料で受け取り直せます",
   notBilled: "課金なし",
   elapsed: elapsedJa,
   openSticker: (number, word) => `スタンプ ${number} ${word} を開く`,
@@ -795,6 +809,7 @@ const JA: Chrome = {
   emptyHeadlineQuiet: "テイクはまだありません",
   genLeftUncertain: "自動では描き直しません。前回すでに課金された可能性があるため、描き直すには改めて確認が必要です。",
   genRetries: "リクエストは送信されていないので、足りないスタンプを作るときにもう一度描きます。",
+  genRecoverable: "生成サービスは受付済みですが、ファイルが届いていません。受け取り直しは無料で、描き直しや追加の課金はありません。",
   readyHeadline: "完成 —— このテイクは今の文字・キャラクターと一致しています",
   billingUnknown: "課金された可能性あり：プロバイダーからどちらとも確認できていません。",
   billingNone: "課金なし：リクエストはこのマシンから出ていません。",
@@ -860,7 +875,7 @@ const JA: Chrome = {
   needsAttention: (n) => `対応が必要 · ${n}`,
   passing: (n) => `合格 · ${n}`,
   allPass: "すべてのチェックに合格しました。ZIP はそのままアップロードできます。",
-  noFailsConfirm: (n) => `不合格はありません。申請前に、自分で確認する項目が ${n} 件あります。`,
+  noFailsConfirm: (n) => `不合格はありません。申請前に、手で確認する項目が ${n} 件あります。`,
   notExportedYet: (n) => `未書き出し · ${n}`,
   shownAt: (p) => `${p}% で表示`,
   level: { pass: "合格", warn: "注意", fail: "不合格" },

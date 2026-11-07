@@ -439,8 +439,17 @@ export default function StickerPreview(props: ViewerPreviewProps) {
       "make-missing",
       [
         `make (what a plain gen makes): ${plan.targets.map((s) => `${s.id} (${s.status})`).join(", ")}`,
-        plan.uncertain.length
-          ? `not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: ${plan.uncertain.map((u) => `${u.id} (${u.take ?? "no take"}: ${u.reason})`).join(", ")}`
+        plan.uncertain.some((u) => u.recoverable)
+          ? `not included — fal accepted these and the file never arrived; fetch them first, free, nothing is redrawn: sticker.mjs recover --only ${plan.uncertain
+              .filter((u) => u.recoverable)
+              .map((u) => u.id)
+              .join(",")}`
+          : "",
+        plan.uncertain.some((u) => !u.recoverable)
+          ? `not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: ${plan.uncertain
+              .filter((u) => !u.recoverable)
+              .map((u) => `${u.id} (${u.take ?? "no take"}: ${u.reason})`)
+              .join(", ")}`
           : "",
         v.next ? `next step: ${v.next.line}` : "",
       ].filter(Boolean),
@@ -719,7 +728,8 @@ export default function StickerPreview(props: ViewerPreviewProps) {
               className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-warning/40 bg-cc-warning/10 px-2 py-[1px] text-[11px] font-medium text-cc-warning transition-colors hover:bg-cc-warning/15 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
             >
               <Icon.Alert size={11} />
-              {t.toConfirm(warns)}
+              {/* The rules' own "confirm" step already says how many: the chip is the way there. */}
+              {next.id === "confirm" ? t.openTab(t.platformName(confirmOn)) : t.toConfirm(warns)}
             </button>
           ) : null}
           {canCommand && missing ? (

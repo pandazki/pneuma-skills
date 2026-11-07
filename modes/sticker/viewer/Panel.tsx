@@ -37,6 +37,8 @@ function CardPlate({ value, sticker, plate, base, t, now, unknown }: { value: St
   const url = mediaUrl(base, sticker.shown);
   const ink = plateInk(plate);
   const status = sticker.state.status;
+  // Accepted by the service and never delivered: fetching it again is free (`recoverable`).
+  const recover = value.gen?.uncertain.some((u) => u.id === sticker.id && u.recoverable) ?? false;
   let body: ReactNode = null;
   if (url) {
     body = <StickerLoop value={value} sticker={sticker} take={sticker.shown} base={base} size="80%" alt={`${sticker.sticker.word} ${sticker.sticker.caption}`} t={t} />;
@@ -56,7 +58,13 @@ function CardPlate({ value, sticker, plate, base, t, now, unknown }: { value: St
         <span style={{ color: plate === "light" ? "#dc2626" : "#f87171" }}>
           <Icon.Cross size={26} />
         </span>
-        {sticker.uncertain.length ? <span className="text-[10.5px] font-medium">{t.mayBeBilled}</span> : <span className="text-[10.5px]">{t.notBilled}</span>}
+        {recover ? (
+          <span className="text-[10.5px] font-medium">{t.recoverableShort}</span>
+        ) : sticker.uncertain.length ? (
+          <span className="text-[10.5px] font-medium">{t.mayBeBilled}</span>
+        ) : (
+          <span className="text-[10.5px]">{t.notBilled}</span>
+        )}
       </div>
     );
   } else {
