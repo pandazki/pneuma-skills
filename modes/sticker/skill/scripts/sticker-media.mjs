@@ -492,26 +492,34 @@ export function readGifFrames(path, { scaleTo } = {}) {
  * numbers when ffmpeg is there (`pixels: false` skips them; a missing
  * ffmpeg leaves `pixels: null` and a note, never a failure — the paid file
  * is recorded regardless).
+ *
+ * With `keepFrames`, the numbers are the trimmed loop's — the frames every
+ * export plays: their count, delays and length, and alpha and motion over
+ * them, the seam running from the last kept frame back to the first.
+ * `kept` and `framesInTake` say so; bytes, size and loop stay the file's.
  */
-export function measureTake(path, { pixels = true } = {}) {
+export function measureTake(path, { pixels = true, keepFrames = null } = {}) {
   const bytes = readFileSync(path);
   const info = readGifInfo(bytes);
   const loop = gifStructure(bytes).loopCount;
-  const delaysMs = effectiveDelays(info.delaysMs);
+  const kept = keepFrames ? keptIndices(info.frames, keepFrames) : null;
+  const allDelays = effectiveDelays(info.delaysMs);
+  const delaysMs = kept ? kept.map((i) => allDelays[i]) : allDelays;
   const measure = {
     format: "gif",
     bytes: bytes.length,
     width: info.width,
     height: info.height,
-    frames: info.frames,
+    frames: delaysMs.length,
     delaysMs,
     durationMs: delaysMs.reduce((a, b) => a + b, 0),
     loopCount: loop,
+    ...(kept ? { kept, framesInTake: info.frames } : {}),
   };
   if (!pixels) return { measure, note: null };
   if (!hasTool("ffmpeg")) return { measure: { ...measure, pixels: null }, note: "ffmpeg is not installed — the take's alpha and motion numbers were not measured (sticker.mjs inspect measures them later)" };
   const { frames, width, height } = readGifFrames(path);
-  return { measure: { ...measure, ...pixelMeasure(frames, width, height) }, note: null };
+  return { measure: { ...measure, ...pixelMeasure(kept ? kept.map((i) => frames[i]) : frames, width, height) }, note: null };
 }
 
 function pixelMeasure(frames, width, height) {
@@ -961,9 +969,12 @@ export const PLATES = Object.freeze({ light: [0xed, 0xed, 0xed], dark: [0x11, 0x
 /**
  * Every frame on the light and the dark chat plate: one block per plate,
  * up to 8 frames a row, frame numbers drawn when ffmpeg has drawtext.
+ * `numbers` labels each frame with its number in the take (a trimmed loop
+ * shows 7, 8, … 15, the numbers keepFrames uses); by default 0, 1, ….
  * Pure layout over RGBA frames already at `cell` size; returns RGB24.
  */
-export function contactLayout(frames, cellW, cellH = cellW, { gap = 8 } = {}) {
+export function contactLayout(frames, cellW, cellH = cellW, { gap = 8, numbers = null } = {}) {
+  if (numbers && numbers.length !== frames.length) throw new Error(`contactLayout: ${frames.length} frames but ${numbers.length} numbers`);
   const cols = Math.min(8, frames.length);
   const rows = Math.ceil(frames.length / cols);
   const blockH = rows * cellH + (rows + 1) * gap;
@@ -992,20 +1003,26 @@ export function contactLayout(frames, cellW, cellH = cellW, { gap = 8 } = {}) {
           out[o + 2] = Math.round(f[s + 2] * a + pb * (1 - a));
         }
       }
-      labels.push({ text: String(i), x: cx + 4, y: cy + 4, dark: plate === "light" });
+      labels.push({ text: String(numbers ? numbers[i] : i), x: cx + 4, y: cy + 4, dark: plate === "light" });
     });
   });
   return { rgb: out, width, height, labels };
 }
 
-/** Write the contact sheet PNG of a GIF at `out`. Returns its layout facts. */
-export function contactSheet(gifPath, out, { cell = 160 } = {}) {
+/**
+ * Write the contact sheet PNG of a GIF at `out` — every frame, or with
+ * `keepFrames` only the kept ones, each labelled with its number in the
+ * take. Returns its layout facts (`labels`: the frame numbers shown).
+ */
+export function contactSheet(gifPath, out, { cell = 160, keepFrames = null } = {}) {
   const info = readGifInfo(readFileSync(gifPath));
   const scale = Math.min(1, cell / Math.max(info.width, info.height));
   const cw = Math.max(1, Math.round(info.width * scale));
   const ch = Math.max(1, Math.round(info.height * scale));
-  const { frames } = readGifFrames(gifPath, { scaleTo: { width: cw, height: ch } });
-  const layout = contactLayout(frames, cw, ch);
+  const { frames: all } = readGifFrames(gifPath, { scaleTo: { width: cw, height: ch } });
+  const numbers = keptIndices(all.length, keepFrames);
+  const frames = numbers.map((i) => all[i]);
+  const layout = contactLayout(frames, cw, ch, { numbers });
   const draw = hasDrawtext()
     ? layout.labels.map((l) => `drawtext=text='${l.text}':x=${l.x}:y=${l.y}:fontsize=14:fontcolor=${l.dark ? "0x222222" : "0xdddddd"}`).join(",")
     : null;
@@ -1018,7 +1035,7 @@ export function contactSheet(gifPath, out, { cell = 160 } = {}) {
     // drawtext without a usable default font: the sheet without numbers.
     run("ffmpeg", args(null), { step: "contact sheet", input: layout.rgb });
   }
-  return { width: layout.width, height: layout.height, frames: frames.length, cell: { width: cw, height: ch }, labelled: Boolean(draw) };
+  return { width: layout.width, height: layout.height, frames: frames.length, labels: numbers, cell: { width: cw, height: ch }, labelled: Boolean(draw) };
 }
 
 export function fileSize(path) {

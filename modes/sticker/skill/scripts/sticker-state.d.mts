@@ -334,6 +334,9 @@ export interface Measure {
   alpha?: AlphaMeasure;
   /** Takes landed without ffmpeg: pixel numbers not measured. */
   pixels?: null;
+  /** `inspect` of a trimmed take: the kept frames (0-based) the numbers are over, of `framesInTake`. */
+  kept?: number[];
+  framesInTake?: number;
   /** Every frame byte-identical. */
   identical?: boolean;
   /** Frame 0's figure coverage / the median frame's. */

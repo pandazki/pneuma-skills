@@ -1296,13 +1296,20 @@ async function cmdImport(v) {
 // inspect
 // ---------------------------------------------------------------------------
 
+/**
+ * A take's numbers and contact sheet. The picked take of a trimmed sticker
+ * is shown as it ships — only its `keepFrames`, labelled with their numbers
+ * in the take, the seam from the last kept frame back to the first — and
+ * says so; `--all` shows the whole take. Any other take is shown whole.
+ */
 async function cmdInspect(v, sidArg) {
   const ws = workspace(v);
   const pack = loadPack(ws);
   const doc = await loadProjectOrNull(ws);
   const sid = sidArg ?? v.sticker;
-  if (!sid) fail("inspect needs a sticker id: sticker.mjs inspect s01 [--take s01-take-2]");
-  if (!pack.stickers.some((s) => s.id === sid)) fail(`no sticker '${sid}' in pack.json`);
+  if (!sid) fail("inspect needs a sticker id: sticker.mjs inspect s01 [--take s01-take-2] [--all]");
+  const sticker = pack.stickers.find((s) => s.id === sid);
+  if (!sticker) fail(`no sticker '${sid}' in pack.json`);
   const state = S.stickerState(pack, doc, sid);
   const takeId = v.take ?? state.effective ?? state.ready.at(-1);
   if (!takeId) fail(`${sid} has no ready take to inspect (${state.status})`);
@@ -1310,14 +1317,30 @@ async function cmdInspect(v, sidArg) {
   const asset = assetById(doc, takeId);
   if (!asset?.uri || !existsSync(ws.abs(asset.uri))) fail(`${takeId} has no file on disk`);
   const file = ws.abs(asset.uri);
-  const { measure } = media.measureTake(file);
-  const out = S.paths.inspect(takeId);
-  const sheet = media.contactSheet(file, ws.abs(out));
+  // keepFrames trims the pick: exports play only those frames.
+  const trims = Boolean(sticker.keepFrames) && takeId === state.effective;
+  const keepFrames = trims && !v.all ? sticker.keepFrames : null;
+  let measure;
+  try {
+    ({ measure } = media.measureTake(file, { keepFrames }));
+  } catch (error) {
+    fail(`${sid}: ${errorMessage(error)} — fix keepFrames in pack.json`);
+  }
+  const out = keepFrames ? S.paths.inspect(takeId).replace(/-contact\.png$/, "-kept-contact.png") : S.paths.inspect(takeId);
+  const sheet = media.contactSheet(file, ws.abs(out), { keepFrames });
   const staleness = S.takeStaleness(pack, doc, takeId);
   const m = measure;
   const mo = m.motion;
-  emit(v, { command: "inspect", sticker: sid, take: takeId, picked: state.picked === takeId, contactSheet: out, sheet, measure, stale: staleness }, [
+  const keptLine = keepFrames
+    ? `keepFrames: these are the ${keepFrames.length} kept frames of ${m.framesInTake} (${keepFrames.join(", ")}) — what every export uses; --all shows the whole take`
+    : trims
+      ? `keepFrames: this is the whole take — exports use only the ${sticker.keepFrames.length} kept frames (${sticker.keepFrames.join(", ")}); without --all inspect shows those`
+      : sticker.keepFrames && state.effective && takeId !== state.effective
+        ? `keepFrames (${sticker.keepFrames.join(", ")}) trims the picked ${state.effective}; this is the whole of ${takeId}`
+        : null;
+  emit(v, { command: "inspect", sticker: sid, take: takeId, picked: state.picked === takeId, kept: keepFrames, contactSheet: out, sheet, measure, stale: staleness }, [
     `${takeId}${state.picked === takeId ? " (picked)" : ""} · ${m.frames} frames ${m.width}×${m.height} · ${m.delaysMs.every((d) => d === m.delaysMs[0]) ? `${m.delaysMs[0]} ms each` : `delays ${m.delaysMs.join("/")} ms`} = ${(m.durationMs / 1000).toFixed(2)} s · ${kb(m.bytes)} · ${m.loopCount === 0 ? "loops forever" : m.loopCount === null ? "plays once" : `loops ${m.loopCount}×`}`,
+    keptLine,
     `alpha: ${Math.round(m.alpha.clear * 100)}% clear, ${m.alpha.semi === 0 ? "no semi-transparent pixels (1-bit)" : `${(m.alpha.semi * 100).toFixed(1)}% semi-transparent`}, corners ${m.alpha.cornersClear ? "clear" : "NOT clear"}`,
     `motion: mean step ${mo.mean} · loop seam ${mo.seam}${mo.seamRatio !== null ? ` (${mo.seamRatio}× the median step${mo.seamRatio > 2 ? " — the loop jumps" : ""})` : ""} · ground drift ${mo.groundDrift} px · size drift ${Math.round(mo.sizeDrift * 100)}%${mo.emptyFrames.length ? ` · EMPTY frames ${mo.emptyFrames.join(", ")}` : ""}${m.identical ? " · every frame identical" : ""}`,
     `first frame: ${Math.round(m.firstFrameCoverage * 100)}% of the median figure size (LINE shows it as the store still)`,
@@ -1554,8 +1577,11 @@ async function cmdExport(v) {
     if (r.leftAlone.length) lines.push(`  left alone (not this pack's exports): ${r.leftAlone.join(", ")}`);
     lines.push(`  archive: ${r.archive.state === "blocked" ? `not built — ${r.archive.reason}` : r.archive.state === "error" ? `NOT WRITTEN — ${r.archive.reason}` : `${r.archive.file}${r.archive.bytes ? ` · ${kb(r.archive.bytes)}` : " (current)"}`}`);
   }
+  // A trim changes what ships; the contact sheet the agent judged was the whole take.
+  const trimmed = pack.stickers.filter((s) => s.keepFrames && Object.values(report).some((r) => r.items.some((i) => i.deliverable === s.id && i.state === "exported"))).map((s) => s.id);
+  if (trimmed.length) lines.push(`trimmed — look at what ships before calling it done: ${trimmed.map((id) => `sticker.mjs inspect ${id}`).join(" · ")}`);
   lines.push(`check with: sticker.mjs check${platforms.length === 1 ? ` --platform ${platforms[0]}` : ""}`);
-  emit(v, { command: "export", platforms: report }, lines);
+  emit(v, { command: "export", platforms: report, trimmed }, lines);
 }
 
 // ---------------------------------------------------------------------------
@@ -1603,7 +1629,7 @@ const COMMAND_HELP = [
   ["recover", "[--only s01,s03] [--deadline-s 300] [--concurrency 4]", "fetch takes fal accepted but never delivered (a failed download, an interrupt): attach to each recorded request, fetch its GIF and land the SAME take — no new job, free, the job counted once. Tried once per request; a take that could not be fetched becomes an ordinary retry (gen --only <id>, with the user's yes)"],
   ["prompts", "[--only s01,…] | --art [--only kinds] | --character", "the exact prompts, for making the files elsewhere (ChatGPT) and importing them"],
   ["import", "--sticker <id> --file <gif> | --art <kind> --file <image> | --character --file <image> | --source --file <photo>", "register a file the user brought (upload by human); a take records the current prompt and anchor"],
-  ["inspect", "<sticker id> [--take <id>]", "contact sheet of a take on the light and dark chat plates (inspect/<take>-contact.png) and its loop seam, motion and alpha numbers"],
+  ["inspect", "<sticker id> [--take <id>] [--all]", "contact sheet of a take on the light and dark chat plates (inspect/<take>-contact.png) and its loop seam, motion and alpha numbers. A trimmed pick is shown as it ships: only its keepFrames, by their own numbers (inspect/<take>-kept-contact.png); --all shows the whole take"],
   ["export", "[--platform wechat|telegram|line|all]", "derive every platform's files from the picked takes and art (ffmpeg), record their measurements, write the listing text and the upload zip. Deterministic: current files are left alone; a file it did not record is never overwritten or deleted"],
   ["check", "[--platform wechat|telegram|line|all]", "the platform checklist (the viewer shows the same rows) and every recorded export and zip against the file on disk; exits 1 when either fails"],
 ];
@@ -1636,6 +1662,7 @@ const OPTIONS = {
   source: { type: "boolean", default: false }, sticker: { type: "string" }, file: { type: "string" }, take: { type: "string" },
   from: { type: "string" }, count: { type: "string" }, model: { type: "string" }, quality: { type: "string" },
   concurrency: { type: "string" }, "deadline-s": { type: "string" }, platform: { type: "string" },
+  all: { type: "boolean", default: false },
 };
 
 const COMMANDS = {

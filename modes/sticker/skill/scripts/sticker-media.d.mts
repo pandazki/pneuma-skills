@@ -67,7 +67,8 @@ export interface GifFrames {
 }
 export function readGifFrames(path: string, options?: { scaleTo?: { width: number; height: number } }): GifFrames;
 
-export function measureTake(path: string, options?: { pixels?: boolean }): { measure: Measure; note: string | null };
+/** With `keepFrames`: the trimmed loop's numbers (`measure.kept`, `measure.framesInTake`). */
+export function measureTake(path: string, options?: { pixels?: boolean; keepFrames?: number[] | null }): { measure: Measure; note: string | null };
 export function measureAnimation(path: string, format: "gif" | "apng" | "webm"): Measure;
 export function measureStill(path: string): Measure;
 
@@ -111,6 +112,8 @@ export const ARCHIVE_DATE: Date;
 export function archive(entries: { name: string; data: Uint8Array }[]): Buffer;
 
 export const PLATES: Readonly<{ light: readonly [number, number, number]; dark: readonly [number, number, number] }>;
-export function contactLayout(frames: Uint8Array[], cellW: number, cellH?: number, options?: { gap?: number }): { rgb: Buffer; width: number; height: number; labels: { text: string; x: number; y: number; dark: boolean }[] };
-export function contactSheet(gifPath: string, out: string, options?: { cell?: number }): { width: number; height: number; frames: number; cell: { width: number; height: number }; labelled: boolean };
+/** `numbers`: each frame's number in the take (default 0, 1, …). */
+export function contactLayout(frames: Uint8Array[], cellW: number, cellH?: number, options?: { gap?: number; numbers?: number[] | null }): { rgb: Buffer; width: number; height: number; labels: { text: string; x: number; y: number; dark: boolean }[] };
+/** `keepFrames`: only the kept frames, labelled with their numbers in the take (`labels`). */
+export function contactSheet(gifPath: string, out: string, options?: { cell?: number; keepFrames?: number[] | null }): { width: number; height: number; frames: number; labels: number[]; cell: { width: number; height: number }; labelled: boolean };
 export function fileSize(path: string): number;
