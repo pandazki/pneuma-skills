@@ -148,7 +148,30 @@ describe("sticker.mjs CLI", () => {
     expect(r.code).toBe(1);
     expect(r.err).toContain("stickers[0].id: must look like s01");
     expect(r.err).toContain("platforms[0]: must be one of wechat, telegram, line");
-    expect(run(fresh(), ["status"]).err).toContain("no pack.json");
+    // Broken JSON is an error too — only an absent pack.json is the fresh start.
+    writeFileSync(join(dir, "pack.json"), "{ \"version\": 1,");
+    const broken = run(dir, ["status"]);
+    expect(broken.code).toBe(1);
+    expect(broken.err).toContain("ERROR: pack.json is invalid");
+    // Commands that need a pack still say so.
+    expect(run(fresh(), ["quote"]).err).toContain("no pack.json");
+  });
+
+  test("status in a fresh workspace is the normal start: exit 0, no error, the keys and tools, and the first step", () => {
+    const dir = fresh();
+    const r = run(dir, ["status"]);
+    expect(r.code).toBe(0);
+    expect(r.err).not.toContain("ERROR");
+    expect(r.out).toContain("pack: none yet");
+    expect(r.out).toContain("keys: fal and OpenRouter found");
+    expect(r.out).toMatch(/ffmpeg\/ffprobe: (found|MISSING)/);
+    expect(r.out).toContain("next: ask whose character it is and who will use the stickers");
+    const json = ok(dir, ["status"]);
+    expect(json).toMatchObject({ command: "status", pack: null, keys: { fal: true, openrouter: true }, next: { id: "start" } });
+    expect(existsSync(join(dir, "project.json"))).toBe(false);
+    expect(existsSync(join(dir, "pack.json"))).toBe(false);
+    // A key that is missing is said there too, before anything else happens.
+    expect(run(dir, ["status"], { MOCK_NO_KEYS: "1" }).out).toContain("FAL_KEY missing");
   });
 
   test("paid steps refuse without rights, name the field, and send and record nothing", () => {

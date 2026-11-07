@@ -567,11 +567,35 @@ function toolLine() {
   return missing.length ? `ffmpeg/ffprobe: MISSING ${missing.join(" and ")} — landing, inspect and export need them (macOS: brew install ffmpeg)` : "ffmpeg/ffprobe: found";
 }
 
+/**
+ * A workspace with no pack.json is where every pack starts, not an error:
+ * status says so in one plain line, with what this session can generate,
+ * and exits 0. A pack.json that exists and does not parse is still an error.
+ */
+async function emptyStatus(v, ws, gen) {
+  const keys = keyReport(gen);
+  const recorded = existsSync(ws.project);
+  const next = {
+    id: "start",
+    line: "ask whose character it is and who will use the stickers (the rights question and the route), then write pack.json (references/pack.md)",
+  };
+  emit(v, {
+    command: "status", pack: null, project: recorded, keys,
+    tools: { ffmpeg: media.hasTool("ffmpeg"), ffprobe: media.hasTool("ffprobe") }, next,
+  }, [
+    `pack: none yet — no pack.json in this workspace${recorded ? " (project.json is here: the files of an earlier pack stay recorded)" : ""}`,
+    keyLine(keys),
+    toolLine(),
+    `next: ${next.line}`,
+  ]);
+}
+
 async function cmdStatus(v) {
   const ws = workspace(v);
+  const gen = await generators();
+  if (!existsSync(ws.pack)) return emptyStatus(v, ws, gen);
   const pack = loadPack(ws);
   const doc = await loadProjectOrNull(ws);
-  const gen = await generators();
   const keys = keyReport(gen);
   const states = S.stickerStates(pack, doc);
   const anchor = S.anchorState(pack, doc);
