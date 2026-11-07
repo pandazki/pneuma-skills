@@ -427,7 +427,7 @@ describe("what a plain gen makes", () => {
 
   test("with only an uncertain sticker left, nothing offers a silent resend", async () => {
     const value = onlyUncertain();
-    expect(value.gen).toEqual({ targets: [], skipped: expect.any(Array), uncertain: [{ id: "s05", take: "s05-take-1", reason: "upstream error" }] });
+    expect(value.gen).toEqual({ targets: [], skipped: expect.any(Array), uncertain: [{ id: "s05", take: "s05-take-1", reason: "upstream error", requestId: null, recoverable: false }] });
     const m = await mount(value, { editing: true, onNotifyAgent: () => {} });
     expect(m.q('[data-command="make-missing"]')).toBeNull();
     expect(m.q("[data-next-step]")?.getAttribute("data-next-step")).toBe("retry");

@@ -42,7 +42,7 @@ so nothing changes after the user has looked at it.
 | Item | Rule | Made from |
 |---|---|---|
 | sticker | WEBM VP9 with alpha; one side exactly 512, the other ≤ 512; ≤ 3 s; ≤ 30 fps; ≤ 256 KB; no audio; loops | the picked takes, resampled to a constant 30 fps |
-| set thumbnail | PNG 100×100, ≤ 128 KB (optional; the first sticker otherwise) | `art.portrait` |
+| set thumbnail | PNG 100×100, ≤ 128 KB (optional on Telegram's side) | `art.portrait`; without it, the first sticker's first kept frame (free) |
 | emoji | 1–20 per sticker; one is exported | `stickers[].emoji` |
 | set | 1–50 stickers at creation, 120 at most | |
 | text | a title and a short name (the link) | `listing.telegram` |
@@ -56,7 +56,7 @@ one; the zip is for keeping them together).
 **@Stickers** bot and chooses the command that creates a video sticker set
 (the bot lists its commands). They send the title, then each `.webm` in order
 followed by its emoji, then publish; the bot asks for an icon (send
-`thumb.png`, or skip) and a short name, which becomes the link
+`thumb.png`) and a short name, which becomes the link
 `t.me/addstickers/<short name>`. Short names are unique across Telegram: if
 the one in `listing.telegram.shortName` is taken, the user picks another
 there and then.

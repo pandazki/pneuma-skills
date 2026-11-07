@@ -241,6 +241,14 @@ describe("contact layout", () => {
     expect([...layout.rgb.subarray(0, 3)]).toEqual([0xed, 0xed, 0xed]);
     const darkRow = (layout.height / 2) * layout.width * 3;
     expect([...layout.rgb.subarray(darkRow, darkRow + 3)]).toEqual([0x11, 0x11, 0x11]);
+    expect(layout.labels.slice(0, 3).map((l) => l.text)).toEqual(["0", "1", "2"]);
+  });
+
+  test("a trimmed take is laid out with the take's own frame numbers, so the sheet and keepFrames speak the same numbers", () => {
+    const frames = Array.from({ length: 3 }, () => frame(10, 10, { x: 2, y: 2, size: 4 }));
+    const layout = M.contactLayout(frames, 10, 10, { gap: 2, numbers: [7, 9, 15] });
+    expect(layout.labels.map((l) => l.text)).toEqual(["7", "9", "15", "7", "9", "15"]);
+    expect(() => M.contactLayout(frames, 10, 10, { numbers: [1, 2] })).toThrow("3 frames but 2 numbers");
   });
 });
 

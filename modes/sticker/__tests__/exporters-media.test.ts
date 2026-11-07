@@ -334,6 +334,90 @@ describe.skipIf(!MEDIA)("sticker export on real media", () => {
     expect(out.measure.motion.steps).toHaveLength(15);
     expect(out.measure.alpha.semi).toBe(0);
   });
+
+  test("inspect after a trim shows what ships: the kept frames by their own numbers, the seam from the last kept to the first; --all shows the whole take", () => {
+    // s03 keeps [0, 2, …, 14] since the re-export test above.
+    const kept = [0, 2, 4, 6, 8, 10, 12, 14];
+    const out = ok(ws, ["inspect", "s03"]);
+    expect(out).toMatchObject({ take: "s03-take-1", kept, contactSheet: "inspect/s03-take-1-kept-contact.png" });
+    expect(out.sheet).toMatchObject({ frames: 8, labels: kept });
+    expect(out.measure).toMatchObject({ frames: 8, framesInTake: 16, kept, durationMs: 960 });
+    expect(out.measure.delaysMs).toEqual(Array(8).fill(120));
+    expect(out.measure.motion.steps).toHaveLength(7);
+    expect(existsSync(join(ws, out.contactSheet))).toBe(true);
+    const text = run(ws, ["inspect", "s03"]).out;
+    expect(text).toContain("keepFrames: these are the 8 kept frames of 16 (0, 2, 4, 6, 8, 10, 12, 14) — what every export uses; --all shows the whole take");
+    expect(text).toContain("contact sheet (light and dark plates): inspect/s03-take-1-kept-contact.png");
+    const all = ok(ws, ["inspect", "s03", "--all"]);
+    expect(all).toMatchObject({ contactSheet: "inspect/s03-take-1-contact.png", kept: null });
+    expect(all.measure.frames).toBe(16);
+    expect(run(ws, ["inspect", "s03", "--all"]).out).toContain("the whole take — exports use only the 8 kept frames");
+    // The seam the export plays is last kept → first kept, not frame 15 → frame 0.
+    expect(out.measure.motion.seam).not.toBe(all.measure.motion.seam);
+  });
+});
+
+describe.skipIf(!MEDIA)("Telegram's thumbnail without portrait art", () => {
+  let dir = "";
+  beforeAll(() => {
+    dir = fresh("sticker-thumb-");
+    const raw = rawPack();
+    raw.platforms = ["telegram"];
+    raw.listing = { telegram: raw.listing.telegram };
+    raw.character.anchor = null;
+    raw.stickers = raw.stickers.slice(0, 2).map((s: object) => ({ ...s, take: null }));
+    raw.art = {};
+    writeFileSync(join(dir, "pack.json"), JSON.stringify(raw, null, 2));
+    spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=0x8899aa:s=640x480", "-frames:v", "1", join(dir, "photo.png")]);
+    ok(dir, ["character", "--from", join(dir, "photo.png")]);
+    editPack(dir, (p) => {
+      p.character.anchor = "character-1";
+    });
+    ok(dir, ["gen"]);
+    editPack(dir, (p) => {
+      p.stickers.forEach((s: { id: string; take: string }) => (s.take = `${s.id}-take-1`));
+    });
+  }, 120_000);
+
+  /** The left edge of the figure in a 100×100 RGBA still. */
+  const leftEdge = (file: string) => M.alphaBox(decode(file, 100, 100)[0], 100, 100)!.x;
+
+  test("is made, free, from the first sticker's first kept frame: a 100×100 transparent PNG in the zip, and the row says where it came from", () => {
+    const out = ok(dir, ["export", "--platform", "telegram"]);
+    expect(out.platforms.telegram.items.find((i: { deliverable: string }) => i.deliverable === "thumb")).toMatchObject({ state: "exported", file: "exports/telegram/thumb.png", derivedFrom: { sticker: "s01", frame: 0 } });
+    const thumb = join(dir, "exports", "telegram", "thumb.png");
+    expect(ffprobe(thumb, "stream=width,height,pix_fmt").streams[0]).toMatchObject({ width: 100, height: 100, pix_fmt: "rgba" });
+    expect(readFileSync(thumb).length).toBeLessThanOrEqual(128_000);
+    const [f] = decode(thumb, 100, 100);
+    expect(detachedSemi(f, 100, 100)).toBe(0);
+    for (const [x, y] of [[0, 0], [99, 0], [0, 99], [99, 99]]) expect(alphaAt(f, 100, x, y)).toBe(0);
+    const edge = readJson(join(dir, "project.json")).provenance.find((e: { toAssetId: string }) => e.toAssetId === "telegram-thumb");
+    expect(edge).toMatchObject({ fromAssetId: "s01-take-1", operation: { type: "derive", params: { op: "export", deliverable: "thumb", frame: 0 } } });
+    const check = JSON.parse(run(dir, ["check", "--json"]).out);
+    const row = check.platforms.telegram.rows.find((r: { id: string }) => r.id === "thumb");
+    expect(row.level).toBe("pass");
+    expect(row.detail).toContain("made from s01, frame 0 (no portrait art picked)");
+    expect(check.platforms.telegram.rows.find((r: { id: string }) => r.id === "zip").level).toBe("pass");
+    if (spawnSync("unzip", ["-v"], { stdio: "ignore" }).status === 0) {
+      expect(spawnSync("unzip", ["-Z1", join(dir, "exports", "telegram.zip")], { encoding: "utf-8" }).stdout.trim().split("\n")).toEqual(["01.webm", "02.webm", "thumb.png"]);
+    }
+  }, 60_000);
+
+  test("follows a trim: keepFrames moves it to the first kept frame, and only it and the trimmed sticker are made again", () => {
+    const before = leftEdge(join(dir, "exports", "telegram", "thumb.png"));
+    editPack(dir, (p) => {
+      p.stickers[0].keepFrames = [10, 11, 12, 13, 14, 15];
+    });
+    const out = ok(dir, ["export", "--platform", "telegram"]);
+    const exported = out.platforms.telegram.items.filter((i: { state: string }) => i.state === "exported").map((i: { deliverable: string }) => i.deliverable);
+    expect(exported).toEqual(["s01", "thumb"]);
+    // The re-made trimmed sticker is named, with the look that shows what ships.
+    expect(out.trimmed).toEqual(["s01"]);
+    expect(ok(dir, ["export", "--platform", "telegram"]).trimmed).toEqual([]);
+    // The mock figure moves right frame by frame: frame 10 sits further right than frame 0.
+    expect(leftEdge(join(dir, "exports", "telegram", "thumb.png"))).toBeGreaterThan(before);
+    expect(readJson(join(dir, "project.json")).provenance.find((e: { toAssetId: string }) => e.toAssetId === "telegram-thumb").operation.params.frame).toBe(10);
+  }, 60_000);
 });
 
 describe.skipIf(!MEDIA)("export writes and deletes only what the project owns", () => {

@@ -115,3 +115,10 @@ corners clear, 26–60 s wall (the first four waited on retried downloads; the
 rest took 26–30 s). Exported without dropping a frame or a colour: WeChat
 GIFs 319–411 KB (limit 500), Telegram WEBM 173–237 KB (limit 256), LINE APNG
 412–505 KB (limit 1 MB, 2 plays).
+
+Downloads of finished GIFs fail often right after the jobs finish: the seed
+run and both trials of 2026-11-07 saw `fetch failed` retries, and in one
+trial fal's file host refused connections for about 20 s, so four finished
+takes failed after three attempts. The download now tries six times over
+90 s; a take that still fails is fetched later by its request with
+`recover`, free.
