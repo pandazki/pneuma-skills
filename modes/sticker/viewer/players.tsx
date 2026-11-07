@@ -27,11 +27,11 @@ export type FramesState =
   | { status: "idle" }
   | { status: "unsupported" }
   | { status: "loading"; url: string }
-  | { status: "ready"; url: string; frames: ImageBitmap[]; width: number; height: number }
+  | { status: "ready"; url: string; frames: ImageBitmap[]; width: number; height: number; durations: number[] }
   | { status: "error"; url: string; message: string };
 
 interface DecodedImage {
-  image: { close(): void; displayWidth: number; displayHeight: number };
+  image: { close(): void; displayWidth: number; displayHeight: number; duration?: number | null };
 }
 interface ImageDecoderLike {
   completed: Promise<void>;
@@ -48,9 +48,97 @@ export function imageDecoder(): ImageDecoderCtor | null {
   return typeof ctor === "function" && typeof createImageBitmap === "function" ? (ctor as ImageDecoderCtor) : null;
 }
 
+/** A GIF's frames, composited as the GIF shows them. */
+export interface DecodedGif {
+  frames: ImageBitmap[];
+  width: number;
+  height: number;
+  /** Each frame's delay as the decoder read it, in ms (0 when it did not say). */
+  durations: number[];
+}
+
+/** The browser decodes images but not GIF frames. */
+export class GifFramesUnsupported extends Error {}
+
+async function decodeGif(url: string, Decoder: ImageDecoderCtor): Promise<DecodedGif> {
+  if (Decoder.isTypeSupported && !(await Decoder.isTypeSupported("image/gif"))) throw new GifFramesUnsupported("image/gif");
+  const response = await fetch(url, { mode: "cors" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const decoder = new Decoder({ data: await response.arrayBuffer(), type: "image/gif" });
+  const frames: ImageBitmap[] = [];
+  try {
+    // The track list first, then the whole file: frameCount is final only after both.
+    await decoder.tracks.ready;
+    await decoder.completed;
+    const count = decoder.tracks.selectedTrack?.frameCount ?? 0;
+    if (!count) throw new Error("the GIF reports no frames");
+    let width = 0;
+    let height = 0;
+    const durations: number[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const { image } = await decoder.decode({ frameIndex: i });
+      width = image.displayWidth;
+      height = image.displayHeight;
+      durations.push(typeof image.duration === "number" ? image.duration / 1000 : 0);
+      frames.push(await createImageBitmap(image as unknown as ImageBitmapSource));
+      image.close();
+    }
+    return { frames, width, height, durations };
+  } catch (error) {
+    for (const b of frames) b.close();
+    throw error;
+  } finally {
+    decoder.close();
+  }
+}
+
+interface Held {
+  refs: number;
+  promise: Promise<DecodedGif>;
+}
+
 /**
- * Decode every frame of a GIF into ImageBitmaps (composited, as the GIF
- * shows them). Bitmaps are closed when the URL changes or the hook unmounts.
+ * Decoded GIFs, shared by URL: the card, the stage, the chat and a capture
+ * that show the same take decode it once. A frame's bitmaps are closed when
+ * the last holder lets go; a failed decode is forgotten, so the next holder
+ * tries again.
+ */
+const held = new Map<string, Held>();
+
+export function holdGifFrames(url: string, Decoder: ImageDecoderCtor): { promise: Promise<DecodedGif>; release: () => void } {
+  let entry = held.get(url);
+  if (!entry) {
+    const created: Held = { refs: 0, promise: decodeGif(url, Decoder) };
+    created.promise.catch(() => {
+      if (held.get(url) === created) held.delete(url);
+    });
+    held.set(url, created);
+    entry = created;
+  }
+  const mine = entry;
+  mine.refs += 1;
+  let released = false;
+  return {
+    promise: mine.promise,
+    release: () => {
+      if (released) return;
+      released = true;
+      mine.refs -= 1;
+      if (mine.refs > 0) return;
+      if (held.get(url) === mine) held.delete(url);
+      mine.promise.then(
+        (gif) => {
+          for (const b of gif.frames) b.close();
+        },
+        () => {},
+      );
+    },
+  };
+}
+
+/**
+ * Every frame of a GIF as ImageBitmaps (shared through `holdGifFrames`),
+ * released when the URL changes or the hook unmounts.
  */
 export function useGifFrames(url: string | null): FramesState {
   const [state, setState] = useState<FramesState>({ status: "idle" });
@@ -65,46 +153,26 @@ export function useGifFrames(url: string | null): FramesState {
       return;
     }
     let cancelled = false;
-    const bitmaps: ImageBitmap[] = [];
     setState({ status: "loading", url });
-    (async () => {
-      if (Decoder.isTypeSupported && !(await Decoder.isTypeSupported("image/gif"))) {
-        if (!cancelled) setState({ status: "unsupported" });
-        return;
-      }
-      const response = await fetch(url, { mode: "cors" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const decoder = new Decoder({ data: await response.arrayBuffer(), type: "image/gif" });
-      try {
-        // The track list first, then the whole file: frameCount is final only after both.
-        await decoder.tracks.ready;
-        await decoder.completed;
-        const count = decoder.tracks.selectedTrack?.frameCount ?? 0;
-        if (!count) throw new Error("the GIF reports no frames");
-        let width = 0;
-        let height = 0;
-        for (let i = 0; i < count && !cancelled; i += 1) {
-          const { image } = await decoder.decode({ frameIndex: i });
-          width = image.displayWidth;
-          height = image.displayHeight;
-          bitmaps.push(await createImageBitmap(image as unknown as ImageBitmapSource));
-          image.close();
-        }
-        if (!cancelled) setState({ status: "ready", url, frames: [...bitmaps], width, height });
-      } finally {
-        decoder.close();
-      }
-    })().catch((error: unknown) => {
-      if (!cancelled) setState({ status: "error", url, message: error instanceof Error ? error.message : String(error) });
-    });
+    const hold = holdGifFrames(url, Decoder);
+    hold.promise.then(
+      (gif) => {
+        if (!cancelled) setState({ status: "ready", url, frames: gif.frames, width: gif.width, height: gif.height, durations: gif.durations });
+      },
+      (error: unknown) => {
+        if (cancelled) return;
+        if (error instanceof GifFramesUnsupported) setState({ status: "unsupported" });
+        else setState({ status: "error", url, message: error instanceof Error ? error.message : String(error) });
+      },
+    );
     return () => {
       cancelled = true;
-      for (const b of bitmaps) b.close();
+      hold.release();
     };
   }, [url]);
   // The state lags the URL by one render, and the cleanup above has already
-  // closed the previous URL's bitmaps by the time anything draws them: never
-  // hand out frames (or an error) that belong to another URL.
+  // released the previous URL's bitmaps by the time anything draws them:
+  // never hand out frames (or an error) that belong to another URL.
   if (!url) return { status: "idle" };
   if ("url" in state && state.url !== url) return { status: "loading", url };
   return state;
@@ -130,6 +198,60 @@ export function FrameCanvas({ bitmap, size, className, label }: { bitmap: ImageB
     ctx.drawImage(bitmap, (px - w) / 2, (px - h) / 2, w, h);
   }, [bitmap, size]);
   return <canvas ref={ref} aria-label={label} style={className ? undefined : { width: size, height: size }} className={className} />;
+}
+
+/**
+ * Decoded frames played as a loop: `order` (frame indices), each for its
+ * `delays` entry — the loop that ships, where the browser's own GIF
+ * playback would play every frame of the take. The canvas holds the
+ * frames' own pixels and is scaled by CSS, like the `<img>` it replaces.
+ */
+export function LoopCanvas({
+  frames,
+  order,
+  delays,
+  size,
+  label,
+  className = "",
+}: {
+  frames: ImageBitmap[];
+  order: number[];
+  delays: number[];
+  size: number | string;
+  label?: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  // By value: a parent re-render (the "generating for N s" clock) must not restart the loop.
+  const key = `${order.join(",")}|${delays.join(",")}`;
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !order.length) return;
+    const first = frames[order[0]];
+    canvas.width = first?.width || 512;
+    canvas.height = first?.height || 512;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.imageSmoothingQuality = "high";
+    let at = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const show = () => {
+      const bitmap = frames[order[at]];
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (bitmap) ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      if (order.length < 2) return;
+      timer = setTimeout(() => {
+        at = (at + 1) % order.length;
+        show();
+      }, Math.max(20, delays[at] ?? 100));
+    };
+    show();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frames, key]);
+  return <canvas ref={ref} role="img" aria-label={label} style={{ width: size, height: size }} className={`select-none object-contain ${className}`} />;
 }
 
 // ── GIF ────────────────────────────────────────────────────────────────────

@@ -9,17 +9,18 @@
  * reasons said in the user's language (`t.say`).
  */
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { ArtKind, AssetBrief, Platform, StickerPack, StickerView, TakeView } from "../domain.js";
 import type { StickerField } from "../domain.js";
 import { PLATFORM_PROFILES, charLength } from "../skill/scripts/sticker-state.mjs";
 import { elapsedOf } from "./Panel.js";
+import { StickerLoop } from "./StickerLoop.js";
 import { mediaUrl } from "./media.js";
-import { FrameCanvas, GifImg, type FramesState } from "./players.js";
+import { FrameCanvas, type FramesState } from "./players.js";
 import type { StickerStrings } from "./strings.js";
 import { Btn, Chip, DraftField, Icon, IconBtn, Plate, ReadField, SectionTitle, StatusChip, fmtBytes, fmtSeconds, plateInk } from "./ui.js";
-import { frameCount, stageTake, type Plate as PlateKind, type Position } from "./view-model.js";
+import { assetNumber, effectiveLoop, frameCount, newestFirst, stageTake, type Plate as PlateKind, type Position } from "./view-model.js";
 
 /** The sticker at twice the size it plays in the chat preview (120 px). */
 export const STAGE_SIZE = 240;
@@ -135,7 +136,7 @@ function StatusBlock({ value, sticker, t, now, canCommand }: { value: StickerPac
             .filter((x) => x.status === "failed")
             .map((x) => (
               <div key={x.id} data-failure={x.id} className="mt-1">
-                <span className="font-mono text-[10.5px] text-cc-muted">{x.id}</span> <span className="text-cc-fg/85">{x.failure?.reason}</span>
+                <span className="text-[11px] font-medium text-cc-fg" title={x.id}>{t.take(x.n)}</span> <span className="text-cc-fg/85">{x.failure?.reason}</span>
                 <BillingLine take={x} t={t} />
               </div>
             ))}
@@ -148,6 +149,7 @@ function StatusBlock({ value, sticker, t, now, canCommand }: { value: StickerPac
 }
 
 function Stage({
+  value,
   sticker,
   take,
   position,
@@ -156,6 +158,7 @@ function Stage({
   t,
   now,
 }: {
+  value: StickerPack;
   sticker: StickerView;
   take: TakeView | null;
   position: Position;
@@ -172,7 +175,7 @@ function Stage({
   if (url && frozen) {
     body = <FrameCanvas bitmap={frozen} size={STAGE_SIZE} label={t.frame(position.frame!, frames.status === "ready" ? frames.frames.length : 0)} />;
   } else if (url) {
-    body = <GifImg url={url} size={STAGE_SIZE} alt={`${sticker.sticker.word} ${sticker.sticker.caption}`} />;
+    body = <StickerLoop value={value} sticker={sticker} take={take} base={base} size={STAGE_SIZE} alt={`${sticker.sticker.word} ${sticker.sticker.caption}`} t={t} />;
   } else if (take?.status === "failed") {
     body = (
       <div className="flex max-w-[260px] flex-col items-center gap-2 text-center text-[11.5px] leading-[1.5]" style={{ color: ink }}>
@@ -205,6 +208,27 @@ function Stage({
         2×
       </span>
     </Plate>
+  );
+}
+
+/** What the stage plays when the sticker is trimmed: the kept frames, or why the whole take. */
+function LoopLine({ value, keep, take, t }: { value: StickerPack; keep: number[]; take: TakeView; t: StickerStrings }) {
+  const total = frameCount(take, value);
+  const loop = effectiveLoop(keep, total, take.measure?.delaysMs ?? null, value.pack?.motion.frameMs ?? 120);
+  if (loop.outOfRange !== null) {
+    return (
+      <Notice tone="warning" icon={<Icon.Alert size={12} />}>
+        <span data-loop-out-of-range>{t.keepOutOfRange(loop.outOfRange, total)}</span>
+      </Notice>
+    );
+  }
+  return (
+    <div data-loop-kept className="-mt-2 flex items-center gap-1.5 text-[11px] text-cc-fg/80">
+      <span className="text-cc-primary">
+        <Icon.Scissors size={11} />
+      </span>
+      {t.loopKept(keep.length, total)}
+    </div>
   );
 }
 
@@ -277,7 +301,7 @@ function FrameStrip({
   );
 }
 
-function TakeTile({ take, plate, base, t, now, on, onClick }: { take: TakeView; plate: PlateKind; base: string; t: StickerStrings; now: number; on: boolean; onClick: () => void }) {
+function TakeTile({ value, sticker, take, plate, base, t, now, on, onClick }: { value: StickerPack; sticker: StickerView; take: TakeView; plate: PlateKind; base: string; t: StickerStrings; now: number; on: boolean; onClick: () => void }) {
   const url = mediaUrl(base, take);
   const ink = plateInk(plate);
   return (
@@ -290,7 +314,7 @@ function TakeTile({ take, plate, base, t, now, on, onClick }: { take: TakeView; 
     >
       <Plate plate={plate} className="relative grid h-[68px] w-[68px] place-items-center overflow-hidden rounded-lg">
         {url ? (
-          <GifImg url={url} size={60} alt={t.take(take.n)} />
+          <StickerLoop value={value} sticker={sticker} take={take} base={base} size={60} alt={t.take(take.n)} t={t} note="icon" />
         ) : take.status === "failed" ? (
           <span style={{ color: plate === "light" ? "#dc2626" : "#f87171" }}>
             <Icon.Cross size={20} />
@@ -329,8 +353,9 @@ function TakeDetail({ take, t, canWrite, onPick }: { take: TakeView; t: StickerS
   return (
     <div data-take-detail={take.id} className="mt-2 rounded-lg border border-cc-border bg-cc-bg/35 px-2.5 py-2">
       <div className="flex items-center gap-2">
-        <span className="text-[12px] font-semibold text-cc-fg">{t.take(take.n)}</span>
-        <span className="font-mono text-[10.5px] text-cc-muted">{take.id}</span>
+        <span className="text-[12px] font-semibold text-cc-fg" title={take.id}>
+          {t.take(take.n)}
+        </span>
         <span className="ml-auto flex items-center gap-1.5">
           {take.picked ? <Chip tone="primary">{t.inUse}</Chip> : null}
           {take.staleness?.stale ? <Chip tone="warning">{t.takeStale}</Chip> : null}
@@ -466,7 +491,7 @@ export function StickerInspector({
       <div className="flex flex-col gap-3.5">
         {unknown ? null : <StatusBlock value={value} sticker={sticker} t={t} now={now} canCommand={canCommand} />}
         <div>
-          <Stage sticker={sticker} take={take} position={position} frames={frames} base={base} t={t} now={now} />
+          <Stage value={value} sticker={sticker} take={take} position={position} frames={frames} base={base} t={t} now={now} />
           {take?.status === "ready" ? (
             <div className="mt-1.5 flex min-h-[26px] items-center gap-2">
               {position.frame !== null ? (
@@ -487,6 +512,7 @@ export function StickerInspector({
             </div>
           ) : null}
         </div>
+        {take?.status === "ready" && s.keepFrames ? <LoopLine value={value} keep={s.keepFrames} take={take} t={t} /> : null}
         {take?.status === "ready" ? <FrameStrip take={take} value={value} sticker={sticker} position={position} frames={frames} t={t} onFrame={onFrame} /> : null}
         {sticker.takes.length ? (
           <section>
@@ -495,6 +521,8 @@ export function StickerInspector({
               {sticker.takes.map((x) => (
                 <TakeTile
                   key={x.id}
+                  value={value}
+                  sticker={sticker}
                   take={x}
                   plate={position.plate}
                   base={base}
@@ -516,27 +544,53 @@ export function StickerInspector({
 
 // ── Character ──────────────────────────────────────────────────────────────
 
-function AssetTile({ brief, plate, base, label, on, tag, onClick }: { brief: AssetBrief; plate: PlateKind; base: string; label: string; on: boolean; tag?: ReactNode; onClick?: () => void }) {
+/** One picture with its name under it; the asset id is the tooltip. */
+function AssetTile({ brief, plate, base, label, on, tag, onClick, t }: { brief: AssetBrief; plate: PlateKind; base: string; label: string; on: boolean; tag?: ReactNode; onClick?: () => void; t: StickerStrings }) {
   const url = mediaUrl(base, brief);
-  const inner = (
-    <>
-      <Plate plate={plate} className="relative grid h-[96px] w-[96px] place-items-center overflow-hidden rounded-lg">
-        {url ? <img src={url} alt={label} crossOrigin="anonymous" draggable={false} className="h-full w-full select-none object-contain" /> : <span className="text-[10px]" style={{ color: plateInk(plate) }}>{brief.status}</span>}
-      </Plate>
-      <span className="flex items-center gap-1 px-0.5">
-        <span className="truncate font-mono text-[10px] text-cc-muted">{brief.id}</span>
-      </span>
-      {tag}
-    </>
+  const picture = (
+    <Plate plate={plate} className="relative grid h-[96px] w-[96px] place-items-center overflow-hidden rounded-lg">
+      {url ? (
+        <img src={url} alt={label} crossOrigin="anonymous" draggable={false} className="h-full w-full select-none object-contain" />
+      ) : (
+        <span className="px-1 text-center text-[10px]" style={{ color: plateInk(plate) }}>
+          {brief.status === "failed" ? t.status("failed", 0, "") : t.status("generating", 0, "")}
+        </span>
+      )}
+    </Plate>
   );
-  return onClick ? (
-    <button type="button" data-asset={brief.id} aria-pressed={on} onClick={onClick} className={`flex w-[104px] shrink-0 flex-col items-start gap-1 rounded-[10px] p-1 text-left focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${on ? "bg-cc-primary/12 ring-1 ring-cc-primary" : "hover:bg-cc-hover"}`}>
-      {inner}
-    </button>
-  ) : (
-    <div data-asset={brief.id} className="flex w-[104px] shrink-0 flex-col items-start gap-1 p-1">
-      {inner}
+  return (
+    <div data-asset={brief.id} title={brief.id} className="flex w-[104px] shrink-0 flex-col items-start gap-1 p-1">
+      {onClick ? (
+        <button type="button" data-compare-pick aria-pressed={on} onClick={onClick} className={`rounded-[10px] p-0.5 focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${on ? "ring-1 ring-cc-primary" : "hover:bg-cc-hover"}`}>
+          {picture}
+        </button>
+      ) : (
+        picture
+      )}
+      <span className="truncate px-0.5 text-[11px] text-cc-fg/85">{label}</span>
+      {tag}
     </div>
+  );
+}
+
+/** A picture on the plate at the comparison size, named under it. */
+function ComparePicture({ brief, plate, base, label, empty, strong }: { brief: AssetBrief | null; plate: PlateKind; base: string; label: string; empty: string; strong?: boolean }) {
+  const url = mediaUrl(base, brief);
+  return (
+    <figure className="m-0 flex min-w-0 flex-col items-center gap-1.5" title={brief?.id}>
+      <div className="grid aspect-square w-full place-items-center">
+        {url ? (
+          <img src={url} alt={label} crossOrigin="anonymous" draggable={false} className="h-full w-full select-none object-contain" />
+        ) : (
+          <span className="px-3 text-center text-[11.5px] leading-[1.5]" style={{ color: plateInk(plate) }}>
+            {empty}
+          </span>
+        )}
+      </div>
+      <figcaption className={`text-[11px] ${strong ? "font-semibold" : ""}`} style={{ color: strong ? "#f97316" : plateInk(plate, "strong") }}>
+        {label}
+      </figcaption>
+    </figure>
   );
 }
 
@@ -559,59 +613,78 @@ export function CharacterInspector({
 }) {
   const character = value.character!;
   const pack = value.pack!;
-  const anchorUrl = mediaUrl(base, character.anchor.ready ? character.asset : null);
+  const anchorId = pack.character.anchor;
+  const candidates = newestFirst(character.candidates);
+  const sources = newestFirst(character.sources);
+  // Which candidate sits beside the photo: one the user put there, else the
+  // character, else the newest ready candidate.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const fallback = (character.anchor.ready ? anchorId : null) ?? candidates.find((c) => c.status === "ready")?.id ?? null;
+  const compared = candidates.find((c) => c.id === (chosen ?? fallback)) ?? null;
+  const photo = (compared && sources.find((src) => compared.inputs.includes(src.id))) ?? sources[0] ?? null;
+  const plate = position.plate;
   return (
-    <Shell t={t} onClose={onClose} title={<span className="text-[14px] font-semibold text-cc-fg">{t.character}</span>}>
+    <Shell t={t} onClose={onClose} title={<span className="truncate text-[14px] font-semibold text-cc-fg">{value.title ? `${t.character} · ${value.title}` : t.character}</span>}>
       <div className="flex flex-col gap-3.5">
-        <Plate plate={position.plate} className="grid w-full place-items-center rounded-[14px] py-4" style={{ minHeight: STAGE_SIZE + 32 }}>
-          {anchorUrl ? (
-            <img src={anchorUrl} alt={t.character} crossOrigin="anonymous" draggable={false} style={{ width: STAGE_SIZE, height: STAGE_SIZE }} className="select-none object-contain" />
-          ) : (
-            <span className="px-6 text-center text-[12px]" style={{ color: plateInk(position.plate) }}>
-              {t.noCharacter}
-            </span>
-          )}
-        </Plate>
+        <section>
+          <Plate plate={plate} className="rounded-[14px] p-3">
+            <div data-compare className="grid grid-cols-2 gap-3">
+              <ComparePicture brief={photo} plate={plate} base={base} label={photo ? t.photoN(assetNumber(photo.id)) : t.photoN(1)} empty={t.noPhoto} />
+              <ComparePicture
+                brief={compared}
+                plate={plate}
+                base={base}
+                label={compared ? `${t.candidateN(assetNumber(compared.id))}${compared.id === anchorId && character.anchor.ready ? ` · ${t.isTheCharacter}` : ""}` : t.character}
+                empty={t.noCharacter}
+                strong={!!compared && compared.id === anchorId}
+              />
+            </div>
+          </Plate>
+          {photo && compared ? <p className="m-0 mt-1.5 text-[11px] leading-[1.5] text-cc-muted">{t.compareHint}</p> : null}
+        </section>
         {character.anchor.message && character.anchor.anchor ? (
           <Notice tone="warning" icon={<Icon.Alert size={12} />}>
             {t.say(character.anchor.message)}
           </Notice>
         ) : null}
-        {character.candidates.length ? (
+        {candidates.length ? (
           <section>
-            <SectionTitle>{t.candidates}</SectionTitle>
+            <SectionTitle aside={!character.anchor.ready && candidates.some((c) => c.status === "ready") ? <span className="text-[10.5px] text-cc-primary">{t.notPicked}</span> : undefined}>{t.candidates}</SectionTitle>
             <div className="flex flex-wrap gap-1">
-              {character.candidates.map((c) => {
-                const isAnchor = pack.character.anchor === c.id;
+              {candidates.map((c) => {
+                const isAnchor = anchorId === c.id;
                 return (
-                  <AssetTile
-                    key={c.id}
-                    brief={c}
-                    plate={position.plate}
-                    base={base}
-                    label={c.id}
-                    on={isAnchor}
-                    tag={
-                      isAnchor ? (
-                        <Chip tone="primary">{t.isTheCharacter}</Chip>
-                      ) : canWrite && c.status === "ready" ? (
-                        <Btn small data-action="pick-anchor" onClick={() => onPickAnchor(c.id)}>
-                          {t.useAsCharacter}
-                        </Btn>
-                      ) : null
-                    }
-                  />
+                  <div key={c.id} data-candidate={c.id}>
+                    <AssetTile
+                      t={t}
+                      brief={c}
+                      plate={plate}
+                      base={base}
+                      label={t.candidateN(assetNumber(c.id))}
+                      on={compared?.id === c.id}
+                      onClick={c.status === "ready" ? () => setChosen(c.id) : undefined}
+                      tag={
+                        isAnchor ? (
+                          <Chip tone="primary">{t.isTheCharacter}</Chip>
+                        ) : canWrite && c.status === "ready" ? (
+                          <Btn small data-action="pick-anchor" onClick={() => onPickAnchor(c.id)}>
+                            {t.useAsCharacter}
+                          </Btn>
+                        ) : null
+                      }
+                    />
+                  </div>
                 );
               })}
             </div>
           </section>
         ) : null}
-        {character.sources.length ? (
+        {sources.length > 1 ? (
           <section>
             <SectionTitle>{t.sources}</SectionTitle>
             <div className="flex flex-wrap gap-1">
-              {character.sources.map((c) => (
-                <AssetTile key={c.id} brief={c} plate={position.plate} base={base} label={c.id} on={false} />
+              {sources.map((c) => (
+                <AssetTile key={c.id} t={t} brief={c} plate={plate} base={base} label={t.photoN(assetNumber(c.id))} on={false} />
               ))}
             </div>
           </section>
@@ -660,7 +733,7 @@ export function ArtInspector({
     <Shell t={t} onClose={onClose} title={<span className="text-[14px] font-semibold text-cc-fg">{t.artKind(kind)}</span>}>
       <div className="flex flex-col gap-3.5">
         <Plate plate={position.plate} checker className="grid w-full place-items-center rounded-[14px] p-4" style={{ minHeight: 200 }}>
-          {url ? <img src={url} alt={t.artKind(kind)} crossOrigin="anonymous" draggable={false} className="max-h-[260px] max-w-full select-none object-contain" /> : <span className="text-[12px]" style={{ color: plateInk(position.plate) }}>{art.picked ?? t.notPicked}</span>}
+          {url ? <img src={url} alt={t.artKind(kind)} crossOrigin="anonymous" draggable={false} className="max-h-[260px] max-w-full select-none object-contain" /> : <span className="text-[12px]" style={{ color: plateInk(position.plate) }}>{art.picked ? t.artN(assetNumber(art.picked)) : t.notPicked}</span>}
         </Plate>
         {art.candidates.length ? (
           <section>
@@ -671,10 +744,11 @@ export function ArtInspector({
                 return (
                   <AssetTile
                     key={c.id}
+                    t={t}
                     brief={c}
                     plate={position.plate}
                     base={base}
-                    label={c.id}
+                    label={t.artN(assetNumber(c.id))}
                     on={picked}
                     tag={
                       picked ? (
@@ -706,7 +780,7 @@ export function ArtInspector({
                     onClick={() => onExport(b.platform)}
                     className="flex items-center gap-2 rounded-lg border border-cc-border bg-cc-bg/35 px-2.5 py-1.5 text-left transition-colors hover:border-cc-primary/40 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
                   >
-                    <span className="text-[11.5px] font-medium text-cc-fg">{PLATFORM_PROFILES[b.platform].label}</span>
+                    <span className="text-[11.5px] font-medium text-cc-fg">{t.platformName(b.platform)}</span>
                     <span className="truncate text-[11px] text-cc-muted">{t.deliverableLabel(b.platform, b.deliverable)}</span>
                     <span className="font-mono text-[10.5px] text-cc-muted">{spec ? `${spec.width}×${spec.height}` : ""}</span>
                     {item ? (

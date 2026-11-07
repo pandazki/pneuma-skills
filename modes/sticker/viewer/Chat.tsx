@@ -11,8 +11,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { StickerPack, StickerView } from "../domain.js";
+import { StickerLoop } from "./StickerLoop.js";
 import { mediaUrl } from "./media.js";
-import { GifImg } from "./players.js";
 import type { StickerStrings } from "./strings.js";
 import { Icon } from "./ui.js";
 import { PLATE_COLORS, type Plate } from "./view-model.js";
@@ -95,15 +95,12 @@ export function ChatView({ value, plate, base, t }: { value: StickerPack; plate:
             </p>
           ) : (
             <div className="flex flex-col gap-3.5">
-              {thread.map((m) => {
-                const url = mediaUrl(base, m.sticker.shown)!;
-                return (
-                  <div key={m.key} data-message={m.sticker.id} data-side={m.side} className={`flex items-start gap-2 ${m.side === "me" ? "flex-row-reverse" : ""}`}>
-                    <Avatar side={m.side} />
-                    <GifImg url={url} size={CHAT_SIZE} alt={m.sticker.sticker.word} />
-                  </div>
-                );
-              })}
+              {thread.map((m) => (
+                <div key={m.key} data-message={m.sticker.id} data-side={m.side} className={`flex items-start gap-2 ${m.side === "me" ? "flex-row-reverse" : ""}`}>
+                  <Avatar side={m.side} />
+                  <StickerLoop value={value} sticker={m.sticker} take={m.sticker.shown} base={base} size={CHAT_SIZE} alt={m.sticker.sticker.word} t={t} />
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -141,7 +138,7 @@ export function ChatView({ value, plate, base, t }: { value: StickerPack; plate:
                     onClick={() => setSent((list) => [...list, { key: `sent-${list.length}`, side: "me", sticker: s }])}
                     className="grid aspect-square place-items-center rounded-lg transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
                   >
-                    <GifImg url={mediaUrl(base, s.shown)!} size="86%" alt={s.sticker.word} />
+                    <StickerLoop value={value} sticker={s} take={s.shown} base={base} size="86%" alt={s.sticker.word} t={t} note="icon" />
                   </button>
                 ))}
               </div>

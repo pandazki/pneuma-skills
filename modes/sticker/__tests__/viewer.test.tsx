@@ -28,7 +28,7 @@ import { findSticker, loadPack, type StickerPack } from "../domain.js";
 import manifest from "../manifest.js";
 import { filesOf, finishedWorkspace, richWorkspace } from "./pack-workspace.js";
 import { englishIn } from "./message-samples.js";
-import { addTake, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
+import { addImage, addTake, emptyDoc, exportAll, packFrom, rawPack, readyDoc } from "./sticker-fixture.js";
 
 let win: Window;
 let restore: () => void;
@@ -563,9 +563,9 @@ describe("actions and navigation", () => {
     const { frameVerdict } = await import("../viewer/view-model.js");
     const url = "/content/stickers/s01/take-1.gif?v=1";
     const bitmaps = Array.from({ length: 4 }, () => ({}) as ImageBitmap);
-    expect(frameVerdict({ status: "ready", url, frames: bitmaps, width: 1, height: 1 }, url, 2)).toEqual({ done: true, shown: true });
-    expect(frameVerdict({ status: "ready", url, frames: bitmaps, width: 1, height: 1 }, url, 4)).toMatchObject({ done: true, shown: false });
-    expect(frameVerdict({ status: "ready", url: "/content/other.gif", frames: bitmaps, width: 1, height: 1 }, url, 2)).toEqual({ done: false });
+    expect(frameVerdict({ status: "ready", url, frames: bitmaps, width: 1, height: 1, durations: [] }, url, 2)).toEqual({ done: true, shown: true });
+    expect(frameVerdict({ status: "ready", url, frames: bitmaps, width: 1, height: 1, durations: [] }, url, 4)).toMatchObject({ done: true, shown: false });
+    expect(frameVerdict({ status: "ready", url: "/content/other.gif", frames: bitmaps, width: 1, height: 1, durations: [] }, url, 2)).toEqual({ done: false });
     expect(frameVerdict({ status: "loading", url }, url, 2)).toEqual({ done: false });
     expect(frameVerdict({ status: "idle" }, url, 2)).toEqual({ done: false });
     expect(frameVerdict({ status: "unsupported" }, url, 2)).toMatchObject({ done: true, shown: false });
@@ -616,6 +616,305 @@ describe("actions and navigation", () => {
     expect(sources.length).toBeGreaterThan(0);
     expect(sources.every((src) => src.startsWith("/content/"))).toBe(true);
     await m.unmount();
+  });
+});
+
+/** A photo, two character candidates, none picked yet — the moment the trial's agent captured "No character yet". */
+function unpickedCharacter(): StickerPack {
+  const raw = rawPack();
+  raw.character.anchor = null;
+  for (const s of raw.stickers) s.take = null;
+  const doc = emptyDoc();
+  addImage(doc, "character-source-1", "character/source-1.png", { op: "upload" });
+  addImage(doc, "character-1", "character/anchor-1.png", { from: ["character-source-1"] });
+  addImage(doc, "character-2", "character/anchor-2.png", { from: ["character-source-1"] });
+  return loadPack(filesOf(raw, doc));
+}
+
+const KEEP = [13, 14, 15];
+
+/** Every sticker ready; s01 keeps frames 13–15. `exportedAfter`: the trim was set after the export (exports stale). */
+function trimmed({ exportedAfter = false }: { exportedAfter?: boolean } = {}): StickerPack {
+  const raw = rawPack();
+  if (!exportedAfter) raw.stickers[0].keepFrames = KEEP;
+  const pack = packFrom(raw);
+  const doc = readyDoc(pack);
+  for (const platform of ["wechat", "telegram", "line"] as const) exportAll(doc, pack, platform);
+  if (exportedAfter) raw.stickers[0].keepFrames = KEEP;
+  return loadPack(filesOf(raw, doc));
+}
+
+/**
+ * A browser that decodes: a stand-in ImageDecoder whose frames know their
+ * index, images that decode (or fail with `status`), and a 2D context that
+ * records what each canvas draws — a frame's index, an image's src — so a
+ * test reads what plays and what a capture card shows, frame by frame.
+ */
+function decodingBrowser({ status = 200 }: { status?: number } = {}) {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const proto = (win as unknown as { HTMLCanvasElement: { prototype: Record<string, unknown> } }).HTMLCanvasElement.prototype;
+  const saved = { ImageDecoder: g.ImageDecoder, createImageBitmap: g.createImageBitmap, fetch: g.fetch, Image: g.Image, getContext: proto.getContext, toDataURL: proto.toDataURL };
+  const drawn = new Map<Element, Array<number | string>>();
+  g.fetch = (async () => new Response(new Uint8Array([0x47, 0x49, 0x46]), { status })) as unknown as typeof fetch;
+  g.createImageBitmap = async (image: { index: number }) => ({ index: image.index, width: 512, height: 512, close() {} });
+  g.ImageDecoder = class {
+    completed = Promise.resolve();
+    tracks = { ready: Promise.resolve(), selectedTrack: { frameCount: 16 } };
+    async decode({ frameIndex }: { frameIndex: number }) {
+      return { image: { index: frameIndex, close() {}, displayWidth: 512, displayHeight: 512 } };
+    }
+    close() {}
+  };
+  g.Image = class {
+    crossOrigin = "";
+    decoding = "";
+    src = "";
+    naturalWidth = 512;
+    naturalHeight = 512;
+    decode() {
+      return status === 200 ? Promise.resolve() : Promise.reject(new Error("The source image cannot be decoded."));
+    }
+  };
+  proto.getContext = function (this: Element) {
+    const canvas = this;
+    return new Proxy(
+      {},
+      {
+        get(_target, key) {
+          if (key === "measureText") return (text: string) => ({ width: text.length * 7 });
+          if (key === "drawImage") {
+            return (source: { index?: number; src?: string }) => drawn.set(canvas, [...(drawn.get(canvas) ?? []), typeof source?.index === "number" ? source.index : source?.src || "canvas"]);
+          }
+          return () => {};
+        },
+        set: () => true,
+      },
+    );
+  };
+  proto.toDataURL = () => "data:image/png;base64,Q0FSRA==";
+  return {
+    drawn,
+    /** What the off-screen canvases drew — the capture card's own drawing. */
+    offscreen: () => [...drawn].filter(([el]) => !el.isConnected).map(([, list]) => list),
+    restore: () => {
+      proto.getContext = saved.getContext;
+      proto.toDataURL = saved.toDataURL;
+      for (const key of ["ImageDecoder", "createImageBitmap", "fetch", "Image"] as const) {
+        if (saved[key] === undefined) delete g[key];
+        else g[key] = saved[key];
+      }
+    },
+  };
+}
+
+describe("the loop that ships (keepFrames)", () => {
+  test("with frame decoding, the card, the stage and the chat play only the kept frames, in order", async () => {
+    const browser = decodingBrowser();
+    try {
+      const m = await mount(trimmed());
+      await m.wait(450);
+      const card = m.q('[data-sticker="s01"] canvas')!;
+      expect(card).not.toBeNull();
+      // The take's own GIF would play all 16 frames: it is not on the card.
+      expect(m.q('[data-sticker="s01"] img')).toBeNull();
+      const cardFrames = browser.drawn.get(card)!;
+      expect(cardFrames.length).toBeGreaterThanOrEqual(3);
+      expect(cardFrames.every((f) => (KEEP as Array<number | string>).includes(f))).toBe(true);
+      expect(cardFrames.slice(0, 4)).toEqual([13, 14, 15, 13].slice(0, cardFrames.length));
+      // An untrimmed sticker keeps the browser's own GIF playback.
+      expect(m.q('[data-sticker="s02"] img')).not.toBeNull();
+
+      await m.click(m.q('[data-sticker="s01"]'));
+      await m.wait(300);
+      const stage = m.q("[data-stage] canvas")!;
+      expect(browser.drawn.get(stage)?.every((f) => (KEEP as Array<number | string>).includes(f))).toBe(true);
+      expect(m.q("[data-loop-kept]")?.textContent).toContain("3 of 16");
+
+      await m.request({ requestId: "c1", actionId: "set-view", params: { view: "chat" } });
+      await m.wait(300);
+      const message = m.q('[data-message="s01"] canvas')!;
+      expect(browser.drawn.get(message)?.every((f) => (KEEP as Array<number | string>).includes(f))).toBe(true);
+      await m.unmount();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("without frame decoding, a current export of the sticker plays instead of the take", async () => {
+    const m = await mount(trimmed());
+    const src = m.q('[data-sticker="s01"] img')?.getAttribute("src") ?? "";
+    expect(src).toStartWith("/content/exports/wechat/01.gif");
+    await m.request({ requestId: "c2", actionId: "set-view", params: { view: "chat" } });
+    expect(m.q('[data-message="s01"] img')?.getAttribute("src")).toStartWith("/content/exports/wechat/01.gif");
+    expect(m.q("[data-loop-note]")).toBeNull();
+    await m.unmount();
+  });
+
+  test("without frame decoding or a current export, the whole take plays under a visible note", async () => {
+    const m = await mount(trimmed({ exportedAfter: true }));
+    expect(m.q('[data-sticker="s01"] img')?.getAttribute("src")).toStartWith("/content/stickers/s01/take-1.gif");
+    expect(m.q('[data-sticker="s01"] [data-loop-note]')).not.toBeNull();
+    expect(m.q('[data-sticker="s01"] [data-loop-note]')?.getAttribute("title")).toContain("3 of 16");
+    expect(m.q('[data-sticker="s02"] [data-loop-note]')).toBeNull();
+    await m.request({ requestId: "c3", actionId: "set-view", params: { view: "chat" } });
+    expect(m.q('[data-message="s01"] [data-loop-note]')).not.toBeNull();
+    await m.unmount();
+  });
+});
+
+describe("warnings are not passes", () => {
+  // The 2026-11-07 trial B banner said "every checklist passes — ready to
+  // submit" while LINE still had a row to confirm by hand.
+  test("no failures but rows to confirm: the next bar says how many and opens the platform; the tab says nothing fails and what is left", async () => {
+    const m = await mount(loadPack(finishedWorkspace().files));
+    const bar = m.q("[data-next-step]")!;
+    expect(bar.getAttribute("data-tone")).toBe("confirm");
+    expect(m.q("[data-to-confirm]")?.textContent).toBe("1 to confirm by hand");
+    await m.click(m.q("[data-to-confirm]"));
+    expect(m.q("[data-submit]")?.getAttribute("data-submit")).toBe("line");
+    expect(m.q("[data-no-fails]")?.textContent).toContain("Nothing fails — 1 item needs your own check");
+    expect(m.q("[data-all-pass]")).toBeNull();
+    // The sidebar's platform chip carries the count, not only a colour.
+    await m.click(m.q('[data-segment="view:panel"]'));
+    expect(m.q('[data-platform-chip="line"]')?.textContent).toContain("1");
+    expect(m.q('[data-platform-chip="line"]')?.getAttribute("data-level")).toBe("warn");
+    await m.unmount();
+  });
+
+  test("a clean platform still reads as ready to upload", async () => {
+    const m = await mount(loadPack(finishedWorkspace().files));
+    await m.request({ requestId: "w1", actionId: "set-view", params: { view: "submit", platform: "telegram" } });
+    expect(m.q("[data-all-pass]")).not.toBeNull();
+    expect(m.q("[data-no-fails]")).toBeNull();
+    await m.unmount();
+  });
+
+  test("Chinese: 微信 on the tabs and chips, never WeChat", async () => {
+    const m = await mount(loadPack(finishedWorkspace().files), { locale: "zh-CN" });
+    expect(m.q('[data-platform-chip="wechat"]')?.textContent).toContain("微信");
+    await m.click(m.q('[data-segment="view:submit"]'));
+    expect(m.q('[data-segment="platform:wechat"]')?.textContent).toContain("微信");
+    expect(m.q("[data-submit]")?.textContent).not.toContain("WeChat");
+    expect(m.q("[data-to-confirm]")?.textContent).toBe("1 项要你自己核对");
+    await m.unmount();
+  });
+});
+
+describe("the character before one is picked", () => {
+  test("the panel shows the newest candidate, waiting to be picked, under the pack's name — not the style prompt", async () => {
+    const m = await mount(unpickedCharacter());
+    const card = m.q("[data-character-card]")!;
+    expect(card.querySelector("img")?.getAttribute("src")).toStartWith("/content/character/anchor-2.png");
+    expect(card.textContent).toContain("2 candidates — pick one");
+    expect(card.textContent).toContain("打工牛马");
+    expect(card.textContent).not.toContain("thick clean dark outlines");
+    expect(card.textContent).not.toContain("No character yet");
+    await m.unmount();
+  });
+
+  test("the inspector puts the photo beside the candidate, lists candidates newest first, and picks one when editing", async () => {
+    const m = await mount(unpickedCharacter(), { editing: true, onNotifyAgent: () => {} });
+    await m.click(m.q("[data-character-card]"));
+    const compare = () => m.all("[data-compare] img").map((i) => (i.getAttribute("src") ?? "").replace(/\?.*$/, ""));
+    expect(compare()).toEqual(["/content/character/source-1.png", "/content/character/anchor-2.png"]);
+    expect(m.all("[data-candidate]").map((c) => c.getAttribute("data-candidate"))).toEqual(["character-2", "character-1"]);
+    // Ids stay in tooltips; the tile says which candidate it is.
+    expect(m.q('[data-candidate="character-1"]')?.textContent).toContain("Candidate 1");
+    expect(m.q('[data-candidate="character-1"]')?.textContent).not.toContain("character-1");
+    await m.click(m.q('[data-candidate="character-1"] [data-compare-pick]'));
+    expect(compare()).toEqual(["/content/character/source-1.png", "/content/character/anchor-1.png"]);
+    await m.click(m.q('[data-candidate="character-1"] [data-action="pick-anchor"]'));
+    expect(m.writes.length).toBe(1);
+    expect(m.writes[0].pack?.character.anchor).toBe("character-1");
+    await m.unmount();
+  });
+
+  test("read-only: the comparison and every candidate, no pick", async () => {
+    const m = await mount(unpickedCharacter(), { editing: false });
+    await m.request({ requestId: "ch1", actionId: "navigate-to", params: { address: { character: true } } });
+    await m.wait(0);
+    expect(m.all("[data-compare] img").length).toBe(2);
+    expect(m.all("[data-candidate]").length).toBe(2);
+    expect(m.q('[data-action="pick-anchor"]')).toBeNull();
+    await m.unmount();
+  });
+});
+
+describe("capture draws what the position names, whatever the window", () => {
+  const capture = async () => {
+    const { default: stickerMode } = await import("../pneuma-mode.js");
+    return stickerMode.viewer.captureViewport!();
+  };
+
+  test("a sticker: the first frame that ships, at 2× and at chat size, then the shipped loop in play order", async () => {
+    const browser = decodingBrowser();
+    try {
+      const m = await mount(trimmed());
+      await m.request({ requestId: "k1", actionId: "navigate-to", params: { address: { sticker: "s01" } } });
+      await m.wait(30);
+      expect(await capture()).toEqual({ data: "Q0FSRA==", media_type: "image/png" });
+      expect(browser.offscreen()).toContainEqual([13, 13, 13, 14, 15]);
+      await m.unmount();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("a frame: that frame on the stage — even one the export cuts — with the shipped loop beside it", async () => {
+    const browser = decodingBrowser();
+    try {
+      const m = await mount(trimmed());
+      await m.request({ requestId: "k2", actionId: "navigate-to", params: { address: { sticker: "s01", frame: 2 } } });
+      await m.wait(30);
+      expect(m.results[0].result.success).toBe(true);
+      expect(await capture()).toMatchObject({ media_type: "image/png" });
+      expect(browser.offscreen()).toContainEqual([2, 2, 13, 14, 15]);
+      await m.unmount();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("a sticker whose file does not load is a refused capture that names it, not a picture of the pane", async () => {
+    const browser = decodingBrowser({ status: 404 });
+    try {
+      const m = await mount(trimmed());
+      await m.request({ requestId: "k3", actionId: "navigate-to", params: { address: { sticker: "s02" } } });
+      await m.wait(30);
+      const shot = await capture();
+      expect(shot && "error" in shot ? shot.error : null).toContain("s02-take-1");
+      expect(shot && "error" in shot ? shot.error : null).toContain("HTTP 404");
+      await m.unmount();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("the character: every photo beside every candidate, newest candidate first", async () => {
+    const browser = decodingBrowser();
+    try {
+      const m = await mount(unpickedCharacter());
+      await m.request({ requestId: "k4", actionId: "navigate-to", params: { address: { character: true } } });
+      await m.wait(30);
+      expect(await capture()).toMatchObject({ media_type: "image/png" });
+      const card = browser.offscreen().find((list) => list.some((x) => String(x).includes("character/")))!;
+      expect(card.map((src) => String(src).replace(/^\/content\/|\?.*$/g, ""))).toEqual(["character/source-1.png", "character/anchor-2.png", "character/anchor-1.png"]);
+      await m.unmount();
+    } finally {
+      browser.restore();
+    }
+  });
+
+  test("nothing named (the overview, the chat preview, a submission tab) is not drawn here", async () => {
+    const { captureSubject } = await import("../viewer/capture.js");
+    const { START } = await import("../viewer/view-model.js");
+    const value = trimmed();
+    expect(captureSubject(value, START)).toBeNull();
+    expect(captureSubject(value, { ...START, view: "chat", focus: { type: "sticker", id: "s01" } })).toBeNull();
+    expect(captureSubject(value, { ...START, view: "submit", platform: "line" })).toBeNull();
+    expect(captureSubject(value, { ...START, focus: { type: "sticker", id: "s01" }, frame: 4 })).toMatchObject({ kind: "sticker", frame: 4 });
+    expect(captureSubject(value, { ...START, view: "submit", platform: "line", focus: { type: "sticker", id: "s01" } })).toMatchObject({ kind: "export", item: { assetId: "line-s01" } });
+    expect(captureSubject(value, { ...START, focus: { type: "character" } })).toMatchObject({ kind: "character" });
   });
 });
 

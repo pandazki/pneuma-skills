@@ -14,6 +14,7 @@ import type { ViewerFileContent, ViewerSelectionContext } from "../../core/types
 import { findArt, findPlatform, findSticker, loadPack, type StickerPack, type StickerView } from "./domain.js";
 import stickerManifest from "./manifest.js";
 import StickerPreview from "./viewer/StickerPreview.js";
+import { captureSticker } from "./viewer/capture-seam.js";
 
 // ── Context ────────────────────────────────────────────────────────────────
 
@@ -173,6 +174,11 @@ const stickerMode: ModeDefinition = {
 
     // The manifest is the single source of truth for the action space.
     actions: stickerManifest.viewerApi?.actions,
+
+    // A sticker, take, frame, the character, an art kind or one export,
+    // drawn whole at a fixed size whatever the window (viewer/capture.ts);
+    // nothing named is the viewer as the user sees it.
+    captureViewport: captureSticker,
 
     updateStrategy: "incremental",
   },
