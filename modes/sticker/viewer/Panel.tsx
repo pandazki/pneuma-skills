@@ -8,11 +8,11 @@
 import type { ReactNode } from "react";
 
 import type { ArtKindView, AssetBrief, StickerPack, StickerView } from "../domain.js";
+import { StickerLoop } from "./StickerLoop.js";
 import { mediaUrl } from "./media.js";
-import { GifImg } from "./players.js";
 import type { StickerStrings } from "./strings.js";
 import { Chip, Icon, Plate, SectionTitle, StatusChip, fmtUsd, plateInk } from "./ui.js";
-import type { Focus, Plate as PlateKind, Position } from "./view-model.js";
+import { assetNumber, newestFirst, type Focus, type Plate as PlateKind, type Position } from "./view-model.js";
 
 export interface KeysKnown {
   /** null: the session did not say (the hosted player has no init params). */
@@ -33,13 +33,15 @@ function oldestInFlight(sticker: StickerView): AssetBrief | null {
 
 // ── Sticker card ───────────────────────────────────────────────────────────
 
-function CardPlate({ sticker, plate, base, t, now, unknown }: { sticker: StickerView; plate: PlateKind; base: string; t: StickerStrings; now: number; unknown: boolean }) {
+function CardPlate({ value, sticker, plate, base, t, now, unknown }: { value: StickerPack; sticker: StickerView; plate: PlateKind; base: string; t: StickerStrings; now: number; unknown: boolean }) {
   const url = mediaUrl(base, sticker.shown);
   const ink = plateInk(plate);
   const status = sticker.state.status;
+  // Accepted by the service and never delivered: fetching it again is free (`recoverable`).
+  const recover = value.gen?.uncertain.some((u) => u.id === sticker.id && u.recoverable) ?? false;
   let body: ReactNode = null;
   if (url) {
-    body = <GifImg url={url} size="80%" alt={`${sticker.sticker.word} ${sticker.sticker.caption}`} />;
+    body = <StickerLoop value={value} sticker={sticker} take={sticker.shown} base={base} size="80%" alt={`${sticker.sticker.word} ${sticker.sticker.caption}`} t={t} />;
   } else if (unknown) {
     body = null;
   } else if (status === "generating") {
@@ -56,7 +58,13 @@ function CardPlate({ sticker, plate, base, t, now, unknown }: { sticker: Sticker
         <span style={{ color: plate === "light" ? "#dc2626" : "#f87171" }}>
           <Icon.Cross size={26} />
         </span>
-        {sticker.uncertain.length ? <span className="text-[10.5px] font-medium">{t.mayBeBilled}</span> : <span className="text-[10.5px]">{t.notBilled}</span>}
+        {recover ? (
+          <span className="text-[10.5px] font-medium">{t.recoverableShort}</span>
+        ) : sticker.uncertain.length ? (
+          <span className="text-[10.5px] font-medium">{t.mayBeBilled}</span>
+        ) : (
+          <span className="text-[10.5px]">{t.notBilled}</span>
+        )}
       </div>
     );
   } else {
@@ -77,6 +85,7 @@ function CardPlate({ sticker, plate, base, t, now, unknown }: { sticker: Sticker
 }
 
 export function StickerCard({
+  value,
   sticker,
   plate,
   base,
@@ -86,6 +95,7 @@ export function StickerCard({
   unknown,
   onOpen,
 }: {
+  value: StickerPack;
   sticker: StickerView;
   plate: PlateKind;
   base: string;
@@ -112,7 +122,7 @@ export function StickerCard({
         selected ? "border-cc-primary/80 shadow-[0_0_0_1px_var(--color-cc-primary),0_8px_28px_var(--color-cc-glow)]" : "border-cc-border hover:border-cc-primary/35"
       }`}
     >
-      <CardPlate sticker={sticker} plate={plate} base={base} t={t} now={now} unknown={unknown} />
+      <CardPlate value={value} sticker={sticker} plate={plate} base={base} t={t} now={now} unknown={unknown} />
       <div className="flex min-w-0 flex-col gap-1 border-t border-cc-border px-2.5 pb-2 pt-1.5">
         <div className="flex min-w-0 items-baseline gap-1.5">
           <span className="truncate text-[12.5px] font-semibold text-cc-fg">{s.word || s.id}</span>
@@ -157,6 +167,7 @@ export function StickerGrid({
       {value.stickers.map((sticker) => (
         <StickerCard
           key={sticker.id}
+          value={value}
           sticker={sticker}
           plate={position.plate}
           base={base}
@@ -211,12 +222,25 @@ function RightsBadge({ value, t }: { value: StickerPack; t: StickerStrings }) {
   );
 }
 
+/**
+ * What stands for the character: the picked anchor, else the newest ready
+ * candidate (waiting to be picked) — never "no character" while one exists.
+ */
+export function characterFace(value: StickerPack): { brief: AssetBrief | null; picked: boolean; toPick: number } {
+  const character = value.character;
+  if (!character || value.projectError) return { brief: null, picked: false, toPick: 0 };
+  const ready = newestFirst(character.candidates.filter((c) => c.status === "ready"));
+  if (character.anchor.ready && character.asset) return { brief: character.asset, picked: true, toPick: 0 };
+  return { brief: ready[0] ?? null, picked: false, toPick: ready.length };
+}
+
 function CharacterCard({ value, plate, base, t, selected, onOpen }: { value: StickerPack; plate: PlateKind; base: string; t: StickerStrings; selected: boolean; onOpen: () => void }) {
   const character = value.character;
   const pack = value.pack!;
-  const ready = character?.candidates.filter((c) => c.status === "ready") ?? [];
-  const anchorUrl = mediaUrl(base, character?.anchor.ready ? character.asset : null);
+  const face = characterFace(value);
+  const url = mediaUrl(base, face.brief);
   const unread = value.projectError !== null;
+  const anchor = pack.character.anchor;
   return (
     <section>
       <SectionTitle>{t.character}</SectionTitle>
@@ -225,20 +249,26 @@ function CharacterCard({ value, plate, base, t, selected, onOpen }: { value: Sti
         data-character-card
         onClick={onOpen}
         aria-pressed={selected}
+        title={`${t.style}: ${pack.character.style}`}
         className={`block w-full overflow-hidden rounded-[14px] border text-left transition-colors focus-visible:ring-2 focus-visible:ring-cc-primary/60 ${selected ? "border-cc-primary/80" : "border-cc-border hover:border-cc-primary/35"}`}
       >
-        <Plate plate={plate} className="grid aspect-[5/4] w-full place-items-center">
-          {anchorUrl ? (
-            <img src={anchorUrl} alt={t.character} crossOrigin="anonymous" draggable={false} className="h-[88%] w-[88%] select-none object-contain" />
+        <Plate plate={plate} className="relative grid aspect-[5/4] w-full place-items-center">
+          {url ? (
+            <img src={url} alt={t.character} crossOrigin="anonymous" draggable={false} className="h-[88%] w-[88%] select-none object-contain" />
           ) : (
             <span className="px-4 text-center text-[11.5px]" style={{ color: plateInk(plate) }}>
-              {unread ? t.unread : ready.length ? t.candidatesToPick(ready.length) : t.noCharacter}
+              {unread ? t.unread : t.noCharacter}
             </span>
           )}
+          {!face.picked && face.toPick ? (
+            <span data-to-pick className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-cc-primary px-2 py-[2px] text-[10.5px] font-medium text-white shadow-[0_4px_14px_rgba(0,0,0,0.3)]">
+              {t.candidatesToPick(face.toPick)}
+            </span>
+          ) : null}
         </Plate>
         <div className="border-t border-cc-border bg-cc-surface/50 px-2.5 py-2">
-          <div className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-cc-muted">{t.style}</div>
-          <div className="line-clamp-2 text-[11.5px] leading-[1.45] text-cc-fg/90">{pack.character.style}</div>
+          <div className="truncate text-[12.5px] font-semibold text-cc-fg">{value.title || t.character}</div>
+          {face.picked && anchor ? <div className="text-[10.5px] text-cc-muted">{`${t.candidateN(assetNumber(anchor))} · ${t.isTheCharacter}`}</div> : null}
           {!unread && character && !character.anchor.ready && character.anchor.anchor && character.anchor.message ? (
             <div className="mt-1 text-[10.5px] text-cc-warning">{t.say(character.anchor.message)}</div>
           ) : null}
@@ -261,9 +291,26 @@ function ArtRow({ art, plate, base, t, unread, selected, onOpen }: { art: ArtKin
       <Thumb brief={ready} plate={plate} base={base} size={36} alt={t.artKind(art.kind)} />
       <div className="min-w-0">
         <div className="text-[12px] font-medium text-cc-fg">{t.artKind(art.kind)}</div>
-        <div className="truncate font-mono text-[10.5px] text-cc-muted">{art.picked ?? (unread ? t.statusUnknown : art.candidates.length ? t.notPicked : t.noneYet)}</div>
+        <div className="truncate text-[10.5px] text-cc-muted" title={art.picked ?? undefined}>
+          {art.picked ? t.artN(assetNumber(art.picked)) : unread ? t.statusUnknown : art.candidates.length ? t.notPicked : t.noneYet}
+        </div>
       </div>
     </button>
+  );
+}
+
+/** A platform's name, toned by its checklist, with the count of what fails — or, when nothing fails, of what is left to confirm. */
+function PlatformChip({ view, t, unread, tally }: { view: StickerPack["platforms"][number]; t: StickerStrings; unread: boolean; tally?: boolean }) {
+  const { fail, warn, pass } = view.tally;
+  const level = unread ? "unknown" : fail ? "fail" : warn ? "warn" : "pass";
+  const count = level === "fail" ? fail : level === "warn" ? warn : 0;
+  return (
+    <span data-platform-chip={view.platform} data-level={level} className="inline-flex">
+      <Chip tone={level === "unknown" ? "neutral" : level === "fail" ? "error" : level === "warn" ? "warning" : "success"} title={unread ? t.unread : t.checksTally(pass, warn, fail)}>
+        {t.platformName(view.platform)}
+        {tally && count ? <span className="opacity-75">· {count}</span> : null}
+      </Chip>
+    </span>
   );
 }
 
@@ -278,12 +325,7 @@ function PackFacts({ value, t, keys }: { value: StickerPack; t: StickerStrings; 
         <div className="mb-1 text-[10.5px] text-cc-muted">{t.platforms}</div>
         <div className="flex flex-wrap gap-1">
           {value.platforms.length ? (
-            value.platforms.map((p) => (
-              <Chip key={p.platform} tone={unread ? "neutral" : p.tally.fail ? "error" : p.tally.warn ? "warning" : "success"} title={unread ? t.unread : t.checksTally(p.tally.pass, p.tally.warn, p.tally.fail)}>
-                {p.profile.label}
-                <span className="opacity-75">{!unread && p.tally.fail ? `· ${p.tally.fail}` : ""}</span>
-              </Chip>
-            ))
+            value.platforms.map((p) => <PlatformChip key={p.platform} view={p} t={t} unread={unread} tally />)
           ) : (
             <span className="text-[11px] text-cc-muted">{t.noPlatforms}</span>
           )}
@@ -366,22 +408,23 @@ export function Sidebar({
 
 /** The sidebar's essentials in one row, for a panel too narrow for a column. */
 export function CompactBar({ value, position, base, t, onFocus }: { value: StickerPack; position: Position; base: string; t: StickerStrings; onFocus: (focus: Focus) => void }) {
-  const character = value.character;
+  const face = characterFace(value);
   const rights = value.pack?.rights;
   const unread = value.projectError !== null;
   return (
     <div data-compact-bar className="mb-3 flex items-center gap-3 rounded-[14px] border border-cc-border bg-cc-surface/50 p-2">
       <button type="button" onClick={() => onFocus({ type: "character" })} className="shrink-0 rounded-lg focus-visible:ring-2 focus-visible:ring-cc-primary/60" aria-label={t.character}>
-        <Thumb brief={character?.anchor.ready ? character.asset : null} plate={position.plate} base={base} size={48} alt={t.character} />
+        <Thumb brief={face.brief} plate={position.plate} base={base} size={48} alt={t.character} />
       </button>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[11.5px] text-cc-fg/90">{value.pack?.character.style}</div>
+        <div className="truncate text-[12px] font-semibold text-cc-fg" title={`${t.style}: ${value.pack?.character.style ?? ""}`}>
+          {value.title || t.untitled}
+          {!face.picked && face.toPick ? <span className="ml-2 text-[10.5px] font-medium text-cc-primary">{t.candidatesToPick(face.toPick)}</span> : null}
+        </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1">
           {rights ? <Chip tone="success">{t.rightsBasis(rights.basis)}</Chip> : <Chip tone="error">{t.rightsMissing}</Chip>}
           {value.platforms.map((p) => (
-            <Chip key={p.platform} tone={unread ? "neutral" : p.tally.fail ? "error" : p.tally.warn ? "warning" : "success"}>
-              {p.profile.label}
-            </Chip>
+            <PlatformChip key={p.platform} view={p} t={t} unread={unread} tally />
           ))}
           {unread ? null : <span className="font-mono text-[11px] text-cc-muted">≈ {fmtUsd(value.cost.total)}</span>}
         </div>

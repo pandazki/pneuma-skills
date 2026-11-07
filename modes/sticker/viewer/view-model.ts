@@ -66,12 +66,51 @@ export function stageTake(sticker: StickerView | null, position: Pick<Position, 
   return sticker.shown ?? sticker.takes[sticker.takes.length - 1] ?? null;
 }
 
+/** Newest first: the last one made is the one the user is deciding about. */
+export function newestFirst<T extends { createdAt: number; id: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id, undefined, { numeric: true }));
+}
+
+/** The number at the end of an asset id (`character-2` → 2, `s05-take-3` → 3). */
+export function assetNumber(id: string): number {
+  return Number(/(\d+)$/.exec(id)?.[1] ?? 0);
+}
+
 /** How many frames a ready take has: what sticker.mjs measured, else what the pack asks for. */
 export function frameCount(take: TakeView, value: StickerPack): number {
   return take.measure?.frames ?? value.pack?.motion.frames ?? 0;
 }
 
-export type FrameVerdict = { done: false } | { done: true; shown: true } | { done: true; shown: false; reason: string };
+/** A take's frames as they play: which frame, for how long, in order. */
+export interface Loop {
+  /** Frame indices of the take (0-based), in play order. */
+  order: number[];
+  /** Milliseconds each entry of `order` stays on screen. */
+  delays: number[];
+  /** keepFrames was applied. */
+  trimmed: boolean;
+  /** keepFrames names this frame and the take does not have it: the whole take plays (the exporter refuses this take). */
+  outOfRange: number | null;
+}
+
+/**
+ * The loop that ships: the frames the exporter keeps of a take and the
+ * delays they keep (`sticker-media.mjs::exportSticker` — `keptIndices`,
+ * then each kept frame's recorded delay). `delays` are the take's recorded
+ * ones (`measure.delaysMs`), trusted only when there is one per frame;
+ * otherwise every frame lasts `fallbackMs` (the pack's frame time).
+ * keepFrames is the sticker's, so it applies to whichever take ships.
+ */
+export function effectiveLoop(keepFrames: readonly number[] | null, count: number, delays: readonly number[] | null, fallbackMs: number): Loop {
+  const per = delays && delays.length === count ? [...delays] : Array<number>(count).fill(fallbackMs);
+  const all = Array.from({ length: count }, (_, i) => i);
+  if (!keepFrames) return { order: all, delays: per, trimmed: false, outOfRange: null };
+  const missing = keepFrames.find((i) => i >= count);
+  if (missing !== undefined) return { order: all, delays: per, trimmed: false, outOfRange: missing };
+  return { order: [...keepFrames], delays: keepFrames.map((i) => per[i]), trimmed: true, outOfRange: null };
+}
+
+export type FrameVerdict ={ done: false } | { done: true; shown: true } | { done: true; shown: false; reason: string };
 
 /**
  * Whether frame `frame` of the take at `url` can be on the stage, given the

@@ -43,6 +43,9 @@ export interface StickerStrings {
   readOnly: string;
   notSaved: (error: string) => string;
 
+  /** A platform's name as this language's users call it (WeChat is 微信 in Chinese). */
+  platformName: (platform: Platform) => string;
+
   // header
   untitled: string;
   /** `ready` is null while project.json cannot be read. */
@@ -55,6 +58,10 @@ export interface StickerStrings {
   makeMissing: string;
   exportCheck: string;
   commandSent: string;
+  /** The last step with warnings left: how many rows a person still has to confirm by hand. */
+  toConfirm: (n: number) => string;
+  /** When the step already says what to confirm: the chip opens that platform's tab. */
+  openTab: (platform: string) => string;
 
   // sidebar
   character: string;
@@ -65,6 +72,14 @@ export interface StickerStrings {
   unreadChecksTitle: string;
   unreadChecksBody: string;
   candidatesToPick: (n: number) => string;
+  /** A candidate, by its number (ids stay in tooltips). */
+  candidateN: (n: number) => string;
+  /** A user photo / image the character is drawn from, by its number. */
+  photoN: (n: number) => string;
+  /** Under the photo-beside-candidate comparison. */
+  compareHint: string;
+  /** A character made from the description alone. */
+  noPhoto: string;
   style: string;
   description: string;
   rights: string;
@@ -87,6 +102,8 @@ export interface StickerStrings {
   art: string;
   artKind: (kind: ArtKind) => string;
   notPicked: string;
+  /** An art candidate, by its number. */
+  artN: (n: number) => string;
   noneYet: string;
   exportsLabel: string;
   checksTally: (pass: number, warn: number, fail: number) => string;
@@ -96,6 +113,8 @@ export interface StickerStrings {
   statusUnknown: string;
   noCaption: string;
   mayBeBilled: string;
+  /** A failed take the service accepted and never delivered: fetching it again costs nothing. */
+  recoverableShort: string;
   notBilled: string;
   elapsed: (seconds: number) => string;
   openSticker: (number: string, word: string) => string;
@@ -113,6 +132,8 @@ export interface StickerStrings {
   genLeftUncertain: string;
   /** A failed sticker a plain gen retries: its last call never left. */
   genRetries: string;
+  /** A failed sticker whose take the service accepted and never delivered: fetched again for free, not redrawn. Names no command. */
+  genRecoverable: string;
   readyHeadline: string;
   billingUnknown: string;
   billingNone: string;
@@ -123,6 +144,22 @@ export interface StickerStrings {
   framesLoading: string;
   framesError: (message: string) => string;
   keepFrames: (kept: number, total: number) => string;
+  /** Under the stage: it plays the kept frames, the loop that ships. */
+  loopKept: (kept: number, total: number) => string;
+  /** Short badge on a sticker that plays its whole take although the export is trimmed. */
+  untrimmedShort: string;
+  /** Why: this browser cannot trim the GIF here, and no current export exists. */
+  untrimmedNote: (kept: number, total: number) => string;
+  /** keepFrames names a frame the take does not have. */
+  keepOutOfRange: (frame: number, count: number) => string;
+  /** Tooltip: the sticker plays its current export of this platform (this browser cannot trim the take). */
+  playsExport: (platform: string) => string;
+  /** Capture card: the stage at chat size. */
+  chatSize: string;
+  /** Capture card: the stage shows the first frame of the loop that ships. */
+  firstShipped: string;
+  /** Capture card: the strip of the loop that ships. */
+  shippedStrip: (kept: number, total: number) => string;
   cut: string;
   takes: string;
   take: (n: number) => string;
@@ -164,6 +201,8 @@ export interface StickerStrings {
   needsAttention: (n: number) => string;
   passing: (n: number) => string;
   allPass: string;
+  /** No row fails, some warn: what is left is for a person to confirm. */
+  noFailsConfirm: (n: number) => string;
   notExportedYet: (n: number) => string;
   shownAt: (percent: number) => string;
   level: Record<CheckLevel, string>;
@@ -191,6 +230,13 @@ export interface StickerStrings {
   asianWidth: string;
   noPlatforms: string;
 }
+
+/**
+ * Chinese puts a space between Chinese and Latin text, never between two
+ * Chinese words: a template written for "导出 WeChat 的文件" must read
+ * "导出微信的文件" once the name is 微信.
+ */
+const tightCjk = (text: string) => text.replace(/([\u3400-\u9fff\uff01-\uff5e])[ \u00a0]+(?=[\u3400-\u9fff\uff01-\uff5e])/g, "$1");
 
 const elapsedEn = (s: number) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
 const elapsedZh = (s: number) => (s < 90 ? `${s} 秒` : `${Math.round(s / 60)} 分钟`);
@@ -318,6 +364,7 @@ const LISTING_JA: PlatformTerms = {
 };
 
 const EN: Chrome = {
+  platformName: (p) => PLATFORM_PROFILES[p]?.label ?? p,
   loading: "Loading the pack…",
   noPackTitle: "No sticker pack yet",
   noPackBody:
@@ -338,6 +385,8 @@ const EN: Chrome = {
   makeMissing: "Make the missing stickers",
   exportCheck: "Export and check",
   commandSent: "Sent to the agent",
+  toConfirm: (n) => `${n} to confirm by hand`,
+  openTab: (p) => `Open ${p}`,
 
   character: "Character",
   noCharacter: "No character yet",
@@ -346,13 +395,17 @@ const EN: Chrome = {
   unreadChecksTitle: "Checks wait for project.json",
   unreadChecksBody: "Every take and exported file is recorded in project.json, which can't be read right now. The listing lives in pack.json and is shown below.",
   candidatesToPick: (n) => `${n} candidate${n === 1 ? "" : "s"} — pick one`,
+  candidateN: (n) => `Candidate ${n}`,
+  photoN: (n) => (n === 1 ? "Photo" : `Photo ${n}`),
+  compareHint: "The photo beside each candidate — pick the one that looks most like it.",
+  noPhoto: "Drawn from the description — no photo",
   style: "Style",
   description: "Description",
   rights: "Rights",
   rightsBasis: (b) =>
     ({ original: "Original character", "own-pet": "Own pet", self: "Self, as a cartoon", "consenting-adult": "Consenting adult", client: "Client's material" })[b] ?? b,
   rightsMissing: "Rights not recorded",
-  rightsMissingBody: "Nothing paid runs until the rights basis is written in pack.json.",
+  rightsMissingBody: "Nothing paid runs until the rights basis is recorded.",
   confirmed: (d) => `confirmed ${d}`,
   pack: "Pack",
   platforms: "Platforms",
@@ -369,6 +422,7 @@ const EN: Chrome = {
   art: "Art",
   artKind: (k) => ({ portrait: "Portrait", head: "Head", banner: "Banner", "reward-guide": "Reward guide", "reward-thanks": "Reward thanks" })[k],
   notPicked: "not picked",
+  artN: (n) => `#${n}`,
   noneYet: "none yet",
   exportsLabel: "Exports",
   checksTally: (p, w, f) => [f ? `${f} fail` : null, w ? `${w} warn` : null, `${p} pass`].filter(Boolean).join(" · "),
@@ -385,6 +439,7 @@ const EN: Chrome = {
   statusUnknown: "Unknown",
   noCaption: "no caption",
   mayBeBilled: "may have been billed",
+  recoverableShort: "not delivered — fetching it is free",
   notBilled: "not billed",
   elapsed: elapsedEn,
   openSticker: (number, word) => `Open sticker ${number} ${word}`,
@@ -398,7 +453,8 @@ const EN: Chrome = {
   emptyHeadlineQuiet: "No take yet",
   genLeftUncertain: "Not redrawn automatically: the last try may already have been billed, so a retry needs an explicit yes.",
   genRetries: "The request never left, so it is drawn again with the other missing stickers.",
-  readyHeadline: "Ready — matches pack.json",
+  genRecoverable: "The image service accepted this job but the file never arrived: fetching it again is free — nothing is redrawn or billed again.",
+  readyHeadline: "Ready — this take matches the sticker's text and character",
   billingUnknown: "May have been billed: the provider never confirmed either way.",
   billingNone: "Not billed: the request never left this machine.",
   frame: (i, n) => `Frame ${i} (0–${n - 1})`,
@@ -407,7 +463,15 @@ const EN: Chrome = {
   framesUnsupported: "This browser can't decode GIF frames (no ImageDecoder), so the frame strip is hidden. The take still plays above.",
   framesLoading: "Decoding frames…",
   framesError: (m) => `Couldn't decode the frames: ${m}`,
-  keepFrames: (k, t) => `keepFrames keeps ${k} of ${t}`,
+  keepFrames: (k, t) => `Exports keep ${k} of ${t}`,
+  loopKept: (k, t) => `Plays the kept ${k} of ${t} frames — the loop the exports ship`,
+  untrimmedShort: "Full take",
+  untrimmedNote: (k, t) => `This browser can't trim the GIF here, so this plays the whole take; the exports keep ${k} of ${t} frames.`,
+  keepOutOfRange: (f, n) => `The kept frames name frame ${f}, but this take has ${n} (0–${n - 1}) — the whole take plays, and exporting it would fail.`,
+  playsExport: (p) => `Plays the ${p} export (this browser can't trim the take here)`,
+  chatSize: "chat size",
+  firstShipped: "first frame of the loop that ships",
+  shippedStrip: (k, t) => `The loop that ships — ${k} of ${t} frames, in play order`,
   cut: "cut",
   takes: "Takes",
   take: (n) => `Take ${n}`,
@@ -455,6 +519,7 @@ const EN: Chrome = {
   needsAttention: (n) => `Needs attention · ${n}`,
   passing: (n) => `Passing · ${n}`,
   allPass: "Every check passes — the archive is ready to upload.",
+  noFailsConfirm: (n) => `Nothing fails — ${n} ${n === 1 ? "item needs" : "items need"} your own check before you submit.`,
   notExportedYet: (n) => `Not exported yet · ${n}`,
   shownAt: (p) => `shown at ${p}%`,
   level: { pass: "pass", warn: "warning", fail: "fail" },
@@ -478,6 +543,7 @@ const EN: Chrome = {
 };
 
 const ZH: Chrome = {
+  platformName: (p) => ({ wechat: "微信", telegram: "Telegram", line: "LINE" })[p] ?? p,
   loading: "正在读取表情包…",
   noPackTitle: "还没有表情包",
   noPackBody: "跟 agent 说说这套表情画谁——一张照片、你自己的角色，或是家里的宠物——以及做给谁用。它会写好 pack.json，表情一张张画出来，就会出现在这里的聊天背景上。",
@@ -497,6 +563,8 @@ const ZH: Chrome = {
   makeMissing: "补齐没出图的表情",
   exportCheck: "导出并检查",
   commandSent: "已发给 agent",
+  toConfirm: (n) => `${n} 项要你亲自确认`,
+  openTab: (p) => tightCjk(`打开 ${p}`),
 
   character: "角色",
   noCharacter: "还没有角色",
@@ -505,13 +573,17 @@ const ZH: Chrome = {
   unreadChecksTitle: "检查要等 project.json 修好",
   unreadChecksBody: "每一版生成和每个导出文件都记在 project.json 里，它现在读不出来。上架信息在 pack.json 里，照常显示在下面。",
   candidatesToPick: (n) => `${n} 个候选，选一个`,
+  candidateN: (n) => `候选 ${n}`,
+  photoN: (n) => (n === 1 ? "照片" : `照片 ${n}`),
+  compareHint: "照片和每个候选并排放着，挑最像的那个。",
+  noPhoto: "按文字描述画的，没有照片",
   style: "画风",
   description: "角色描述",
   rights: "版权",
   rightsBasis: (b) =>
     ({ original: "原创角色", "own-pet": "自家宠物", self: "本人的卡通形象", "consenting-adult": "已获本人同意", client: "客户授权素材" })[b] ?? b,
   rightsMissing: "版权依据还没登记",
-  rightsMissingBody: "pack.json 里写好版权依据之前，任何付费步骤都不会运行。",
+  rightsMissingBody: "登记版权依据之前，任何付费步骤都不会运行。",
   confirmed: (d) => `${d} 确认`,
   pack: "整套",
   platforms: "平台",
@@ -528,6 +600,7 @@ const ZH: Chrome = {
   art: "配图",
   artKind: (k) => ({ portrait: "半身像", head: "头像", banner: "横幅", "reward-guide": "赞赏引导图", "reward-thanks": "赞赏致谢图" })[k],
   notPicked: "还没选",
+  artN: (n) => `第 ${n} 张`,
   noneYet: "还没有",
   exportsLabel: "导出",
   checksTally: (p, w, f) => [f ? `${f} 项未通过` : null, w ? `${w} 项提醒` : null, `${p} 项通过`].filter(Boolean).join(" · "),
@@ -544,12 +617,13 @@ const ZH: Chrome = {
   statusUnknown: "状态未知",
   noCaption: "无配字",
   mayBeBilled: "可能已扣费",
+  recoverableShort: "没收到——可以免费取回",
   notBilled: "未扣费",
   elapsed: elapsedZh,
   openSticker: (number, word) => `打开第 ${number} 张 ${word}`,
 
   close: "关闭",
-  staleHeadline: "已和 pack.json 对不上——重画后才会生效",
+  staleHeadline: "内容改过了，这一版没跟上——重画后才会生效",
   pickHeadline: (n) => `有 ${n} 版可用——选一版作为导出用图`,
   failedHeadline: "每一版都失败了",
   generatingHeadline: (e) => `已生成 ${e}`,
@@ -557,7 +631,8 @@ const ZH: Chrome = {
   emptyHeadlineQuiet: "还没出图",
   genLeftUncertain: "不会自动重画：上一次可能已经扣过费，要重画得另外明确确认。",
   genRetries: "请求没发出去，补齐缺图时会再画这一张。",
-  readyHeadline: "已就绪，和 pack.json 一致",
+  genRecoverable: "生成服务已经接下这一张，只是文件没收到：取回不再扣费，也不用重画。",
+  readyHeadline: "已就绪：这一版和现在的配字、角色一致",
   billingUnknown: "可能已扣费：服务商没有确认是否收费。",
   billingNone: "未扣费：请求没有发出这台机器。",
   frame: (i, n) => `第 ${i} 帧（0–${n - 1}）`,
@@ -566,9 +641,17 @@ const ZH: Chrome = {
   framesUnsupported: "这个浏览器无法逐帧解码 GIF（没有 ImageDecoder），所以不显示逐帧条；上面的动画照常播放。",
   framesLoading: "正在解码…",
   framesError: (m) => `逐帧解码失败：${m}`,
-  keepFrames: (k, t) => `keepFrames 保留 ${t} 帧中的 ${k} 帧`,
+  keepFrames: (k, t) => `导出保留 ${t} 帧中的 ${k} 帧`,
+  loopKept: (k, t) => `播的是保留下来的 ${k} 帧（共 ${t} 帧），和导出的循环一样`,
+  untrimmedShort: "未裁剪",
+  untrimmedNote: (k, t) => `这个浏览器没法在这里裁剪 GIF，播的是整段原图；导出只保留 ${t} 帧中的 ${k} 帧。`,
+  keepOutOfRange: (f, n) => `保留的帧里有第 ${f} 帧，可这一版只有 ${n} 帧（0–${n - 1}）——这里播整段，导出会失败。`,
+  playsExport: (p) => tightCjk(`播的是导出的 ${p} 文件（这个浏览器没法在这里裁剪原图）`),
+  chatSize: "聊天里的大小",
+  firstShipped: "导出循环的第一帧",
+  shippedStrip: (k, t) => `导出的循环：${t} 帧中的 ${k} 帧，按播放顺序`,
   cut: "剪掉",
-  takes: "各版",
+  takes: "所有版本",
   take: (n) => `第 ${n} 版`,
   inUse: "在用",
   useThisTake: "用这一版",
@@ -614,6 +697,7 @@ const ZH: Chrome = {
   needsAttention: (n) => `需要处理 · ${n}`,
   passing: (n) => `已通过 · ${n}`,
   allPass: "所有检查都通过了，压缩包可以直接上传。",
+  noFailsConfirm: (n) => `没有不合格项；提交前还有 ${n} 项要你亲自确认。`,
   notExportedYet: (n) => `还没导出 · ${n}`,
   shownAt: (p) => `按 ${p}% 显示`,
   level: { pass: "通过", warn: "提醒", fail: "未通过" },
@@ -637,6 +721,7 @@ const ZH: Chrome = {
 };
 
 const JA: Chrome = {
+  platformName: (p) => PLATFORM_PROFILES[p]?.label ?? p,
   loading: "スタンプを読み込み中…",
   noPackTitle: "スタンプはまだありません",
   noPackBody: "誰のスタンプか —— 写真、自分のキャラクター、ペット —— と、誰が使うのかを agent に伝えてください。pack.json が書かれ、描けたスタンプから順にここのチャット背景に並びます。",
@@ -656,6 +741,8 @@ const JA: Chrome = {
   makeMissing: "足りないスタンプを作る",
   exportCheck: "書き出してチェック",
   commandSent: "agent に送りました",
+  toConfirm: (n) => `手で確認 ${n} 件`,
+  openTab: (p) => `${p} を開く`,
 
   character: "キャラクター",
   noCharacter: "キャラクターはまだありません",
@@ -664,13 +751,17 @@ const JA: Chrome = {
   unreadChecksTitle: "チェックは project.json の修復待ち",
   unreadChecksBody: "すべての生成結果と書き出しファイルは project.json に記録されていますが、今は読めません。ストア情報は pack.json にあるので、下に表示しています。",
   candidatesToPick: (n) => `候補 ${n} 件 —— 1 つ選んでください`,
+  candidateN: (n) => `候補 ${n}`,
+  photoN: (n) => (n === 1 ? "写真" : `写真 ${n}`),
+  compareHint: "写真と候補を並べています。いちばん似ているものを選んでください。",
+  noPhoto: "説明から描いたので、写真はありません",
   style: "スタイル",
   description: "説明",
   rights: "権利",
   rightsBasis: (b) =>
     ({ original: "オリジナルキャラクター", "own-pet": "自分のペット", self: "本人のキャラクター化", "consenting-adult": "本人の同意あり", client: "クライアント提供素材" })[b] ?? b,
   rightsMissing: "権利の根拠が未記録",
-  rightsMissingBody: "pack.json に権利の根拠を書くまで、有料の処理は一切動きません。",
+  rightsMissingBody: "権利の根拠を記録するまで、有料の処理は一切動きません。",
   confirmed: (d) => `${d} 確認`,
   pack: "セット",
   platforms: "プラットフォーム",
@@ -687,6 +778,7 @@ const JA: Chrome = {
   art: "アート",
   artKind: (k) => ({ portrait: "バストアップ", head: "顔アップ", banner: "バナー", "reward-guide": "投げ銭の案内画像", "reward-thanks": "投げ銭のお礼画像" })[k],
   notPicked: "未選択",
+  artN: (n) => `${n} 枚目`,
   noneYet: "まだありません",
   exportsLabel: "書き出し",
   checksTally: (p, w, f) => [f ? `不合格 ${f}` : null, w ? `注意 ${w}` : null, `合格 ${p}`].filter(Boolean).join(" · "),
@@ -703,12 +795,13 @@ const JA: Chrome = {
   statusUnknown: "状態不明",
   noCaption: "文字なし",
   mayBeBilled: "課金された可能性あり",
+  recoverableShort: "未着 —— 無料で受け取り直せます",
   notBilled: "課金なし",
   elapsed: elapsedJa,
   openSticker: (number, word) => `スタンプ ${number} ${word} を開く`,
 
   close: "閉じる",
-  staleHeadline: "pack.json と合っていません —— 描き直すと反映されます",
+  staleHeadline: "内容が変わったので、このテイクは古くなっています —— 描き直すと反映されます",
   pickHeadline: (n) => `使えるテイクが ${n} 件 —— 書き出しに使う 1 件を選んでください`,
   failedHeadline: "すべてのテイクが失敗しました",
   generatingHeadline: (e) => `生成を始めて ${e}`,
@@ -716,7 +809,8 @@ const JA: Chrome = {
   emptyHeadlineQuiet: "テイクはまだありません",
   genLeftUncertain: "自動では描き直しません。前回すでに課金された可能性があるため、描き直すには改めて確認が必要です。",
   genRetries: "リクエストは送信されていないので、足りないスタンプを作るときにもう一度描きます。",
-  readyHeadline: "完成 —— pack.json と一致しています",
+  genRecoverable: "生成サービスは受付済みですが、ファイルが届いていません。受け取り直しは無料で、描き直しや追加の課金はありません。",
+  readyHeadline: "完成 —— このテイクは今の文字・キャラクターと一致しています",
   billingUnknown: "課金された可能性あり：プロバイダーからどちらとも確認できていません。",
   billingNone: "課金なし：リクエストはこのマシンから出ていません。",
   frame: (i, n) => `フレーム ${i}（0–${n - 1}）`,
@@ -725,7 +819,15 @@ const JA: Chrome = {
   framesUnsupported: "このブラウザは GIF をフレームごとに展開できない（ImageDecoder なし）ため、フレーム一覧は表示しません。上のアニメーションはそのまま再生されます。",
   framesLoading: "フレームを展開中…",
   framesError: (m) => `フレームを展開できませんでした：${m}`,
-  keepFrames: (k, t) => `keepFrames：${t} フレーム中 ${k} を使用`,
+  keepFrames: (k, t) => `書き出しは ${t} フレーム中 ${k} フレーム`,
+  loopKept: (k, t) => `残した ${k} フレーム（全 ${t} フレーム）を再生中 —— 書き出すループと同じです`,
+  untrimmedShort: "トリム前",
+  untrimmedNote: (k, t) => `このブラウザではここで GIF をトリムできないため、テイク全体を再生しています。書き出しは ${t} フレーム中 ${k} フレームです。`,
+  keepOutOfRange: (f, n) => `残すフレームに ${f} が入っていますが、このテイクは ${n} フレーム（0–${n - 1}）です —— テイク全体を再生しています。このままでは書き出せません。`,
+  playsExport: (p) => `${p} 用に書き出したファイルを再生中（このブラウザではここでテイクをトリムできません）`,
+  chatSize: "チャットでのサイズ",
+  firstShipped: "書き出すループの最初のフレーム",
+  shippedStrip: (k, t) => `書き出すループ —— ${t} フレーム中 ${k} フレーム、再生順`,
   cut: "カット",
   takes: "テイク",
   take: (n) => `テイク ${n}`,
@@ -773,6 +875,7 @@ const JA: Chrome = {
   needsAttention: (n) => `対応が必要 · ${n}`,
   passing: (n) => `合格 · ${n}`,
   allPass: "すべてのチェックに合格しました。ZIP はそのままアップロードできます。",
+  noFailsConfirm: (n) => `不合格はありません。申請前に、手で確認する項目が ${n} 件あります。`,
   notExportedYet: (n) => `未書き出し · ${n}`,
   shownAt: (p) => `${p}% で表示`,
   level: { pass: "合格", warn: "注意", fail: "不合格" },
@@ -820,6 +923,26 @@ const secs = (ms: number) => (ms / 1000).toFixed(2).replace(/\.?0+$/, "");
 const upper = (format: string) => String(format).toUpperCase();
 const label = (platform: Platform) => PLATFORM_PROFILES[platform]?.label ?? platform;
 
+/**
+ * An asset id said the way a person counts it: the user sees "take 2", not
+ * `s05-take-2` (ids stay in tooltips and in what the agent reads).
+ */
+type AssetNames = { take: (n: number) => string; candidate: (n: number) => string; photo: (n: number) => string; art: (n: number) => string };
+function assetNamer(names: AssetNames): (id: string | null | undefined) => string | null {
+  return (id) => {
+    if (!id) return null;
+    let m = /-take-(\d+)$/.exec(id);
+    if (m) return names.take(Number(m[1]));
+    m = /^character-source-(\d+)$/.exec(id);
+    if (m) return names.photo(Number(m[1]));
+    m = /^character-(\d+)$/.exec(id);
+    if (m) return names.candidate(Number(m[1]));
+    m = /^art-.+-(\d+)$/.exec(id);
+    if (m) return names.art(Number(m[1]));
+    return id;
+  };
+}
+
 type AssetWords = Record<"pending" | "generating" | "ready" | "failed" | "missing", string>;
 const assetWord = (words: AssetWords, status: string | null) => words[(status ?? "missing") as keyof AssetWords] ?? status ?? words.missing;
 
@@ -834,30 +957,31 @@ function enMessages(c: Chrome): MessageTable {
   const len = (length: number, width: boolean, limit?: string) =>
     width ? `${length} units (CJK characters count 2${limit ? `; ${limit}` : ""})` : `${length} characters${limit ? ` (${limit})` : ""}`;
   const words = (items: { sticker: string; word: string }[]) => items.map((w) => `${w.sticker} “${w.word}”`).join(", ");
+  const name = assetNamer({ take: (n) => `take ${n}`, candidate: (n) => `candidate ${n}`, photo: c.photoN, art: (n) => `#${n}` });
   return {
     "stale.sticker-gone": (p) => `${p.sticker} is no longer in the pack`,
-    "stale.no-record": (p) => `${p.take} has no record of how it was made`,
+    "stale.no-record": (p) => `${name(p.take)} has no record of how it was made`,
     "stale.changed": (p) => `${field[p.field] ?? p.field} changed`,
     "stale.no-prompt": () => "no prompt was recorded for it",
     "stale.prompt": () => "the prompt wording changed",
     "stale.motion": (p) => `${motion[p.key] ?? p.key} changed (${p.from ?? "none"} → ${p.to})`,
-    "stale.anchor": (p) => `the character changed (${p.from ?? "none"} → ${p.to ?? "none"})`,
-    "state.in-flight": (p) => `${list(p.takes)} in flight`,
+    "stale.anchor": (p) => `the character changed (${name(p.from) ?? "none"} → ${name(p.to) ?? "none"})`,
+    "state.in-flight": (p) => `${list(p.takes.map((x) => name(x)!))} in flight`,
     "state.unpicked": () => "no take picked",
-    "state.pick-not-ready": (p) => `the picked ${p.take} is ${assetWord(asset, p.status)}`,
-    "state.ready-takes": (p) => `ready: ${list(p.takes)}`,
+    "state.pick-not-ready": (p) => `the picked ${name(p.take)} is ${assetWord(asset, p.status)}`,
+    "state.ready-takes": (p) => `ready: ${list(p.takes.map((x) => name(x)!))}`,
     "state.failed": (p) => `${p.count} take${p.count === 1 ? "" : "s"} failed`,
     "anchor.unset": () => "no character picked yet",
-    "anchor.not-ready": (p) => `the picked character ${p.anchor} is ${assetWord(asset, p.status)}`,
+    "anchor.not-ready": (p) => `the picked character (${name(p.anchor)}) is ${assetWord(asset, p.status)}`,
     "source.no-sticker": () => "the pack has no sticker",
     "source.sticker": (p, say) => {
       const why = p.why.filter((m) => m.code !== "state.unpicked").map(say);
       return `${p.sticker}: ${status[p.status] ?? p.status}${why.length ? ` (${why.join("; ")})` : ""}`;
     },
     "source.art-unpicked": (p) => `no ${c.artKind(p.art).toLowerCase()} art picked`,
-    "source.art-not-ready": (p) => `the picked ${c.artKind(p.art).toLowerCase()} ${p.asset} is ${assetWord(asset, p.status)}`,
+    "source.art-not-ready": (p) => `the picked ${c.artKind(p.art).toLowerCase()} (${name(p.asset)}) is ${assetWord(asset, p.status)}`,
     "export.not-exported": () => "not exported yet",
-    "export.from-other": (p) => `made from ${p.from}; the pick is now ${p.now}`,
+    "export.from-other": (p) => `made from ${name(p.from)}; the pick is now ${name(p.now)}`,
     "export.other-inputs": () => "made from other inputs (kept frames, order, art or the exporter changed)",
     "export.again": (p, say) => `${say(p.why)} — export again`,
     "export.optional-none": (p, say) => `none — ${say(p.why)}; optional${p.platform === "telegram" ? " (Telegram uses the first sticker)" : ""}`,
@@ -950,30 +1074,33 @@ function zhMessages(c: Chrome): MessageTable {
   const len = (length: number, width: boolean, limit?: string) =>
     width ? `长度 ${length}（中日韩文字按 2 计${limit ? `，${limit}` : ""}）` : `${length} 个字${limit ? `（${limit}）` : ""}`;
   const words = (items: { sticker: string; word: string }[]) => items.map((w) => `${w.sticker}「${w.word}」`).join("、");
+  const name = assetNamer({ take: (n) => `第 ${n} 版`, candidate: (n) => `候选 ${n}`, photo: c.photoN, art: (n) => `第 ${n} 张` });
+  // 中文界面里 WeChat 叫微信。
+  const label = (platform: Platform) => c.platformName(platform);
   return {
     "stale.sticker-gone": (p) => `${p.sticker} 已经不在这套表情里了`,
-    "stale.no-record": (p) => `${p.take} 没有生成记录`,
+    "stale.no-record": (p) => `${name(p.take)}没有生成记录`,
     "stale.changed": (p) => `${field[p.field] ?? p.field}改了`,
     "stale.no-prompt": () => "没有记下它用的提示词",
     "stale.prompt": () => "提示词的写法改了",
     "stale.motion": (p) => `${motion[p.key] ?? p.key}改了（${p.from ?? "无"} → ${p.to}）`,
-    "stale.anchor": (p) => `角色换了（${p.from ?? "无"} → ${p.to ?? "无"}）`,
-    "state.in-flight": (p) => `${list(p.takes)} 正在生成`,
+    "stale.anchor": (p) => `角色换了（${name(p.from) ?? "无"} → ${name(p.to) ?? "无"}）`,
+    "state.in-flight": (p) => `${list(p.takes.map((x) => name(x)!))}正在生成`,
     "state.unpicked": () => "还没选用哪一版",
-    "state.pick-not-ready": (p) => `选用的 ${p.take} ${assetWord(asset, p.status)}`,
-    "state.ready-takes": (p) => `可选：${list(p.takes)}`,
+    "state.pick-not-ready": (p) => `选用的${name(p.take)}${assetWord(asset, p.status)}`,
+    "state.ready-takes": (p) => `可选：${list(p.takes.map((x) => name(x)!))}`,
     "state.failed": (p) => `${p.count} 版都失败了`,
     "anchor.unset": () => "还没选定角色",
-    "anchor.not-ready": (p) => `选定的角色 ${p.anchor} ${assetWord(asset, p.status)}`,
+    "anchor.not-ready": (p) => `选定的角色（${name(p.anchor)}）${assetWord(asset, p.status)}`,
     "source.no-sticker": () => "这套表情里一张都还没有",
     "source.sticker": (p, say) => {
       const why = p.why.filter((m) => m.code !== "state.unpicked").map(say);
       return `${p.sticker}：${status[p.status] ?? p.status}${why.length ? `（${why.join("；")}）` : ""}`;
     },
     "source.art-unpicked": (p) => `还没选${c.artKind(p.art)}`,
-    "source.art-not-ready": (p) => `选定的${c.artKind(p.art)} ${p.asset} ${assetWord(asset, p.status)}`,
+    "source.art-not-ready": (p) => `选定的${c.artKind(p.art)}（${name(p.asset)}）${assetWord(asset, p.status)}`,
     "export.not-exported": () => "还没导出",
-    "export.from-other": (p) => `导出时用的是 ${p.from}，现在选的是 ${p.now}`,
+    "export.from-other": (p) => `导出时用的是${name(p.from)}，现在选的是${name(p.now)}`,
     "export.other-inputs": () => "导出之后素材变了（保留的帧、顺序、配图或导出方式有改动）",
     "export.again": (p, say) => `${say(p.why)}——需要重新导出`,
     "export.optional-none": (p, say) => `没有——${say(p.why)}；这一项可以不交${p.platform === "telegram" ? "（Telegram 会用第一张表情）" : ""}`,
@@ -1065,30 +1192,31 @@ function jaMessages(c: Chrome): MessageTable {
   const len = (length: number, width: boolean, limit?: string) =>
     width ? `長さ ${length}（全角 2・半角 1 で計算${limit ? `、${limit}` : ""}）` : `${length} 文字${limit ? `（${limit}）` : ""}`;
   const words = (items: { sticker: string; word: string }[]) => items.map((w) => `${w.sticker}「${w.word}」`).join("、");
+  const name = assetNamer({ take: (n) => `テイク ${n}`, candidate: (n) => `候補 ${n}`, photo: c.photoN, art: (n) => `${n} 枚目` });
   return {
     "stale.sticker-gone": (p) => `${p.sticker} はもうセットにありません`,
-    "stale.no-record": (p) => `${p.take} には生成の記録がありません`,
+    "stale.no-record": (p) => `${name(p.take)}には生成の記録がありません`,
     "stale.changed": (p) => `${field[p.field] ?? p.field}が変わりました`,
     "stale.no-prompt": () => "使ったプロンプトが記録されていません",
     "stale.prompt": () => "プロンプトの書き方が変わりました",
     "stale.motion": (p) => `${motion[p.key] ?? p.key}が変わりました（${p.from ?? "なし"} → ${p.to}）`,
-    "stale.anchor": (p) => `キャラクターが変わりました（${p.from ?? "なし"} → ${p.to ?? "なし"}）`,
-    "state.in-flight": (p) => `${list(p.takes)} を生成中`,
+    "stale.anchor": (p) => `キャラクターが変わりました（${name(p.from) ?? "なし"} → ${name(p.to) ?? "なし"}）`,
+    "state.in-flight": (p) => `${list(p.takes.map((x) => name(x)!))}を生成中`,
     "state.unpicked": () => "テイクが選ばれていません",
-    "state.pick-not-ready": (p) => `選んだ ${p.take} は${assetWord(asset, p.status)}`,
-    "state.ready-takes": (p) => `使えるテイク：${list(p.takes)}`,
+    "state.pick-not-ready": (p) => `選んだ${name(p.take)}は${assetWord(asset, p.status)}`,
+    "state.ready-takes": (p) => `使えるテイク：${list(p.takes.map((x) => name(x)!))}`,
     "state.failed": (p) => `${p.count} テイクとも失敗`,
     "anchor.unset": () => "キャラクターがまだ選ばれていません",
-    "anchor.not-ready": (p) => `選んだキャラクター ${p.anchor} は${assetWord(asset, p.status)}`,
+    "anchor.not-ready": (p) => `選んだキャラクター（${name(p.anchor)}）は${assetWord(asset, p.status)}`,
     "source.no-sticker": () => "セットにスタンプがありません",
     "source.sticker": (p, say) => {
       const why = p.why.filter((m) => m.code !== "state.unpicked").map(say);
       return `${p.sticker}：${status[p.status] ?? p.status}${why.length ? `（${why.join("／")}）` : ""}`;
     },
     "source.art-unpicked": (p) => `${c.artKind(p.art)}が選ばれていません`,
-    "source.art-not-ready": (p) => `選んだ${c.artKind(p.art)} ${p.asset} は${assetWord(asset, p.status)}`,
+    "source.art-not-ready": (p) => `選んだ${c.artKind(p.art)}（${name(p.asset)}）は${assetWord(asset, p.status)}`,
     "export.not-exported": () => "まだ書き出していません",
-    "export.from-other": (p) => `${p.from} から書き出しましたが、今は ${p.now} を選んでいます`,
+    "export.from-other": (p) => `${name(p.from)}から書き出しましたが、今は${name(p.now)}を選んでいます`,
     "export.other-inputs": () => "書き出し後に素材が変わりました（残すフレーム・順番・アート・書き出し方法のいずれか）",
     "export.again": (p, say) => `${say(p.why)} —— 書き出し直しが必要です`,
     "export.optional-none": (p, say) => `なし —— ${say(p.why)}。この項目は任意です${p.platform === "telegram" ? "（Telegram は最初のスタンプを使います）" : ""}`,
@@ -1173,7 +1301,7 @@ export const STICKER_MESSAGE_TABLES: Record<StickerLocale, MessageTable> = { en:
 
 const TABLES: Record<StickerLocale, StickerStrings> = {
   en: { ...EN, say: sayWith(STICKER_MESSAGE_TABLES.en) },
-  "zh-CN": { ...ZH, say: sayWith(STICKER_MESSAGE_TABLES["zh-CN"]) },
+  "zh-CN": { ...ZH, say: (message) => tightCjk(sayWith(STICKER_MESSAGE_TABLES["zh-CN"])(message)) },
   ja: { ...JA, say: sayWith(STICKER_MESSAGE_TABLES.ja) },
 };
 

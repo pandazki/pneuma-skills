@@ -140,6 +140,42 @@ describe("what the rules say, in every language", () => {
   });
 });
 
+describe("what a person reads instead of ids and file names", () => {
+  test("takes, candidates and art are counted the way a person counts them", () => {
+    const fromOther = { code: "export.from-other", params: { from: "s05-take-2", now: "s05-take-3" } } as StateMessage;
+    expect(stickerStrings("zh-CN").say(fromOther)).toBe("导出时用的是第 2 版，现在选的是第 3 版");
+    expect(stickerStrings("en").say(fromOther)).toBe("made from take 2; the pick is now take 3");
+    expect(stickerStrings("ja").say(fromOther)).toBe("テイク 2から書き出しましたが、今はテイク 3を選んでいます");
+    const anchor = { code: "stale.anchor", params: { from: "character-1", to: "character-2" } } as StateMessage;
+    expect(stickerStrings("zh-CN").say(anchor)).toBe("角色换了（候选 1 → 候选 2）");
+    const ready = { code: "state.ready-takes", params: { takes: ["s02-take-1", "s02-take-2"] } } as StateMessage;
+    expect(stickerStrings("zh-CN").say(ready)).toBe("可选：第 1 版、第 2 版");
+    for (const locale of LOCALES) {
+      for (const message of sampleMessages()) expect(t(locale).say(message)).not.toMatch(/\bs\d{2,3}-take-\d+|\bcharacter-\d+|\bart-[a-z-]+-\d+/);
+    }
+  });
+
+  test("Chinese calls WeChat 微信, in the chrome and in what the rules say", () => {
+    const zh = stickerStrings("zh-CN");
+    expect(zh.platformName("wechat")).toBe("微信");
+    expect(zh.say({ code: "next.export", params: { platform: "wechat" } } as StateMessage)).toBe("导出微信的文件");
+    expect(stickerStrings("en").platformName("wechat")).toBe("WeChat");
+    expect(zh.platformName("line")).toBe("LINE");
+    expect(zh.say({ code: "next.export", params: { platform: "line" } } as StateMessage)).toBe("导出 LINE 的文件");
+    expect(zh.playsExport(zh.platformName("wechat"))).toStartWith("播的是导出的微信文件");
+  });
+
+  test("the read-only headlines say what they mean without a file name", () => {
+    for (const locale of LOCALES) {
+      const s = stickerStrings(locale);
+      for (const text of [s.readyHeadline, s.staleHeadline, s.rightsMissingBody]) expect(text).not.toMatch(/pack\.json|project\.json/);
+    }
+    expect(stickerStrings("zh-CN").takes).not.toBe("各版");
+  });
+});
+
+const t = (locale: (typeof LOCALES)[number]) => stickerStrings(locale);
+
 describe("platform terms", () => {
   test("every deliverable and listing field of every platform is named in every locale", () => {
     for (const locale of LOCALES) {

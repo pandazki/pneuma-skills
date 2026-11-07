@@ -1842,7 +1842,7 @@ describe("the mounted stage — the control, the selection and the capture agree
     try {
       await stage.press(stage.button("Target"));
       const shot = await stage.capture();
-      expect(shot!.data).toBe(
+      expect(shot && "data" in shot ? shot.data : null).toBe(
         base64FromBytes(new TextEncoder().encode("PNG:/content/lantern-shrine/target.png?v=1")),
       );
       const state = await stage.sceneState();

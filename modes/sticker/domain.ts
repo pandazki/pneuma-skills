@@ -30,7 +30,7 @@ import type {
   CraftCostSummary,
   CraftFailure,
 } from "../_shared/scripts/craft-project.mjs";
-import { indexAssets, readProjectFile, statusOf, summarizeCosts } from "../_shared/scripts/craft-project.mjs";
+import { edgeInputs, indexAssets, readProjectFile, statusOf, summarizeCosts } from "../_shared/scripts/craft-project.mjs";
 import type {
   AnchorState,
   ArtKind,
@@ -118,6 +118,8 @@ export interface AssetBrief {
   model: string | null;
   /** Epoch ms the call was reserved (the edge's timestamp): "generating for N s". */
   submittedAt: number | null;
+  /** The assets it was made from (a character candidate's photo, a take's anchor). */
+  inputs: string[];
   failure: CraftFailure | null;
   cost: CraftCost | null;
   /** What sticker.mjs measured of the file, when it did. */
@@ -263,6 +265,7 @@ function briefs(project: StickerProject | null): Record<string, AssetBrief> {
       op: edge?.operation.type ?? null,
       model: typeof params?.model === "string" ? params.model : null,
       submittedAt: edge?.operation.timestamp ?? null,
+      inputs: edgeInputs(edge),
       failure: (params?.failure as CraftFailure | undefined) ?? null,
       cost: (params?.cost as CraftCost | undefined) ?? null,
       measure: measures[id] ?? null,

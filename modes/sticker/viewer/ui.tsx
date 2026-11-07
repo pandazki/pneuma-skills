@@ -154,6 +154,13 @@ export const Icon = {
       <path d="M15 5l-7 7 7 7" />
     </Svg>
   ),
+  Scissors: (p: { size?: number; className?: string }) => (
+    <Svg {...p}>
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="6.5" cy="17.5" r="2.5" />
+      <path d="M8.6 8.1L20 18M8.6 15.9L20 6" />
+    </Svg>
+  ),
 };
 
 // ── Status ─────────────────────────────────────────────────────────────────

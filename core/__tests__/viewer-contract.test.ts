@@ -21,6 +21,7 @@ import type {
   FileWorkspaceModel,
   WorkspaceItem,
   ViewerActionDescriptor,
+  ViewportCapture,
 } from "../types/index.js";
 
 // ── Helper: create mock viewer ───────────────────────────────────────────────
@@ -392,6 +393,18 @@ describe("Backward compatibility", () => {
       captureViewport: async () => ({ data: "base64data", media_type: "image/png" }),
     });
     expect(typeof viewer.captureViewport).toBe("function");
+  });
+
+  test("captureViewport answers an image with a caveat, a refusal, or a decline", async () => {
+    const answers: Array<ViewportCapture | null> = [
+      { data: "base64data", media_type: "image/png", note: "shows the first kept frame" },
+      { error: "s01-take-1 could not be loaded (HTTP 404)" },
+      null,
+    ];
+    for (const answer of answers) {
+      const viewer = createMockViewer({ captureViewport: async () => answer });
+      expect(await viewer.captureViewport!()).toEqual(answer);
+    }
   });
 });
 

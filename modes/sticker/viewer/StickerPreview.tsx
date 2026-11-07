@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Source } from "../../../core/types/source.js";
-import type { ViewerActionResult, ViewerPreviewProps } from "../../../core/types/viewer-contract.js";
+import type { ViewerActionResult, ViewerPreviewProps, ViewportCapture } from "../../../core/types/viewer-contract.js";
 import { useSource } from "../../../src/hooks/useSource.js";
 import { useStore } from "../../../src/store.js";
 import { getApiBase } from "../../../src/utils/api.js";
@@ -40,6 +40,8 @@ import { ChatView } from "./Chat.js";
 import { ArtInspector, CharacterInspector, StickerInspector } from "./Inspector.js";
 import { CompactBar, Sidebar, StickerGrid, type KeysKnown } from "./Panel.js";
 import { SubmitView } from "./Submit.js";
+import { captureSubject, renderCapture } from "./capture.js";
+import { setStickerCapture } from "./capture-seam.js";
 import { mediaUrl } from "./media.js";
 import { useGifFrames, type FramesState } from "./players.js";
 import { stickerStrings, type StickerStrings } from "./strings.js";
@@ -223,6 +225,27 @@ export default function StickerPreview(props: ViewerPreviewProps) {
     },
     [base],
   );
+
+  // ── Capture ──────────────────────────────────────────────────────────────
+  // Whatever the window: an object the position names is drawn whole at a
+  // fixed size (capture.ts); nothing named is the viewer as the user sees it,
+  // shot the framework's way. The thumbnail asks the same question.
+  const tRef = useRef(t);
+  tRef.current = t;
+  useEffect(() => {
+    setStickerCapture(async (): Promise<ViewportCapture | null> => {
+      const v = valueRef.current;
+      const here = posRef.current;
+      const subject = v ? captureSubject(v, here) : null;
+      if (v && subject) return renderCapture(subject, { value: v, position: here, base, t: tRef.current, root: rootRef.current });
+      const root = rootRef.current;
+      if (!root) return null;
+      const { captureViewer } = await import("../../../src/utils/viewer-capture.js");
+      const shot = await captureViewer(root);
+      return shot.ok ? { data: shot.base64, media_type: shot.mediaType, ...(shot.note ? { note: shot.note } : {}) } : { error: shot.message };
+    });
+    return () => setStickerCapture(null);
+  }, [base]);
 
   // ── Clock for "generating for N s" ───────────────────────────────────────
   const [now, setNow] = useState(() => Date.now());
@@ -416,8 +439,17 @@ export default function StickerPreview(props: ViewerPreviewProps) {
       "make-missing",
       [
         `make (what a plain gen makes): ${plan.targets.map((s) => `${s.id} (${s.status})`).join(", ")}`,
-        plan.uncertain.length
-          ? `not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: ${plan.uncertain.map((u) => `${u.id} (${u.take ?? "no take"}: ${u.reason})`).join(", ")}`
+        plan.uncertain.some((u) => u.recoverable)
+          ? `not included — fal accepted these and the file never arrived; fetch them first, free, nothing is redrawn: sticker.mjs recover --only ${plan.uncertain
+              .filter((u) => u.recoverable)
+              .map((u) => u.id)
+              .join(",")}`
+          : "",
+        plan.uncertain.some((u) => !u.recoverable)
+          ? `not included — the last take failed with billing unknown, so it may have been charged; retry only if the user says so: ${plan.uncertain
+              .filter((u) => !u.recoverable)
+              .map((u) => `${u.id} (${u.take ?? "no take"}: ${u.reason})`)
+              .join(", ")}`
           : "",
         v.next ? `next step: ${v.next.line}` : "",
       ].filter(Boolean),
@@ -514,6 +546,15 @@ export default function StickerPreview(props: ViewerPreviewProps) {
 
   const ready = value.stickers.filter((s) => s.state.status === "ready").length;
   const next = value.next;
+  // The last step with nothing failing but rows to confirm by hand is not
+  // "every checklist passes": say how many, and open the first such platform.
+  // ("done" is the rules' last step; "confirm" is reserved for a separate
+  // last step the rules may name for exactly this.)
+  const warns = value.projectError ? 0 : value.platforms.reduce((n, p) => n + p.tally.warn, 0);
+  const fails = value.projectError ? 0 : value.platforms.reduce((n, p) => n + p.tally.fail, 0);
+  const confirmOn = value.platforms.find((p) => p.tally.warn > 0)?.platform ?? null;
+  const lastStep = (id: string) => id === "done" || id === "confirm";
+  const confirming = !!next && lastStep(next.id) && fails === 0 && warns > 0;
   const missing = (value.gen?.targets.length ?? 0) > 0;
   // The step in the user's words; the CLI command only where someone can act on it.
   const nextText = next ? t.say(next.message) : "";
@@ -669,12 +710,28 @@ export default function StickerPreview(props: ViewerPreviewProps) {
         </div>
       </header>
       {next ? (
-        <div data-next-step={next.id} className="flex shrink-0 items-center gap-2.5 border-b border-cc-border bg-cc-primary/[0.035] px-4 py-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-cc-primary">{t.next}</span>
+        <div
+          data-next-step={next.id}
+          data-tone={confirming ? "confirm" : "work"}
+          className={`flex shrink-0 items-center gap-2.5 border-b border-cc-border px-4 py-1.5 ${confirming ? "bg-cc-warning/[0.06]" : "bg-cc-primary/[0.035]"}`}
+        >
+          <span className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${confirming ? "text-cc-warning" : "text-cc-primary"}`}>{t.next}</span>
           <span className="min-w-0 truncate text-[12px] font-medium text-cc-fg" title={canWrite && next.command ? `${nextText} — ${next.command}` : nextText}>
             {nextText}
           </span>
           <span className="ml-auto" />
+          {confirming && confirmOn ? (
+            <button
+              type="button"
+              data-to-confirm
+              onClick={() => apply({ ...posRef.current, view: "submit", platform: confirmOn, focus: null, take: null, frame: null })}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-cc-warning/40 bg-cc-warning/10 px-2 py-[1px] text-[11px] font-medium text-cc-warning transition-colors hover:bg-cc-warning/15 focus-visible:ring-2 focus-visible:ring-cc-primary/60"
+            >
+              <Icon.Alert size={11} />
+              {/* The rules' own "confirm" step already says how many: the chip is the way there. */}
+              {next.id === "confirm" ? t.openTab(t.platformName(confirmOn)) : t.toConfirm(warns)}
+            </button>
+          ) : null}
           {canCommand && missing ? (
             <Btn small primary data-command="make-missing" onClick={makeMissing}>
               <Icon.Spark size={12} />

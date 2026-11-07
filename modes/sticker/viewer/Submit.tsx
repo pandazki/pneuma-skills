@@ -116,6 +116,14 @@ function Checklist({ value, view, t, focus, commands, onRow }: { value: StickerP
           <Chip tone="success">{t.level.pass} {view.tally.pass}</Chip>
         </span>
       </div>
+      {!view.tally.fail && view.tally.warn ? (
+        <div data-no-fails className="flex items-center gap-2 rounded-[12px] border border-cc-warning/35 bg-cc-warning/[0.07] px-3 py-2.5 text-[12px] font-medium text-cc-fg">
+          <span className="text-cc-warning">
+            <Icon.Alert size={14} />
+          </span>
+          {t.noFailsConfirm(view.tally.warn)}
+        </div>
+      ) : null}
       {attention.length ? (
         <div>
           <div className="mb-1 text-[11px] font-medium text-cc-fg/80">{t.needsAttention(attention.length)}</div>
@@ -377,7 +385,7 @@ export function SubmitView({
           onChange={onTab}
           options={value.platforms.map((p) => ({
             value: p.platform,
-            label: p.profile.label,
+            label: t.platformName(p.platform),
             badge: unread ? null : p.tally.fail ? (
               <span className="rounded-full bg-cc-error/15 px-1.5 font-mono text-[10px] text-cc-error">{p.tally.fail}</span>
             ) : p.tally.warn ? (
@@ -400,7 +408,7 @@ export function SubmitView({
 
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[14px] border border-cc-border bg-cc-surface/60 px-3.5 py-2.5 backdrop-blur">
         <div className="min-w-0">
-          <div className="text-[15px] font-semibold text-cc-fg">{view.profile.label}</div>
+          <div className="text-[15px] font-semibold text-cc-fg">{t.platformName(view.platform)}</div>
           <div className="flex flex-wrap items-center gap-x-2 text-[10.5px] text-cc-muted">
             <span>{t.rulesRead(view.profile.checked)}</span>
             {view.profile.sources.map((s) => (
