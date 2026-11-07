@@ -17,6 +17,7 @@ import {
   buildGifRequest,
   costLine,
   generateGif,
+  GIF_DOWNLOAD_RETRY_DELAYS_MS,
   GIF_LIMITS,
   readGifInfo,
 } from "../generate_gif.mjs";
@@ -202,6 +203,38 @@ describe("generateGif", () => {
     expect(error?.message).toContain("do not resubmit");
     expect(error?.message).toContain("req-cdn");
     expect(existsSync(output)).toBe(false);
+  });
+
+  test("the GIF's download rides out a CDN outage: the long back-off, and a failure that says how long it tried", async () => {
+    // Trial B (sticker 0.1.0, 2026-11-07): v3b.fal.media refused TLS
+    // connections from about 20 s to 42 s after submit; four finished GIFs
+    // spent their three attempts (3 s + 6 s of waiting) inside that gap.
+    expect(GIF_DOWNLOAD_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(60_000);
+    const asked: unknown[] = [];
+    const output = join(workspace, "outage", "gif-raw.gif");
+    await generateGif({ prompt: "Idle", output, apiKey: "k" }, {
+      runJob: job("req-outage-ok"),
+      download: async (_url: string, options?: unknown) => {
+        asked.push(options);
+        return gif(9);
+      },
+    });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ retryDelaysMs: GIF_DOWNLOAD_RETRY_DELAYS_MS });
+    expect((asked[0] as { attempts?: number }).attempts).toBeUndefined();
+
+    const failed = join(workspace, "outage-failed", "gif-raw.gif");
+    const error = await failure(generateGif({ prompt: "Idle", output: failed, apiKey: "k" }, {
+      runJob: job("req-outage"),
+      download: async () => {
+        throw new TypeError("fetch failed");
+      },
+    }));
+    const tries = GIF_DOWNLOAD_RETRY_DELAYS_MS.length + 1;
+    const waited = Math.round(GIF_DOWNLOAD_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0) / 1000);
+    expect(error?.message).toContain(`its download failed after ${tries} attempts over ${waited} s (fetch failed)`);
+    expect(error?.requestId).toBe("req-outage");
+    expect(error?.url).toBe(RESULT_URL);
   });
 
   test("an existing --output is refused before any request; a file that appears there mid-job is never replaced", async () => {

@@ -92,6 +92,19 @@ export const GIF_LIMITS = Object.freeze({
   maxPromptLength: 32_000,
 });
 
+/**
+ * The waits between attempts to download a finished GIF: six attempts over
+ * 90 s. A GIF is under ~1.3 MB and downloading it again is free, while the
+ * job behind it may already be billed. Measured on the sticker trials of
+ * 2026-11-07: every real run saw `fetch failed` on the first downloads
+ * after the jobs finished; in trial B the CDN (v3b.fal.media) refused TLS
+ * connections — curl too — from about 20 s to 42 s after submit, and four
+ * finished GIFs spent the default three attempts (3 s + 6 s of waiting)
+ * inside that gap, while the four that finished after it downloaded. The
+ * failures were the host, not this process's parallel fetches.
+ */
+export const GIF_DOWNLOAD_RETRY_DELAYS_MS = Object.freeze([3000, 6000, 12000, 24000, 45000]);
+
 export const DEFAULT_FRAME_COUNT = 9;
 export const DEFAULT_FRAME_DURATION_MS = 200;
 export const DEFAULT_GIF_SIZE = "512x512";
@@ -374,14 +387,15 @@ export async function generateGif(options, { runJob = runFalJob, download = down
 
   let bytes;
   try {
-    bytes = Buffer.from(await download(resultUrl, { signal }));
+    bytes = Buffer.from(await download(resultUrl, { signal, retryDelaysMs: [...GIF_DOWNLOAD_RETRY_DELAYS_MS] }));
   } catch (error) {
     if (error?.name === "AbortError" || signal?.aborted) {
       // The job finished; only the download was interrupted.
       if (error && typeof error === "object") Object.assign(error, { requestId, url: resultUrl });
       throw error;
     }
-    throw paidFailure(`the GIF was generated but its download failed (${error instanceof Error ? error.message : String(error)})`, { requestId, url: resultUrl });
+    const tried = `${GIF_DOWNLOAD_RETRY_DELAYS_MS.length + 1} attempts over ${Math.round(GIF_DOWNLOAD_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0) / 1000)} s`;
+    throw paidFailure(`the GIF was generated but its download failed after ${tried} (${error instanceof Error ? error.message : String(error)})`, { requestId, url: resultUrl });
   }
 
   let info;

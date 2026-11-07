@@ -131,6 +131,48 @@ describe("downloadFalFile", () => {
     expect(log.delays).toEqual([3000, 6000]);
   });
 
+  test("a caller's back-off schedule sets the waits and the attempts: one more attempt than waits", async () => {
+    const log = recorder();
+    let calls = 0;
+    const buffer = await downloadFalFile(URL_UNDER_TEST, {
+      retryDelaysMs: [1000, 5000, 20000],
+      fetchImpl: asFetch(async () => {
+        calls++;
+        // A CDN that refuses connections for three attempts, then answers.
+        if (calls <= 3) throw new TypeError("fetch failed");
+        return new Response(bodyOf(["late", "-but-whole"]));
+      }),
+      onNote: log.onNote,
+      sleep: log.sleep,
+    });
+    expect(Buffer.from(buffer).toString()).toBe("late-but-whole");
+    expect(calls).toBe(4);
+    expect(log.delays).toEqual([1000, 5000, 20000]);
+    expect(log.notes.map((note) => note.slice(note.indexOf("attempt")))).toEqual([
+      "attempt 1 of 4)",
+      "attempt 2 of 4)",
+      "attempt 3 of 4)",
+    ]);
+  });
+
+  test("a schedule that runs out throws the last reason after its last attempt; a schedule and a different attempt count are refused", async () => {
+    const log = recorder();
+    let calls = 0;
+    await expect(downloadFalFile(URL_UNDER_TEST, {
+      retryDelaysMs: [10, 20],
+      fetchImpl: asFetch(async () => {
+        calls++;
+        throw new TypeError("fetch failed");
+      }),
+      onNote: log.onNote,
+      sleep: log.sleep,
+    })).rejects.toThrow("fetch failed");
+    expect(calls).toBe(3);
+    expect(log.delays).toEqual([10, 20]);
+    await expect(downloadFalFile(URL_UNDER_TEST, { retryDelaysMs: [10, 20], attempts: 5, fetchImpl: asFetch(async () => new Response("x")) }))
+      .rejects.toThrow("retryDelaysMs has 2 waits, which is 3 attempts, not 5");
+  });
+
   test("the caller's own abort is rethrown untouched and never retried", async () => {
     const log = recorder();
     const controller = new AbortController();

@@ -57,6 +57,10 @@ Examples: `{ "sticker": "s05", "take": "s05-take-2" }` ·
 
 ### Actions
 
+You drive the viewer over the session's viewer endpoint: `POST
+$PNEUMA_API/api/viewer/action` with a JSON body `{ "actionId": …, "params":
+… }`. The reply is `{ "success": …, "data" | "error": … }`.
+
 - `navigate-to { address }` — put the viewer on what your sentence is about.
   A frame address freezes the stage on that frame; when the browser cannot
   show it (no frame decoder, a decode error, still decoding after 5 s) the
@@ -66,11 +70,19 @@ Examples: `{ "sticker": "s05", "take": "s05-take-2" }` ·
 - `set-view { view, platform?, plate? }` — `view` is `panel`, `chat` or
   `submit`; `platform` picks the submit tab; `plate` is `light` (#EDEDED) or
   `dark` (#111111), the chat background every sticker plays on.
-- `capture` (built in) — a screenshot of what the user sees. Set the view and
-  the address first, so the picture is the thing you mean.
+- `capture { address? }` (built in) — a screenshot of what the user sees,
+  written to a PNG; `data.path` is the file. Open it as you open any image.
+
+```bash
+act() { curl -s -X POST "$PNEUMA_API/api/viewer/action" -H 'Content-Type: application/json' -d "$1"; }
+act '{"actionId":"set-view","params":{"view":"panel","plate":"dark"}}'
+act '{"actionId":"navigate-to","params":{"address":{"sticker":"s03"}}}'
+act '{"actionId":"capture","params":{"address":{"sticker":"s03"}}}'   # → data.path
+```
 
 Add a `<viewer-locator label="…" address='{…}' />` card to a reply when the
-user should jump to what you mention.
+user should jump to what you mention. A card is for the user; it is not you
+looking.
 
 ### Look before you call anything done
 
@@ -85,12 +97,36 @@ You cannot judge a GIF you have not opened. For every take, cheapest first:
    anything clipped at an edge, props that vanish, the jump from the last
    frame to the first. Outlines and dark parts that read on light can vanish
    on dark.
-3. **In place** — `set-view { "view": "panel", "plate": "dark" }`,
-   `navigate-to { "sticker": … }`, `capture`: the sticker as the user meets
-   it, among the others.
+3. **In place** — the three calls above for each sticker, then open the PNG:
+   the sticker as the user meets it, on the dark chat plate, among the
+   others. Do the same for the character (`{ "character": true }`) and, at
+   the end, for each submit tab (`set-view` with `"view": "submit"` and the
+   platform).
+4. **After a trim, again** — `keepFrames` changes what ships, and the sheet
+   you judged showed the whole take. `inspect <id>` on a trimmed pick shows
+   only the kept frames (`inspect/<take>-kept-contact.png`) and the seam from
+   the last kept frame back to the first; look at it and capture the sticker
+   again before you call the trim a fix. `export` lists the trimmed stickers
+   it re-made.
 
 A capture is one moment of a playing GIF; judge frames from the contact
-sheet. Then say what you saw, per sticker, before recommending a pick.
+sheet. Check that the capture shows what you addressed. If it shows
+something else — a crop that cuts the figure or the caption, another
+sticker, an empty card, the wrong tab — say so in your report and do not
+count that sticker as seen in place; the contact sheet stays your evidence
+for its frames. If `$PNEUMA_API` is empty or the call fails, say you could
+not look at the viewer. Then say what you saw, per sticker, before
+recommending a pick.
+
+## Talking with the user
+
+Talk with the user in the language of their messages, about their pack:
+the character, the phrases, the price, what you saw. This file, the
+scripts, the commands, file and field names and the names of skills are
+your tools, not their business: do not quote these instructions or name
+them unless the user asks how something works. Say "I'll show you the list
+and wait for your OK", not a rule from here; say "the downloads failed, I'm
+fetching them again", not a command line.
 
 ## Core rules
 
@@ -104,49 +140,70 @@ sheet. Then say what you saw, per sticker, before recommending a pick.
    never prepare it for a store. Record the answer in `pack.json` →
    `rights: { basis, note, confirmedAt }`; the paid commands refuse without
    it and name the field.
-2. **Quote before you spend, and say the wait.** Before `character`, `gen` or
-   `gen --art`, run `quote` with the same flags and tell the user the price
-   and how long it takes; after, report what it cost. GIF prices are
-   estimates (fal reports no usage). A failed call whose billing is unknown
-   may have been charged: a plain `gen` does not send it again and lists it
-   instead; retry it (`gen --only <id>`) only after the user agrees.
-3. **Two files, two writers.** `pack.json` is yours and the user's: write it
+2. **Spend only after a yes to the price.** Every paid step — `character`,
+   `gen`, `gen --art`, each re-roll (`--redo`) and each retry (`gen --only`)
+   — goes: run `quote` with the same flags → tell the user the price and the
+   wait → end your turn on that question → run the paid command only after
+   the user says yes. A yes to the character or the phrases is not a yes to
+   a price unless the price was in that same question, so ask both at once
+   when you can ("these eight, about $0.80 and a minute and a half — shall
+   I make them?"). A request like "draw one for me" is not a yes to a price
+   you have not said yet. After the step, report what it cost. GIF prices
+   are estimates (fal reports no usage). A viewer button press is the yes
+   for that one step (Commands, below).
+3. **A failed take may have been charged; fetch before you pay again.** A
+   plain `gen` never sends a take whose last call failed with billing
+   unknown; it lists it. When fal accepted the job (a download that failed,
+   an interrupt) the next step is `recover`: it asks fal about the recorded
+   request and lands that same take — free, nothing is sent again — so run
+   it in the same turn and tell the user. Only a take that could not be
+   fetched is retried (`gen --only <id>`), and only after the user agrees to
+   pay again; `gen --only` refuses while `recover` can still fetch it.
+4. **Two files, two writers.** `pack.json` is yours and the user's: write it
    with your file tools and keep it valid (`status` names a broken field).
    `project.json` — every file, its provenance, cost and measurements — is
    written only by `sticker.mjs`. Never edit it, and never drop a file into
    `character/`, `stickers/` or `art/` yourself: bring files in with
    `import`.
-4. **The script owns every prompt.** It assembles each prompt from
+5. **The script owns every prompt.** It assembles each prompt from
    `pack.json`; you shape it only through the fields (`character.description`
    and `style`, a sticker's `action`, `caption`, `word`). `prompts` prints the
    exact text. A changed field makes the takes it feeds stale; the chip says
    why, and a re-roll applies it.
-5. **Captions are drawn by the model; a wrong caption is a re-roll.** Read
+6. **Captions are drawn by the model; a wrong caption is a re-roll.** Read
    the caption on every frame of the contact sheet. A wrong, missing or
-   malformed character, or any extra text, means `gen --only <id> --redo`.
-   Never paint over a GIF or lay text on it.
-6. **`keepFrames` trims a loop that jumps.** When the last frame does not
+   malformed character, or any extra text, means a re-roll
+   (`gen --only <id> --redo`, after a yes to its price). Never paint over a
+   GIF or lay text on it.
+7. **`keepFrames` trims a loop that jumps.** When the last frame does not
    flow into the first, set `stickers[].keepFrames` to the 0-based frames to
-   keep (from the contact sheet) instead of re-rolling; export again after.
-7. **Look before "done"** (above). Name the stickers and frames you judged.
-8. **Green before "ready to submit".** A platform is ready when its
-   `check` has no failing row and you have told the user what each warning
-   means. Warnings marked `unconfirmed` are rules no official page states;
-   they never turn green.
-9. **Registration and submission are the user's.** You prepare the files,
-   the zip and the listing text, and explain the steps
-   (`references/platforms.md`). The user registers, signs in and submits
-   under their own identity; you do not do it for them.
-10. **Every file comes from `sticker.mjs`, inside the workspace.** Do not run
+   keep (from the contact sheet) instead of re-rolling — free. Then export,
+   `inspect <id>` again (it now shows the kept frames and their seam) and
+   capture the sticker: a trim is a fix only once you have seen the trimmed
+   loop.
+8. **Look before "done"** (above). Name the stickers and frames you judged,
+   and say which you saw in the viewer and which only on contact sheets.
+9. **Nothing failing is not the same as all clear.** A platform has nothing
+   left to fix when its `check` has no failing row. Warnings remain the
+   user's to confirm by hand — rules no official page states (`unconfirmed`,
+   never green), a weak store still, a long name — and the next step says
+   `confirm` while any is open. Then tell the user "nothing fails; these N
+   things need your check on the upload page", each in plain words. Say
+   "ready to submit" only when the next step is `done`.
+10. **Registration and submission are the user's.** You prepare the files,
+    the zip and the listing text, and explain the steps
+    (`references/platforms.md`). The user registers, signs in and submits
+    under their own identity; you do not do it for them.
+11. **Every file comes from `sticker.mjs`, inside the workspace.** Do not run
     the generators or ffmpeg yourself and do not write outside the
     workspace: a file the script did not record has no provenance, and the
     viewer cannot show it. The script refuses symbolic links in the
     workspace and paths outside it.
-11. **One `sticker.mjs` writer at a time.** `character`, `gen`, `import` and
-    `export` refuse while another of them runs in the workspace and name it;
-    wait for it to finish rather than retrying in a loop (`status`, `quote`,
-    `prompts`, `check` and `inspect` still work). A lock left by a process
-    that is gone is taken over with a warning.
+12. **One `sticker.mjs` writer at a time.** `character`, `gen`, `recover`,
+    `import` and `export` refuse while another of them runs in the workspace
+    and name it; wait for it to finish rather than retrying in a loop
+    (`status`, `quote`, `prompts`, `check` and `inspect` still work). A lock
+    left by a process that is gone is taken over with a warning.
 
 What this session can generate (the scripts also say so in `status`):
 
@@ -161,6 +218,7 @@ What this session can generate (the scripts also say so in `status`):
 |---|---|---|
 | a sticker take (512² × 16 frames, fal) | ≈ $0.10 estimate ($0.05–0.20) | 26–40 s; 8 takes run 4 at a time, ≈ 1.5 min |
 | a character candidate or a piece of art (OpenRouter) | $0.04–0.06, reported after the call | 14–21 s |
+| `recover` (fetch a take fal accepted that never arrived) | free: nothing is sent again | seconds; it waits while fal still works on the job |
 | `quote`, `prompts`, `status`, `inspect`, `export`, `check`, `import` | free (local) | seconds; `export --platform all` for 8 stickers ≈ 25 s |
 
 The seed pack cost ≈ $1.18: one character, nine takes (one re-roll), four
@@ -174,14 +232,16 @@ the user wants to see the platform files and checklists.
 Run commands from the workspace as `node "<SKILL_DIR>/scripts/sticker.mjs"
 <command> …`, where `<SKILL_DIR>` is the directory holding this file. Add
 `--json` when you parse the output; `<command> --help` prints its flags.
-Resume from `status` (it ends with the next step), never from memory.
+Resume from `status` (it ends with the next step), never from memory. In a
+new workspace `status` says `pack: none yet` and whether the keys are set:
+that is the start, not an error.
 
 ### The two routes
 
 | | For chats | To submit |
 |---|---|---|
 | for | the user, their friends, a client's team | the WeChat, Telegram or LINE store |
-| opening question | "Who or what is the sticker of, and who will use it?" | "Which platforms?" |
+| opening question (in the user's words) | who or what the stickers are of, and who will use them | which platforms |
 | defaults | 8 stickers, `platforms: ["wechat"]`, no reward art | 8 stickers (LINE takes 8, 16 or 24), every art the platforms need |
 | cost and wait | ≈ $0.90 and a few minutes of generation | ≈ $1.20 and a few more minutes for the art |
 | finish line | the GIFs playing on the panel, the 240² chat-ready GIFs in `exports/wechat/`, a share link if they want one | every chosen platform's checklist green, the zip ready, the listing text filled |
@@ -192,7 +252,9 @@ needs. If the user wants to pass the whole set around as `exports/wechat.zip`,
 make that art (≈ $0.17).
 
 Both begin with the rights question and the character, and both look at
-every take before a pick.
+every take before a pick. A user who mentions a store at all — "maybe the
+WeChat store later, if they turn out well" — is on the chat route with the
+store as its last stop: finish the chats, then offer the store step (step 5).
 
 ### 1. Rights and the character
 
@@ -201,46 +263,62 @@ every take before a pick.
    `listing` and an empty `stickers` list (`references/pack.md` has the
    fields). Every command reads it, so it comes first.
 2. From a photo or image: `import --source --file <path>` records it as the
-   user's upload; write `character.description` in English — the features
-   that make it *this* character (shape, colors, markings, what it wears);
-   keep the default style ("thick clean dark outlines, flat colors") unless
-   the user wants another. `quote --character`, then `character --from
-   character-source-<n>` (add `--count 2` for a choice). Without a picture,
-   `character` designs from the description.
-3. Open each candidate PNG, then put the panel on the dark plate
-   (`set-view`), `navigate-to { "character": true }` and `capture`: a dark
-   outline that reads on white can melt into a dark chat. Recommend one and set `character.anchor` when the user
-   agrees (or they pick on the card).
-   The anchor is the lock: once takes exist, a new anchor makes every take
-   stale. Say so before changing it.
+   user's upload. Look at the picture and list what makes it *this* one —
+   especially what is not symmetric, which a drawing tends to even out: one
+   ear folded and one upright, a patch over one eye, a crooked tail, a scar.
+   Name sides as the viewer sees them ("the ear on the viewer's left folds
+   forward; the right one stands up"). Write every one of them into
+   `character.description` in English, exactly, with shape and colors and
+   what it wears. Keep the default style ("thick clean dark outlines, flat
+   colors") unless the user wants another. Then `quote --character`, ask
+   (rule 2), and `character --from character-source-<n>` (add `--count 2`
+   for a choice). Without a picture, `character` designs from the
+   description.
+3. Open each candidate PNG beside the photo and check those features one by
+   one, then look at it in the viewer on the dark plate (`{ "character":
+   true }`): a dark outline that reads on white can melt into a dark chat.
+   Show the user the candidate and the photo together and ask them to
+   compare the features you listed ("one ear folded, one upright — is that
+   right?") before any sticker is made: every take copies the anchor, so a
+   lost feature is lost from the whole pack. A miss is fixed now, by a
+   sharper description and another candidate (its own quote and yes).
+   Recommend one and set `character.anchor` when the user agrees (or they
+   pick on the card). The anchor is the lock: once takes exist, a new
+   anchor makes every take stale. Say so before changing it.
 
 ### 2. Phrases, poses, actions
 
 Propose the stickers as a table — word, caption, emoji, one-line pose — using
 `references/writing.md`: phrases people send every day, one distinct pose
 each, captions of 2–4 characters. Write them into `stickers[]` with the
-action in English body beats, show the table, and wait for a nod: changing
-words is free now.
+action in English body beats. Run `quote`, show the table with its price
+and wait in the same message, and wait for the user's answer: changing
+words is free now, and their yes to that message is the yes to generate.
 
 ### 3. Generate and look
 
-`quote`, say the price and the wait, then `gen` (every sticker without a take,
-4 at a time; a failure does not stop the others). Interrupting `gen` (Ctrl-C,
-SIGTERM) cancels the takes in flight — recorded as failed, billing unknown —
-starts nothing new, exits 130 and names what never started. When they land,
-run the look rhythm for each and report per sticker: what reads, what is wrong.
-Recommend a take; the user picks on the panel or you set `stickers[].take`.
-For a bad take, re-roll (`quote --only s05 --redo`, then `gen --only s05
---redo`); the old take stays. Twice the same failure: rewrite the action
-first (`references/prompting.md`).
+After the user's yes to the quoted price, `gen` (every sticker without a
+take, 4 at a time; a failure does not stop the others). Interrupting `gen`
+(Ctrl-C, SIGTERM) cancels the takes in flight — recorded as failed, billing
+unknown — starts nothing new, exits 130 and names what never started. When
+`gen` reports takes that never arrived, run `recover` in the same turn
+(free) and tell the user plainly; a take it cannot fetch is a retry for the
+user to decide, with its price. When they land, run the look rhythm for
+each and report per sticker: what reads, what is wrong. Recommend a take;
+the user picks on the panel or you set `stickers[].take`. For a bad take,
+quote a re-roll (`quote --only s05 --redo`), ask, and after the yes
+`gen --only s05 --redo`; the old take stays. Twice the same failure:
+rewrite the action first (`references/prompting.md`).
 
 ### 4. Art and listing (to submit)
 
-`quote --art`, `gen --art` makes the art the chosen platforms need (portrait →
-cover and Telegram thumbnail, head → icon and LINE tab, banner; reward art
-only when `listing.wechat.rewardLine` is set). Open each, re-roll what misses
-(`gen --art --only head --redo`), set `art.<kind>`. Fill each platform's
-listing fields within the limits `check` prints.
+`quote --art`, ask, and after the yes `gen --art` makes the art the chosen
+platforms need (portrait → cover and Telegram thumbnail, head → icon and
+LINE tab, banner; reward art only when `listing.wechat.rewardLine` is set).
+Telegram alone needs no art: without a portrait, `export` cuts its set
+thumbnail from the first sticker's first kept frame, free. Open each piece,
+re-roll what misses (its own quote and yes), set `art.<kind>`. Fill each
+platform's listing fields within the limits `check` prints.
 
 ### 5. Export, check, hand over
 
@@ -252,9 +330,23 @@ the user, move it, export again) and other files are left alone. `check`
 prints the same checklist the submit tab shows and fails a deliverable or
 zip that changed on disk since export.
 Fix each failing row at its cause (a pick, a field, `keepFrames`), export
-again, check again. Then `set-view { "view": "submit", "platform": … }`,
-`capture`, and walk the user through submitting
-(`references/platforms.md`).
+again, check again. Then look at each submit tab in the viewer and capture
+it.
+
+Hand over the route the user asked for, not the part that happens to be
+done. Before you report, read `status` and `check` against their goal:
+
+- Stickers missing or failed: say what you are doing about them in the same
+  message — `recover` what fal accepted (free), and ask about retries with
+  their price. Do not stop at "four are done".
+- A store in their goal (even "maybe later"): name what is still missing
+  for it and ask for every choice you need in one message — the creator or
+  copyright name to show, a Telegram short name (propose one; it is checked
+  when they publish), the art with its price and wait, any listing text
+  still empty — so one answer lets you finish.
+- Nothing fails: tell them which items they must confirm by hand on the
+  upload page (rule 9), then walk them through submitting
+  (`references/platforms.md`).
 
 ### No key: prompts out, files back in
 
@@ -268,14 +360,14 @@ are looked at, picked, exported and checked like generated ones.
 ## Commands
 
 A viewer button arrives as a message naming the command and the address. A
-press is the go-ahead for that one step at its defaults: say the price line,
-then run it. Anything beyond it (re-rolls of existing takes, more art) needs a
-yes in chat.
+press is the user's yes to that one step at its defaults: tell them the
+price and the wait, then run it. Anything beyond it (re-rolls of existing
+takes, retries, more art) is quoted in chat and waits for a yes.
 
 | Command | What you do |
 |---|---|
-| `make-missing` ("Make the missing stickers") | `quote`, say price and wait, `gen` for every sticker with no take; then look at each landed take and recommend picks. Stickers whose last take failed with billing unknown are listed, not resent: ask before `gen --only <id>`. |
-| `export-check` ("Export and check") | For the platform on screen: `export --platform <p>`, `check --platform <p>`, read every row, fix the failures you can, explain the warnings, `capture` the submit tab. |
+| `make-missing` ("Make the missing stickers") | `quote`, tell the user the price and the wait, `gen` for every sticker with no take; then look at each landed take and recommend picks. Stickers whose last take failed with billing unknown are listed, not resent: `recover` the ones fal accepted (free); ask before `gen --only <id>` for the rest. |
+| `export-check` ("Export and check") | For the platform on screen: `export --platform <p>`, `check --platform <p>`, read every row, fix the failures you can, tell the user what each remaining warning asks them to confirm, capture the submit tab. |
 
 ## References
 

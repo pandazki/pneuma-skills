@@ -23,6 +23,8 @@ export const GIF_LIMITS: Readonly<{
   maxPromptLength: number;
 }>;
 
+/** The waits between attempts to download a finished GIF (ms): one more attempt than waits. */
+export const GIF_DOWNLOAD_RETRY_DELAYS_MS: readonly number[];
 export const DEFAULT_FRAME_COUNT: number;
 export const DEFAULT_FRAME_DURATION_MS: number;
 export const DEFAULT_GIF_SIZE: string;
@@ -138,7 +140,7 @@ export interface GifDependencies {
     onRetry?: (info: { attempt: number; attempts: number; delayMs: number; reason: string }) => void;
   }) => Promise<{ data?: any; requestId?: string; apiMs?: number; attempts?: number }>;
   /** Defaults to `fal-queue.mjs::downloadFalFile`. */
-  download?: (url: string, options?: { signal?: AbortSignal }) => Promise<Uint8Array>;
+  download?: (url: string, options?: { signal?: AbortSignal; retryDelaysMs?: number[] }) => Promise<Uint8Array>;
 }
 
 /** A failure after fal accepted the job: the job may be billed. */

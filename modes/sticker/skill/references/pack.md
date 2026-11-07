@@ -13,6 +13,7 @@ exports/<platform>/…           derived files under the platform's names
 exports/<platform>.zip         the upload archive
 exports/<platform>/listing.md  copy-paste listing text (WeChat: 上架文案.md)
 inspect/<take>-contact.png     contact sheets for you to open (not part of the pack)
+inspect/<take>-kept-contact.png  the same for a trimmed pick: only its kept frames
 ```
 
 ## `pack.json`
@@ -76,20 +77,21 @@ All take `--dir <workspace>` (default: the current directory) and `--json`.
 
 | Command | Paid | What it does |
 |---|---|---|
-| `status` | no | rights, keys, ffmpeg, the anchor, each sticker's status, art, exports, checks, spend, the next step |
+| `status` | no | rights, keys, ffmpeg, the anchor, each sticker's status, art, exports, checks, spend, the next step; in a workspace with no `pack.json`, `pack: none yet`, the keys and ffmpeg, exit 0 |
 | `quote [--only s01,s03] [--redo]` · `quote --art [--only kinds] [--redo]` · `quote --character [--count n]` | no | what the paid command would send and cost, and the wait |
 | `character [--from <image or character-source-n>] [--count n] [--model flare\|sunburst]` | yes | character candidates, transparent PNG |
-| `gen [--only s01,s03] [--redo] [--concurrency 4]` | yes | a take for each sticker without one, or whose last take failed without leaving (billing `none`); one whose last take failed with billing `unknown` is listed, not resent — `--only <id>` retries it; `--redo` adds a new take to each chosen sticker |
+| `gen [--only s01,s03] [--redo] [--concurrency 4]` | yes | a take for each sticker without one, or whose last take failed without leaving (billing `none`); one whose last take failed with billing `unknown` is listed, not resent — `recover` fetches it when fal accepted the job, and `--only <id>` refuses it until then; otherwise `--only <id>` retries it; `--redo` adds a new take to each chosen sticker |
+| `recover [--only s01,s03] [--deadline-s 300]` | no | for each sticker whose last take fal accepted but never delivered (a failed download, an interrupt): asks fal about the recorded request and lands the GIF as that same take — same id and file, recorded as the generate call it was, same request id, so the job counts once. Nothing is sent. Tried once per request; a take it cannot fetch becomes an ordinary retry |
 | `gen --art [--only kinds] [--redo]` | yes | the art the chosen platforms need |
 | `prompts [--only …]` · `prompts --art` · `prompts --character` | no | the exact prompts, for the no-key route |
 | `import --sticker <id> --file <gif>` · `--art <kind>` · `--character` · `--source` | no | register a file the user brought |
-| `inspect <id> [--take <take>]` | no | numbers and `inspect/<take>-contact.png` |
-| `export [--platform wechat\|telegram\|line\|all]` | no | every platform file, the listing text and the zip; current files are left alone; a file at an export name that the project does not record is refused, never overwritten or deleted |
+| `inspect <id> [--take <take>] [--all]` | no | numbers and `inspect/<take>-contact.png`; a trimmed pick shows only its `keepFrames` (by their numbers in the take, the seam from the last kept to the first) in `inspect/<take>-kept-contact.png`; `--all` shows the whole take |
+| `export [--platform wechat\|telegram\|line\|all]` | no | every platform file, the listing text and the zip; current files are left alone; a file at an export name that the project does not record is refused, never overwritten or deleted; names the trimmed stickers it re-made, to `inspect` again |
 | `check [--platform …]` | no | the checklist, plus each exported file and zip against its record on disk; exits 1 when a row or a file fails |
 
 `--dry-run` on `character` and `gen` prints the request without sending it.
 
-`character`, `gen`, `import` and `export` hold `.sticker.lock` while they run:
+`character`, `gen`, `recover`, `import` and `export` hold `.sticker.lock` while they run:
 a second one refuses and names the holder (pid, command, start time); a lock
 whose process is gone is taken over with a warning. One interrupt (Ctrl-C or
 SIGTERM) stops a paid command: calls in flight are cancelled and recorded as
@@ -102,8 +104,14 @@ workspace: a symbolic link there, or a recorded path outside it, is refused.
 A sticker is **empty** (no take), **generating** (a take in flight),
 **failed** (every take failed), **pick** (a ready take, none picked),
 **ready** (the picked take matches `pack.json`) or **stale** (the picked take
-was drawn from other words, motion or anchor; the reason is given).
+was drawn from other words, motion or anchor; the reason is given). A failed
+sticker whose last take fal accepted is fetched first: the next step says
+`recover`.
 
 An export is **current**, **stale** (made from other inputs), **missing**
 (never exported) or **blocked** (its take or art is not picked yet). The zip
 is built only when every required file is current.
+
+The last steps: **check** (a row fails — fix it), **confirm** (nothing
+fails, but warnings remain for the user to check by hand on the upload
+page) and **done** (nothing fails and nothing to confirm).

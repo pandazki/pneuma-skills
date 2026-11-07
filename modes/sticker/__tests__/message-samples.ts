@@ -75,6 +75,7 @@ export const SAMPLE_PARAMS: Samples = {
   "summary.telegram": { width: 512, height: 512, alpha: true, bytes: 98_000, ms: 1920, fps: 30 },
   "summary.line": { width: 320, height: 270, bytes: 640_000, frames: 16, ms: 1920, plays: 2 },
   "summary.still": { width: 750, height: 400, format: "jpg", bytes: 120_000 },
+  "summary.still-from-sticker": { width: 100, height: 100, format: "png", bytes: 9_000, sticker: "s01", frame: 3 },
   "rights.ok": { basis: "original", confirmedAt: "2026-11-06", note: "我们自己的吉祥物" },
   "rights.missing": {},
   "platform.unchosen": { platform: "line" },
@@ -106,12 +107,14 @@ export const SAMPLE_PARAMS: Samples = {
   "next.character": {},
   "next.stickers": {},
   "next.generate": { stickers: ["s06", "s08"], uncertain: ["s05"] },
+  "next.recover": { stickers: ["s01", "s03"] },
   "next.retry": { stickers: ["s05"] },
   "next.generating": { stickers: ["s04"] },
   "next.pick": { stickers: ["s02"] },
   "next.reroll": { stale: [{ sticker: "s03", why: [stale] }] },
   "next.export": { platform: "wechat" },
   "next.check": { platform: "wechat", rows: [{ id: "listing-intro", label: "表情介绍 intro" }, { id: "sticker-s02", label: "02 · s02" }] },
+  "next.confirm": { rows: [{ platform: "line", id: "zip-naming", label: "ZIP file names" }, { platform: "wechat", id: "listing-name", label: "表情名称 name" }] },
   "next.done": {},
 };
 

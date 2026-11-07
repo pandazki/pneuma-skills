@@ -15,8 +15,14 @@
  *                          plus `start` / `end` lines with timestamps
  * MOCK_FAIL=gif|image      an upstream error after the job was accepted
  *                          (`requestId` "mock-request-failed")
+ * MOCK_FAIL=download       the GIF job finished but its download failed
+ *                          (`requestId` "mock-download-<sticker>", a result URL)
  * MOCK_FAIL=refused        ECONNREFUSED — provably never sent
  * MOCK_FAIL_STICKER=s02    only the GIF whose output path is under stickers/s02/ fails
+ * MOCK_ATTACH_FAIL=1       attachGif (sticker.mjs recover) cannot reach the
+ *                          request either; otherwise a "mock-download-…" request
+ *                          delivers its GIF and a "mock-request-failed" one
+ *                          answers that the job failed, as fal would
  * MOCK_NO_KEYS=1           report no API keys
  * MOCK_SLEEP_MS=<n>        a GIF "takes" n ms and honours the abort signal
  * MOCK_IMAGE_SLEEP_MS=<n>  an image "takes" n ms and honours the abort signal
@@ -36,6 +42,15 @@ function maybeFail(kind, output = "") {
   const mode = process.env.MOCK_FAIL;
   const only = process.env.MOCK_FAIL_STICKER;
   if (only && !output.includes(`/stickers/${only}/`)) return;
+  if (mode === "download" && kind === "gif") {
+    // What generate_gif.mjs throws when the job finished and the CDN would not serve it.
+    const sticker = /\/stickers\/([^/]+)\//.exec(output)?.[1] ?? "x";
+    const url = `https://v3b.fal.media/files/b/mock/${sticker}.gif`;
+    const error = new Error(`the GIF was generated but its download failed after 6 attempts over 90 s (fetch failed) — the job ran and may have been billed; fetch it from ${url}; do not resubmit (fal request mock-download-${sticker})`);
+    error.requestId = `mock-download-${sticker}`;
+    error.url = url;
+    throw error;
+  }
   if (mode === kind || (only && kind === "gif" && !mode)) {
     const error = new Error(`mock upstream error: ${kind} job failed (downstream_service_error)`);
     error.requestId = "mock-request-failed";
@@ -146,6 +161,36 @@ export async function generateGif({ prompt, output, imageUrls = [], frameCount, 
   } finally {
     log({ kind: "end", output, at: Date.now() });
   }
+}
+
+/**
+ * `sticker.mjs recover`: attach to a recorded request — no new job — and
+ * write its GIF. A download that failed delivers now; a job that failed
+ * upstream still answers that it failed.
+ */
+export async function attachGif({ requestId, output, frameCount, frameDurationMs, imageSize, signal }) {
+  log({ kind: "attach", requestId, output });
+  if (process.env.MOCK_SLEEP_MS) await sleep(Number(process.env.MOCK_SLEEP_MS), signal);
+  if (process.env.MOCK_ATTACH_FAIL === "1") {
+    const error = new Error("fal.ai status request failed: fetch failed (3 consecutive status failures)");
+    error.requestId = requestId;
+    throw error;
+  }
+  if (!String(requestId).startsWith("mock-download-")) {
+    const error = new Error(`mock upstream error: gif job failed (downstream_service_error)`);
+    error.requestId = requestId;
+    throw error;
+  }
+  if (existsSync(output)) throw new Error(`--output ${output} already exists`);
+  const [width, height] = String(imageSize).split("x").map(Number);
+  const frames = Number(frameCount);
+  const frameMs = Number(frameDurationMs);
+  if (process.env.MOCK_REAL_MEDIA === "1") drawGif(output, { frames, frameMs, width, height });
+  else {
+    mkdirSync(dirname(output), { recursive: true });
+    writeFileSync(output, structuralGif(frames, { delayCs: Math.round(frameMs / 10), width, height }), { flag: "wx" });
+  }
+  return { backend: "mock", requestId, files: [output], frameCount: frames, frameDurationMs: frameMs, size: { width, height } };
 }
 
 export async function generateImage({ prompt, model, aspectRatio, imageUrls = [], outputDir, filenamePrefix, background, signal }) {

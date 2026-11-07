@@ -61,8 +61,12 @@ export function addImage(doc: Doc, id: string, uri: string, { op = "generate", f
   landAsset(doc, { id, uri, metadata: { width: 1024, height: 1024 } }, tick());
 }
 
-/** A take recorded as `gen` records it: prompt, request and inputs from `pack`. */
-export function addTake(doc: Doc, pack: Pack, sid: string, n: number, { status = "ready", from = pack.character.anchor }: { status?: "ready" | "failed" | "generating"; from?: string | null } = {}) {
+/**
+ * A take recorded as `gen` records it: prompt, request and inputs from `pack`.
+ * A failed one fails with billing unknown, and with `requestId` when fal had
+ * accepted the job (what `gen` records for a GIF whose download failed).
+ */
+export function addTake(doc: Doc, pack: Pack, sid: string, n: number, { status = "ready", from = pack.character.anchor, requestId, reason = "upstream error" }: { status?: "ready" | "failed" | "generating"; from?: string | null; requestId?: string; reason?: string } = {}) {
   const sticker = pack.stickers.find((s) => s.id === sid)!;
   const id = S.ids.take(sid, n);
   reserveAsset(doc, {
@@ -72,8 +76,27 @@ export function addTake(doc: Doc, pack: Pack, sid: string, n: number, { status =
     cost: { usd: 0.1, basis: "estimate" }, generating: status === "generating",
   }, tick());
   if (status === "ready") landAsset(doc, { id, uri: S.paths.take(sid, n), metadata: { width: 512, height: 512 } }, tick());
-  if (status === "failed") failAsset(doc, { id, reason: "upstream error", billing: "unknown" }, tick());
+  if (status === "failed") failAsset(doc, { id, reason, billing: "unknown", ...(requestId ? { requestId } : {}) }, tick());
   return id;
+}
+
+/**
+ * What `sticker.mjs recover` records for a failed take: the same id
+ * reserved again from its own recorded call (the failed attempt moves to
+ * `params.earlier`), then landed or failed under the same fal request.
+ */
+export function recoverTake(doc: Doc, takeId: string, outcome: "landed" | "failed") {
+  const edge = doc.provenance.find((e) => e.toAssetId === takeId)!;
+  const asset = doc.assets.find((a) => a.id === takeId)!;
+  const p = edge.operation.params as Record<string, any>;
+  reserveAsset(doc, {
+    id: takeId, type: "image", name: asset.name, op: "generate", uri: asset.uri, from: [edge.fromAssetId!],
+    model: p.model, provider: p.provider, prompt: p.prompt,
+    params: { sticker: p.sticker, request: p.request, promptInputs: p.promptInputs, recover: "attach" },
+    cost: p.cost, generating: true,
+  }, tick());
+  if (outcome === "landed") landAsset(doc, { id: takeId, uri: asset.uri, metadata: { width: 512, height: 512 }, requestId: p.requestId }, tick());
+  else failAsset(doc, { id: takeId, reason: "fal.ai status HTTP 404", billing: "unknown", requestId: p.requestId }, tick());
 }
 
 /** The project of a pack whose stickers each have one ready take and whose art exists. */

@@ -182,7 +182,10 @@ export const DOWNLOAD_ATTEMPTS: number;
 
 export interface DownloadFalFileOptions {
   signal?: AbortSignal;
+  /** Default `DOWNLOAD_ATTEMPTS`, with waits of 3 s, 6 s, … between them. */
   attempts?: number;
+  /** The waits between attempts, in ms: one more attempt than waits. With `attempts` too, the two must agree. */
+  retryDelaysMs?: number[];
   /** Idle ceiling: a stream that stops moving this long is given up on. */
   idleMs?: number;
   fetchImpl?: typeof fetch;
