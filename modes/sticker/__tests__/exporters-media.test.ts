@@ -25,8 +25,16 @@ import * as S from "../skill/scripts/sticker-state.mjs";
 import { drawGif } from "./scripts-mock-generators.mjs";
 import { rawPack } from "./sticker-fixture.js";
 
-const MEDIA = mediaTierEnabled("sticker");
+const MEDIA_TIER = mediaTierEnabled("sticker");
 announceMediaTierSkip("sticker", "the sticker exporters on real media (export, decode every file, idempotency, edge cases)");
+// The tier can be on where the tools are not (the release runner has no
+// ffmpeg): skip with a reason instead of failing every setup.
+const MEDIA = MEDIA_TIER &&
+  spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0 &&
+  spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
+if (MEDIA_TIER && !MEDIA) {
+  console.warn("(skip) modes/sticker exporters on real media: ffmpeg/ffprobe not on PATH");
+}
 
 const STICKER = join(import.meta.dir, "..", "skill", "scripts", "sticker.mjs");
 const CRAFT_IO = join(import.meta.dir, "..", "..", "_shared", "scripts", "craft-project-io.mjs");
