@@ -23,8 +23,11 @@ import { loadRoster, saveRoster } from "./domain.js";
 
 const spriteManifest: ModeManifest = {
   name: "sprite",
-  version: "0.8.0",
+  version: "0.8.1",
   changelog: {
+    "0.8.1": [
+      "Animated GIF downloads keep retrying for about 90 seconds when the fal.ai file host is slow, instead of failing a paid take",
+    ],
     "0.8.0": [
       "Motion prompts follow the described subject, including people, animals, props, icons, effects and abstract animation, without inventing anatomy or forbidding requested disappearance",
       "Animation diagnostics report drawing changes, timed holds and alpha changes without treating intentional pauses or transparency as failures",

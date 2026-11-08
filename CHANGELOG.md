@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.63.0] - 2026-11-08
+
+### Added
+- **Sticker Pack mode (表情包)** — Turn one photo or original character into a pack of animated chat stickers. The character is redrawn once as a flat, outlined sticker figure, then each sticker is one GPT Image 2.6 GIF drawn from that picture, with its caption lettered in and a white die-cut border so it reads on dark chats too. Rights are asked first, and every paid step is quoted and waits for a yes.
+- **A panel that plays what ships** — Every take loops on the light and dark chat backgrounds at chat size and can be stepped frame by frame; trimming a loop plays the trimmed frames. A phone-width chat preview sends the whole pack in order, and earlier takes stay one click away.
+- **One export per store, checked against its rules** — 240-pixel GIFs with cover, icon, banner and reward art for WeChat; 512-pixel VP9 video stickers with a thumbnail for Telegram; APNGs with main and tab images for LINE. Loops are fitted to each store's size and length limits, and each platform tab shows a checklist from its official rules, the listing text to paste and an upload zip. Rules no official source confirms show as warnings, not passes.
+- **Seed pack 打工牛马** — Eight office-life stickers of the Toon Series mascot, redrawn flat and ready to export. Sticker packs also open in the hosted player.
+
+### Improved
+- **Generated GIFs survive a slow CDN** — GIF downloads from fal.ai retry for about 90 seconds before failing, and a sticker whose download failed can be fetched again from its recorded request at no new cost (Sprite's GIF source gains the same retries).
+- **Agent screenshots show the whole object** — A mode can capture an addressed object drawn whole rather than the visible viewport, or refuse with a reason, instead of returning a picture of something else.
+
 ## [3.62.0] - 2026-11-06
 
 ### Added
