@@ -25,7 +25,7 @@
     ],
     "temporary": [
       "Abre una Webcraft Session en un Project; abre Collaborate → Share, introduce tu nombre y elige Start collaboration.",
-      "Comprueba cloudflared; si falta, usa la solicitud de configuración para instalarlo y selecciona «Comprobar de nuevo» antes de activar el acceso público.",
+      "Comprueba cloudflared; si falta, usa la solicitud de configuración para instalarlo y selecciona «Comprobar de nuevo» (el icono de actualizar junto al estado) antes de activar el acceso público.",
       "Selecciona Share this workspace y abre Collaboration settings → Public access. En Connection options, mantén Free temporary address y elige Enable public access.",
       "Cuando el acceso público muestre Active, abre Share y crea una invitación de Comment & chat con su entrada Internet.",
       "Pide al visitante que abra la invitación en un navegador de otra red y probad un comentario y un mensaje de chat."
@@ -71,6 +71,6 @@
   },
   "request": "Configura y verifica {{scenario}}{{hostnameClause}} para Pneuma Skills {{appVersion}} en {{platform}} leyendo la guía local completa en {{guidePath}} (si no está disponible, obtén {{guideUrl}} desde esta aplicación privada de Pneuma en ejecución), pregúntame los datos que falten sobre {{missing}}, realiza la configuración y verifica que el visitante pueda abrir el espacio de trabajo compartido de Webcraft en su navegador y usar Comment & chat, manteniendo privada mi conversación con el Agent.",
   "lan_ready": "Listo. No hace falta un túnel.",
-  "public_recovery": "Si falla el acceso público, corrige la causa indicada, selecciona Retry stopping public access para limpiar el intento fallido y vuelve a seleccionar Enable public access; «Comprobar de nuevo» solo comprueba la instalación.",
+  "public_recovery": "Si falla el acceso público, corrige la causa indicada, selecciona Retry stopping public access para limpiar el intento fallido y vuelve a seleccionar Enable public access.",
   "steps_title": "Configuración paso a paso"
 }

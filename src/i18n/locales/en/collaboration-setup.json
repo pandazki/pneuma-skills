@@ -25,7 +25,7 @@
     ],
     "temporary": [
       "Open a Webcraft Session in a Project, then open Collaborate → Share, enter your name, and choose Start collaboration.",
-      "Check cloudflared; if missing, use the setup request to install it, then select Check again before enabling public access.",
+      "Check cloudflared; if missing, use the setup request to install it, then select Check again (the refresh icon beside the status) before enabling public access.",
       "Select Share this workspace, then open Collaboration settings → Public access. In Connection options, keep Free temporary address selected, then Enable public access.",
       "Wait for public access to become Active, then open Share and create a Comment & chat invitation using its Internet entry.",
       "Ask your visitor to open the invitation in a browser on another network and try a comment and a chat message."
@@ -71,6 +71,6 @@
   },
   "request": "Configure and verify {{scenario}}{{hostnameClause}} for Pneuma Skills {{appVersion}} on {{platform}} by reading the complete local setup guide at {{guidePath}} (if unavailable, fetch {{guideUrl}} from this running private Pneuma app), ask me for any missing {{missing}}, then execute the setup and verify the visitor browser can open the shared Webcraft workspace and use Comment & chat while keeping my Agent conversation private.",
   "lan_ready": "Ready. No tunnel needed.",
-  "public_recovery": "If public access fails, fix the reported cause, select Retry stopping public access to clear the failed attempt, then Enable public access again; Check again only checks installation.",
+  "public_recovery": "If public access fails, fix the reported cause, select Retry stopping public access to clear the failed attempt, then Enable public access again.",
   "steps_title": "Step-by-step setup"
 }

@@ -25,7 +25,7 @@
     ],
     "temporary": [
       "Project 안의 Webcraft Session을 열고 Collaborate → Share에서 이름을 입력한 후 Start collaboration을 선택하세요.",
-      "cloudflared를 확인하세요. 없으면 설정 요청으로 설치한 뒤, 공개 접속을 켜기 전에 ‘다시 확인’을 선택하세요.",
+      "cloudflared를 확인하세요. 없으면 설정 요청으로 설치한 뒤, 공개 접속을 켜기 전에 상태 옆의 ‘다시 확인’(새로고침 아이콘)을 선택하세요.",
       "Share this workspace를 선택한 후 Collaboration settings → Public access를 여세요. Connection options에서 Free temporary address를 유지하고 Enable public access를 선택하세요.",
       "공개 액세스가 Active가 되면 Share를 열고 Internet 항목으로 Comment & chat 초대를 만드세요.",
       "방문자에게 다른 네트워크의 브라우저에서 초대를 열도록 요청한 뒤, 댓글과 채팅을 시도하세요."
@@ -71,6 +71,6 @@
   },
   "request": "{{platform}}의 Pneuma Skills {{appVersion}}에서 {{scenario}}{{hostnameClause}}을 설정하고 검증하기 위해 로컬의 전체 설정 가이드 {{guidePath}}를 먼저 읽고(읽을 수 없으면 현재 실행 중인 비공개 Pneuma 앱에서 {{guideUrl}}를 가져오기), 누락된 {{missing}}를 나에게 물어본 뒤 실제 설정을 실행하고, 내 Agent 대화를 비공개로 유지하면서 방문자가 브라우저에서 공유된 Webcraft 작업 공간을 열고 Comment & chat을 사용할 수 있는지 검증해 주세요.",
   "lan_ready": "준비됨. 터널이 필요하지 않습니다.",
-  "public_recovery": "공개 접속에 실패하면 표시된 원인을 해결하고 Retry stopping public access를 선택해 실패한 시도를 정리한 뒤 Enable public access를 다시 선택하세요. ‘다시 확인’은 설치 여부만 확인합니다.",
+  "public_recovery": "공개 접속에 실패하면 표시된 원인을 해결하고 Retry stopping public access를 선택해 실패한 시도를 정리한 뒤 Enable public access를 다시 선택하세요.",
   "steps_title": "단계별 설정"
 }

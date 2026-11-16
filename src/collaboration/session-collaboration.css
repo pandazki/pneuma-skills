@@ -3,6 +3,9 @@
 .session-collaboration h2 { font-size: 16px; font-weight: 600; margin: 0; }
 .session-collaboration h3 { font-size: 13px; font-weight: 600; margin: 24px 0 10px; }
 .session-collaboration p { margin: 0 0 14px; }
+/* The setup guide is shared with the Launcher and spaced by Tailwind utilities, which sit in a cascade
+   layer; these unlayered element rules would otherwise override its margins and type size. */
+.session-collaboration .collaboration-setup-guide :is(h3, p) { margin: revert-layer; font-size: revert-layer; }
 .session-collaboration header button, .session-collaboration .text-button { font-size: 12px; color: var(--color-cc-muted); }
 .session-collaboration-tabs { display: flex; gap: 4px; padding: 0 16px 9px; border-bottom: 1px solid var(--color-cc-border); }
 .session-collaboration-tabs button { flex: 1; padding: 7px 9px; border-radius: 6px; font-size: 12px; color: var(--color-cc-muted); }

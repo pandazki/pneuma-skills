@@ -34,7 +34,8 @@ beforeEach(async () => {
   const element = win.document.createElement("div"); win.document.body.append(element); root = createRoot(element as unknown as HTMLElement);
 });
 afterEach(async () => { await act(async () => root.unmount()); await win.happyDOM.close(); restore(); });
-function button(text: string) { const found = [...win.document.querySelectorAll("button")].find((item) => item.textContent === text); if (!found) throw new Error(`Missing button: ${text}`); return found; }
+function named(text: string) { return [...win.document.querySelectorAll("button")].find((item) => (item.getAttribute("aria-label") ?? item.textContent) === text); }
+function button(text: string) { const found = named(text); if (!found) throw new Error(`Missing button: ${text}`); return found; }
 async function render(strict = false) { const content = <I18nextProvider i18n={language}><CollaborationSetupGuide/></I18nextProvider>; await act(async () => root.render(strict ? <StrictMode>{content}</StrictMode> : content)); }
 function clipboard(writeText: (value: string) => Promise<void>) { Object.defineProperty(win.navigator, "clipboard", { configurable: true, value: { writeText } }); }
 
@@ -113,6 +114,28 @@ describe("collaboration setup guide", () => {
     await act(async () => button("Check again").click());
     expect(win.document.body.textContent).toContain(en.lan_ready);
     expect(button("Copy setup request").disabled).toBe(false);
+  });
+
+  test("Check again is offered only where a re-check can change the outcome", async () => {
+    const offered = () => named(en.check_again) !== undefined;
+    await render();
+    expect(win.document.body.textContent).toContain(en.lan_ready);
+    expect(offered()).toBe(false);
+    await act(async () => button(en.paths.temporary).click());
+    expect(win.document.body.textContent).toContain(en.cloudflared_missing);
+    expect(offered()).toBe(true);
+    expect(button(en.check_again).getAttribute("title")).toBe(en.check_again);
+    expect(button(en.check_again).textContent).toBe("");
+    let finish!: (response: Response) => void;
+    respond = async () => new Promise<Response>((resolve) => { finish = resolve; });
+    await act(async () => button(en.check_again).click());
+    expect(win.document.querySelector('[role="status"]')?.textContent).toBe(en.checking);
+    expect(button(en.check_again).getAttribute("aria-disabled")).toBe("true");
+    await act(async () => button(en.check_again).click());
+    expect(calls).toHaveLength(2);
+    await act(async () => finish(Response.json({ ...status, cloudflared: { installed: true } })));
+    expect(win.document.body.textContent).toContain(en.cloudflared_found);
+    expect(offered()).toBe(false);
   });
 
   test("a late aborted load cannot overwrite a newer status under StrictMode", async () => {

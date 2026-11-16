@@ -25,7 +25,7 @@
     ],
     "temporary": [
       "開啟 Project 中的 Webcraft Session，開啟 Collaborate → Share，輸入名字，然後選擇 Start collaboration。",
-      "檢查 cloudflared；若未偵測到，使用設定請求安裝，再選取「重新檢查」，之後才啟用公開存取。",
+      "檢查 cloudflared；若未偵測到，使用設定請求安裝，再選取狀態旁的「重新檢查」（重新整理圖示），之後才啟用公開存取。",
       "選擇 Share this workspace，再開啟 Collaboration settings → Public access，在 Connection options 中保留 Free temporary address，然後選擇 Enable public access。",
       "等待公開存取顯示 Active，再開啟 Share，建立 Comment & chat 邀請並選擇 Internet 連結。",
       "請訪客使用其他網路的瀏覽器開啟邀請，並嘗試留言和聊天。"
@@ -71,6 +71,6 @@
   },
   "request": "請為 {{platform}} 上的 Pneuma Skills {{appVersion}} 設定並驗證{{scenario}}{{hostnameClause}}，先閱讀本機完整設定指南 {{guidePath}}（若無法讀取，則從目前執行中的私有 Pneuma 應用程式取得 {{guideUrl}}），詢問我缺少的{{missing}}後實際執行設定，並驗證訪客可在瀏覽器中開啟分享的 Webcraft 工作區並使用 Comment & chat，同時保持我的 Agent 對話私密。",
   "lan_ready": "已就緒，無需隧道。",
-  "public_recovery": "若公開存取失敗，請排除顯示的原因，選取 Retry stopping public access 清理失敗的嘗試，再次選取 Enable public access；「重新檢查」只會檢查安裝狀態。",
+  "public_recovery": "若公開存取失敗，請排除顯示的原因，選取 Retry stopping public access 清理失敗的嘗試，再次選取 Enable public access。",
   "steps_title": "逐步設定指南"
 }

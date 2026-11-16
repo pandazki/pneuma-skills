@@ -194,8 +194,9 @@ when updating an existing link. Existing members can use the gear button to open
 
 ## Troubleshooting and completion
 
-- A missing executable needs installation and **Check again**, not new account
-  credentials. A failed public start currently requires **Retry stopping public
+- A missing executable needs installation and **Check again** (the refresh icon
+  beside the setup status), not new account credentials. A failed public start
+  currently requires **Retry stopping public
   access** before enabling again. The private equivalent is
   `POST /api/collaboration/internet-access` with `{"enabled":false}`; wait for
   confirmed `off` before retrying. If cleanup still fails, diagnose the reported

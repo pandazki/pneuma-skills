@@ -25,7 +25,7 @@
     ],
     "temporary": [
       "打开 Project 中的 Webcraft Session，打开 Collaborate → Share，输入名字，然后选择 Start collaboration。",
-      "先检查 cloudflared；若尚未安装，复制配置请求让 Agent 安装，再点击“重新检查”，然后再开启公网访问。",
+      "先检查 cloudflared；若尚未安装，复制配置请求让 Agent 安装，再点击状态旁的“重新检查”（刷新图标），然后再开启公网访问。",
       "选择 Share this workspace，再打开 Collaboration settings → Public access，在 Connection options 中保留 Free temporary address，然后选择 Enable public access。",
       "等待公网访问显示 Active，再打开 Share，创建 Comment & chat 邀请并选择 Internet 链接。",
       "请访客从其他网络的浏览器中打开邀请，并尝试评论和聊天。"
@@ -71,6 +71,6 @@
   },
   "request": "请为 {{platform}} 上的 Pneuma Skills {{appVersion}} 配置并验证{{scenario}}{{hostnameClause}}，先阅读本机完整配置指南 {{guidePath}}（若无法读取则从当前运行的私有 Pneuma 应用获取 {{guideUrl}}），询问缺失的{{missing}}后实际执行配置，并验证访客可在浏览器中打开共享的 Webcraft 工作区并使用评论和聊天，同时保持我的 Agent 对话私密。",
   "lan_ready": "已就绪，无需隧道。",
-  "public_recovery": "若公网访问失败，请先修复错误原因，点击 Retry stopping public access 清理失败状态，再重新 Enable public access；“重新检查”仅检测安装情况。",
+  "public_recovery": "若公网访问失败，请先修复错误原因，点击 Retry stopping public access 清理失败状态，再重新 Enable public access。",
   "steps_title": "逐步配置指南"
 }

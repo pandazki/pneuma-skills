@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
+import { Icon } from "./Icon.js";
 import { createSetupRequest, readSetupStatus, setupHostname, type CollaborationSetupPath, type CollaborationSetupStatus } from "./setup-request.js";
 
 const focus = "focus-visible:ring-2 focus-visible:ring-cc-primary focus-visible:ring-offset-2 focus-visible:ring-offset-cc-bg";
@@ -16,6 +17,7 @@ export function CollaborationSetupGuide() {
   const [loadError, setLoadError] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
+  const [rechecking, setRechecking] = useState(false);
   const request = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const copyOperation = useRef(0);
@@ -70,8 +72,18 @@ export function CollaborationSetupGuide() {
     }
   };
 
+  // The control stays in place, spinning, while the check it started runs, instead of vanishing until the result.
+  const recheck = () => {
+    if (loading) return;
+    setRechecking(true);
+    void refresh().finally(() => { setRechecking(false); });
+  };
+
   const steps = t(`steps.${path}`, { returnObjects: true }) as string[];
-  return <section aria-labelledby={`${id}-title`} className="min-w-0 text-xs leading-relaxed text-cc-fg">
+  // Checking reads only facts that can change while the guide is open: a failed status read, or a
+  // cloudflared install the public paths still wait for. Same-network setup needs neither.
+  const canRecheck = loadError || (path !== "lan" && status !== null && !status.cloudflared.installed);
+  return <section aria-labelledby={`${id}-title`} className="collaboration-setup-guide min-w-0 text-xs leading-relaxed text-cc-fg">
     <h3 id={`${id}-title`} className="text-sm font-semibold">{t("title")}</h3>
     <p className="mt-1.5 text-cc-muted">{t("intro")}</p>
     <div role="group" aria-label={t("path_label")} className="mt-4 flex flex-wrap gap-1.5">
@@ -83,9 +95,11 @@ export function CollaborationSetupGuide() {
       <input id={`${id}-hostname`} type="text" autoComplete="off" spellCheck={false} value={hostname} onChange={(event) => setHostname(event.target.value)} aria-invalid={!validHostname} aria-describedby={!validHostname ? `${id}-hostname-error` : undefined} placeholder={t("hostname_placeholder")} className={`mt-1.5 w-full min-w-0 appearance-none rounded-md border border-cc-border bg-cc-input-bg px-3 py-2 text-xs text-cc-fg placeholder:text-cc-muted caret-cc-primary ${focus}`}/>
       {!validHostname && <p id={`${id}-hostname-error`} role="alert" className="mt-1.5 text-cc-error">{t("hostname_error")}</p>}
     </div>}
-    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-cc-muted">
+    <div className="mt-4 flex items-start gap-1.5 text-cc-muted">
       <p role="status" className={loadError ? "text-cc-error" : undefined}>{loading ? t("checking") : loadError ? t("check_error") : status ? t(path === "lan" ? "lan_ready" : status.cloudflared.installed ? "cloudflared_found" : "cloudflared_missing") : ""}</p>
-      <button type="button" disabled={loading} onClick={() => void refresh()} className={`rounded underline underline-offset-4 hover:text-cc-fg disabled:opacity-50 cursor-pointer ${focus}`}>{t("check_again")}</button>
+      {(canRecheck || rechecking) && <button type="button" aria-label={t("check_again")} title={t("check_again")} aria-disabled={loading} onClick={recheck} className={`inline-grid size-5 shrink-0 place-items-center rounded hover:text-cc-fg hover:bg-cc-hover cursor-pointer aria-disabled:cursor-default ${focus}`}>
+        <span className={loading ? "motion-safe:animate-spin" : undefined}><Icon name="refresh" size={13}/></span>
+      </button>}
     </div>
     <button type="button" disabled={!prompt || loading || copyState === "copying"} onClick={() => void copy()} className={`button primary mt-4 w-full rounded-md bg-cc-primary px-3 py-2.5 text-xs font-semibold text-cc-bg [.cc-theme-light_&]:!text-cc-fg hover:brightness-110 disabled:opacity-50 cursor-pointer ${focus}`}>{copyState === "copied" ? t("copied") : copyState === "copying" ? t("copying") : t("copy_request")}</button>
     <p className="mt-1.5 text-cc-muted">{t("paste_hint")}</p>

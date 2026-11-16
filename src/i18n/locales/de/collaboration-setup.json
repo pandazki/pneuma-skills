@@ -25,7 +25,7 @@
     ],
     "temporary": [
       "Öffne eine Webcraft Session in einem Project, öffne Collaborate → Share, gib deinen Namen ein und wähle Start collaboration.",
-      "Prüfe den Status von cloudflared; falls es fehlt, installiere es mit der Einrichtungsanfrage und wähle „Erneut prüfen“, bevor du den öffentlichen Zugriff aktivierst.",
+      "Prüfe den Status von cloudflared; falls es fehlt, installiere es mit der Einrichtungsanfrage und wähle „Erneut prüfen“ (das Aktualisieren-Symbol neben dem Status), bevor du den öffentlichen Zugriff aktivierst.",
       "Wähle Share this workspace und öffne Collaboration settings → Public access. Lass unter Connection options die Option Free temporary address ausgewählt und wähle Enable public access.",
       "Warte, bis der öffentliche Zugriff Active anzeigt, öffne Share und erstelle eine Einladung für Comment & chat über den Eintrag Internet.",
       "Bitte deinen Besucher, die Einladung in einem Browser in einem anderen Netzwerk zu öffnen; testet einen Kommentar und eine Chatnachricht."
@@ -71,6 +71,6 @@
   },
   "request": "Richte {{scenario}}{{hostnameClause}} für Pneuma Skills {{appVersion}} auf {{platform}} ein und prüfe sie, indem du die vollständige lokale Anleitung unter {{guidePath}} liest (falls sie nicht verfügbar ist, rufe {{guideUrl}} aus dieser laufenden privaten Pneuma-App ab), mich nach fehlenden Angaben zu {{missing}} fragst, die Einrichtung ausführst und prüfst, ob Besucher den geteilten Webcraft-Arbeitsbereich im Browser öffnen und Comment & chat nutzen können, während mein Gespräch mit dem Agent privat bleibt.",
   "lan_ready": "Bereit. Kein Tunnel nötig.",
-  "public_recovery": "Falls der öffentliche Zugriff fehlschlägt, behebe die gemeldete Ursache, wähle Retry stopping public access zum Bereinigen des fehlgeschlagenen Versuchs und dann erneut Enable public access; „Erneut prüfen“ prüft nur die Installation.",
+  "public_recovery": "Falls der öffentliche Zugriff fehlschlägt, behebe die gemeldete Ursache, wähle Retry stopping public access zum Bereinigen des fehlgeschlagenen Versuchs und dann erneut Enable public access.",
   "steps_title": "Einrichtung Schritt für Schritt"
 }

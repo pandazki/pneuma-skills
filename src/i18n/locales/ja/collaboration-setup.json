@@ -25,7 +25,7 @@
     ],
     "temporary": [
       "Project の Webcraft Session を開き、Collaborate → Share で名前を入力して Start collaboration を選びます。",
-      "cloudflared を確認し、ない場合は設定リクエストでインストールします。公開アクセスを有効にする前に「再確認」を選びます。",
+      "cloudflared を確認し、ない場合は設定リクエストでインストールします。公開アクセスを有効にする前に、状態の横にある「再確認」（更新アイコン）を選びます。",
       "Share this workspace を選び、Collaboration settings → Public access を開きます。Connection options で Free temporary address を選び、Enable public access を選びます。",
       "公開アクセスが Active になったら Share を開き、Comment & chat の招待を作成して Internet の項目を選びます。",
       "訪問者に別のネットワークのブラウザーで招待を開いてもらい、コメントとチャットを試します。"
@@ -71,6 +71,6 @@
   },
   "request": "{{platform}} 上の Pneuma Skills {{appVersion}} で{{scenario}}{{hostnameClause}}を設定・検証するため、まずローカルの完全な設定ガイド {{guidePath}} を読み (読めない場合は実行中の非公開 Pneuma アプリから {{guideUrl}} を取得)、不足している{{missing}}を私に確認してから設定を実行し、Agent との会話を非公開に保ったまま、訪問者がブラウザーで共有 Webcraft ワークスペースを開き、Comment & chat を使えることを検証してください。",
   "lan_ready": "準備完了。トンネルは不要です。",
-  "public_recovery": "公開アクセスに失敗したら、表示された原因を解消し、Retry stopping public access で失敗した試行を整理してから、再度 Enable public access を選んでください。「再確認」はインストール状況のみを確認します。",
+  "public_recovery": "公開アクセスに失敗したら、表示された原因を解消し、Retry stopping public access で失敗した試行を整理してから、再度 Enable public access を選んでください。",
   "steps_title": "手順を確認する"
 }
