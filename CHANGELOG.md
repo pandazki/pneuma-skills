@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.63.1] - 2026-11-16
+
+### Fixed
+- **Collaboration setup re-check appears only when it can help** — The setup guide no longer shows an always-on "Check again" link. It appears only after the status could not be read, or while Temporary internet or Own domain still waits for cloudflared, as a small refresh icon that spins while it checks. Same network shows just "Ready. No tunnel needed."
+- **Setup guide spacing in the Session collaboration panel** — The panel's own paragraph and heading styles no longer override the guide's layout, so the description no longer touches the connection choices and the status line sits level with its control.
+
 ## [3.63.0] - 2026-11-08
 
 ### Added
