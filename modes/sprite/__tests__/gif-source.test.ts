@@ -520,7 +520,15 @@ esac
     const measured = sizes();
     expect(measured.motions.map((m: { id: string }) => m.id)).toEqual(["walk", "idle"]);
     expect(measured.spread).toBeLessThanOrEqual(0.035);
-    expect(measured.warnings).toEqual([]);
+    // Labels are optional when drawtext or its font is unavailable. Probe
+    // rendering independently so an unrelated warning is still a failure.
+    const labels = spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=s=64x64:d=1",
+      "-vf", "drawtext=text='idle 32':x=4:y=4:fontsize=16:fontcolor=white", "-frames:v", "1", "-f", "null", "-"], { encoding: "utf-8" });
+    expect(labels.error).toBeUndefined();
+    if (labels.status !== 0) expect(labels.stderr).toMatch(/drawtext|font/i);
+    expect(measured.warnings).toEqual(labels.status === 0 ? [] : [
+      "ffmpeg's drawtext filter could not run here (missing, or no font to draw with) — sizes.png carries no labels; its panels are in the order of `motions`",
+    ]);
     // Every frame still came through, scaled once.
     expect(walk.frameCount).toBe(FRAMES);
     expect(walk.cell.height).toBeLessThan(H);
