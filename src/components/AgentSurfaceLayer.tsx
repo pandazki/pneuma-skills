@@ -208,7 +208,7 @@ export default function AgentSurfaceLayer() {
         className="agent-surface-host fixed z-50 flex flex-col rounded-2xl overflow-hidden
                    border border-cc-primary/20 ring-1 ring-white/5
                    shadow-[0_0_40px_rgba(249,115,22,0.15)]
-                   before:absolute before:inset-0 before:bg-cc-surface/80 before:backdrop-blur-2xl before:-z-10"
+                   before:absolute before:inset-0 before:bg-cc-surface/80 before:-z-10"
         data-animating={animating}
         aria-hidden={hidden}
         style={{

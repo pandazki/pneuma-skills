@@ -412,7 +412,7 @@ export default function ChatInput() {
   const hasAnnotations = annotations.length > 0;
 
   return (
-    <div className="chat-input-card p-3 bg-cc-surface/70 backdrop-blur-2xl border border-cc-primary/20 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
+    <div className="chat-input-card p-3 bg-cc-surface/70 border border-cc-primary/20 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
       <CollaborationFeedbackAttachments attachments={collaborationFeedback} onRemove={removeCollaborationFeedback}/>
       {sendError && <p role="alert" className="mb-2 px-1 text-xs text-cc-error">{sendError}</p>}
       {/* Annotations list (annotate mode) */}
@@ -639,7 +639,7 @@ export default function ChatInput() {
             }
             disabled={!cliConnected}
             rows={1}
-            className="w-full bg-cc-surface/80 backdrop-blur-xl text-cc-fg rounded-2xl px-4 py-3 text-sm resize-none placeholder-cc-muted/50 border border-cc-border/50 shadow-inner focus:outline-none focus:border-cc-primary/60 focus:ring-1 focus:ring-cc-primary/30 disabled:opacity-50 transition-all"
+            className="w-full bg-cc-surface/80 text-cc-fg rounded-2xl px-4 py-3 text-sm resize-none placeholder-cc-muted/50 border border-cc-border/50 shadow-inner focus:outline-none focus:border-cc-primary/60 focus:ring-1 focus:ring-cc-primary/30 disabled:opacity-50 transition-all"
           />
         </div>
 

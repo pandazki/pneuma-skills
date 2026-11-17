@@ -89,7 +89,9 @@ export function SessionCollaborationProvider({ children }: { children: ReactNode
           const message = failure instanceof Error ? failure.message : "Reference recovery is unavailable.";
           setReferenceRecoveryError(message);
         }
-        setStatus(next);
+        // The 5 s poll mostly returns what it returned before. A fresh object
+        // would re-render every context consumer, including the mode viewer.
+        setStatus((previous) => previous && JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
       }
     } catch (failure) {
       if (!signal?.aborted && sequence === refreshSequence.current) throw failure;

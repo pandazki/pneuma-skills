@@ -123,6 +123,44 @@
   display: none;
 }
 
+/* The two dark-mode glows, as static radial gradients. They used to be
+ * ellipses under `filter: blur(100–120px)` with an endless opacity pulse:
+ * the blur is a GPU pass on every frame that touches them, and the pulse
+ * produced a frame on every vsync, which also re-ran every backdrop blur
+ * above them. With the in-window chat, that load made the whole window
+ * flicker while content scrolled. Each box is the old ellipse grown by
+ * about 2.5σ of its blur, and the stops follow the blurred profile
+ * (peak ≈ 94% of the old /10 fill, half at the old edge). */
+.session-shell-mesh {
+  position: absolute;
+  pointer-events: none;
+}
+.session-shell-mesh-primary {
+  top: calc(-10% - 300px);
+  left: calc(-10% - 300px);
+  width: calc(60% + 600px);
+  height: calc(50% + 600px);
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--color-cc-primary) 9.4%, transparent) 0%,
+    color-mix(in srgb, var(--color-cc-primary) 8.5%, transparent) 25%,
+    color-mix(in srgb, var(--color-cc-primary) 5%, transparent) 50%,
+    color-mix(in srgb, var(--color-cc-primary) 1.5%, transparent) 75%,
+    transparent 100%);
+}
+.session-shell-mesh-secondary {
+  /* Tailwind purple-500 (#a855f7), the color the glow has always used. */
+  top: calc(20% - 250px);
+  right: calc(-10% - 250px);
+  width: calc(50% + 500px);
+  height: calc(60% + 500px);
+  background: radial-gradient(closest-side,
+    rgb(168 85 247 / 0.094) 0%,
+    rgb(168 85 247 / 0.085) 25%,
+    rgb(168 85 247 / 0.05) 50%,
+    rgb(168 85 247 / 0.015) 75%,
+    transparent 100%);
+}
+
 .cc-theme-light .session-shell-card {
   /* Three-layer drop with warm undertone — lifts the card cleanly off
    * the off-white surface without spilling color into the gutter. */

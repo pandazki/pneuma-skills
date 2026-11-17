@@ -452,10 +452,10 @@ function SessionApp() {
   return (
     <div className={`flex flex-col h-screen bg-cc-bg text-cc-fg relative overflow-clip p-4 sm:p-6 md:p-8 ${themeClass}`}>
       {/* Immersive mesh gradient — dark-mode atmospherics; hidden in light. */}
-      <div className="session-shell-mesh absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-cc-primary/10 blur-[120px] rounded-full pointer-events-none animate-[pulse-dot_8s_ease-in-out_infinite]" />
-      <div className="session-shell-mesh absolute top-[20%] right-[-10%] w-[50%] h-[60%] bg-purple-500/10 blur-[100px] rounded-full pointer-events-none animate-[pulse-dot_10s_ease-in-out_infinite_reverse]" />
+      <div className="session-shell-mesh session-shell-mesh-primary" />
+      <div className="session-shell-mesh session-shell-mesh-secondary" />
 
-      <div className="session-shell-card relative z-10 flex flex-col flex-1 border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5 before:absolute before:inset-0 before:bg-cc-surface/40 before:backdrop-blur-3xl before:-z-10">
+      <div className="session-shell-card relative z-10 flex flex-col flex-1 border border-cc-primary/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(249,115,22,0.15)] ring-1 ring-white/5 before:absolute before:inset-0 before:bg-cc-surface/40 before:-z-10">
         <TopBar />
         <Group orientation="horizontal" className="flex-1 min-h-0">
           {/* Left tool dock — only present when a tool tab is open. Chat is
