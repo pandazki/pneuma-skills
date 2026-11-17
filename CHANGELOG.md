@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.63.3] - 2026-11-17
+
+### Fixed
+- **Session window flicker while content scrolls** — The session shell no longer redraws the whole window on every frame. The dark theme's background glows are static gradients instead of blurred shapes with an endless pulse, and the large frosted-glass layers behind the card, the in-window agent chat and its input are gone. These made the window flicker while pages or long chats scrolled, until the chat was torn off into its own window. The look is unchanged apart from the glow no longer pulsing; GPU work while scrolling drops by about two thirds, and an idle session draws nothing.
+- **Fewer background re-renders** — The 5-second collaboration status check no longer re-renders the open mode viewer when nothing changed.
+- **Windows desktop builds** — The launcher skeleton page now builds on Windows (3.63.2's Windows installers were rebuilt with this fix after release).
+
 ## [3.63.2] - 2026-11-17
 
 ### Improved
