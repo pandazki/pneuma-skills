@@ -16,6 +16,16 @@ function getInitialTheme(): ThemePreference {
   return "system";
 }
 
+/**
+ * The theme a page renders before the server's preference arrives. The
+ * launcher skeleton's boot script (snapshot/launcher-skeleton.ts) repeats this
+ * in plain JavaScript for the first paint; its test keeps the two in step.
+ */
+export function resolveInitialTheme(): ResolvedTheme {
+  const preference = getInitialTheme();
+  return preference === "system" ? getSystemTheme() : preference;
+}
+
 export interface AppTheme {
   preference: ThemePreference;
   resolved: ResolvedTheme;

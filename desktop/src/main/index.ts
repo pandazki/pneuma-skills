@@ -1,10 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, Menu } from "electron";
+import { app, dialog, ipcMain, shell, Menu } from "electron";
 import { net } from "electron";
 import path from "node:path";
 import { createTray } from "./tray.js";
 import {
   createLauncherWindow,
   prepareLauncherWindow,
+  showLauncherSkeleton,
   createModeWindow,
   getLauncherWindow,
   getAllModeWindows,
@@ -162,7 +163,7 @@ function handlePneumaUrl(url: string) {
 
 /**
  * True for a `pneuma://handoff` URL that should run in background mode
- * (the default). Used on cold start to suppress the splash + launcher window
+ * (the default). Used on cold start to suppress the launcher window
  * so a handoff-triggered launch is invisible until the session finishes.
  */
 function isBackgroundHandoffUrl(url: string): boolean {
@@ -315,7 +316,7 @@ async function showLauncher() {
 app.whenReady().then(async () => {
   markBoot("electron-ready");
   if (!gotLock || isQuitting) return;
-  // A pending background-handoff cold start must stay invisible: no splash,
+  // A pending background-handoff cold start must stay invisible: no skeleton,
   // no launcher window, no dock icon — only the hidden background session.
   const bgColdStart = pendingPneumaUrls.length > 0 && pendingPneumaUrls.every(isBackgroundHandoffUrl);
 
@@ -420,20 +421,16 @@ app.whenReady().then(async () => {
   }
 
   if (isQuitting) return;
-  // Show splash screen while loading (skipped for a background cold start)
-  const splash = bgColdStart ? null : createSplashWindow();
+  // The launcher window opens at once on the launcher's skeleton and fills in
+  // once the service answers (skipped for a background cold start).
   const preparedLauncher = bgColdStart ? null : prepareLauncherWindow();
-  const closeSplash = () => { if (splash && !splash.isDestroyed()) splash.destroy(); };
-  // Preserve visible feedback until Chromium actually reveals the launcher.
-  preparedLauncher?.once("show", closeSplash);
-  preparedLauncher?.once("closed", closeSplash);
+  if (preparedLauncher) showLauncherSkeleton();
 
-  // Start Bun while the hidden launcher window prepares its renderer.
+  // Start Bun while the launcher window shows its skeleton.
   try {
     await spawnLauncherProcess();
   } catch (err) {
     console.error("Failed to start launcher process:", err);
-    closeSplash();
     if (preparedLauncher && !preparedLauncher.isDestroyed()) preparedLauncher.destroy();
     if (!isQuitting) app.quit();
     return;
@@ -490,7 +487,6 @@ app.whenReady().then(async () => {
   if (backgroundOnly) {
     // Also cover a cold-launch URL delivered while the asynchronous shell runs.
     if (preparedLauncher && !preparedLauncher.isDestroyed()) preparedLauncher.destroy();
-    closeSplash();
     if (process.platform === "darwin") app.dock?.hide();
   }
   // Every received request owns an intent; a later URL must not replace it.
@@ -530,75 +526,3 @@ ipcMain.handle("pneuma:recheck-claude", async () => {
   const { detectClaude } = await import("./claude-detector.js");
   return detectClaude();
 });
-
-// ── Splash screen ───────────────────────────────────────────────────────────
-
-function createSplashWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 280,
-    height: 280,
-    frame: false,
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    center: true,
-    backgroundColor: "#09090b",
-    roundedCorners: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
-  });
-
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    height: 100vh; background: #09090b; -webkit-app-region: drag;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  }
-  .logo {
-    width: 64px; height: 64px; border-radius: 16px;
-    animation: breathe 2s ease-in-out infinite;
-  }
-  @keyframes breathe {
-    0%, 100% { filter: brightness(1); transform: scale(1); }
-    50% { filter: brightness(1.1); transform: scale(1.03); }
-  }
-  .text {
-    margin-top: 20px;
-    color: #a1a1aa; font-size: 13px; font-weight: 500; letter-spacing: 0.02em;
-  }
-  .dots { display: inline-flex; gap: 4px; margin-left: 4px; }
-  .dots span {
-    width: 3px; height: 3px; border-radius: 50%; background: #f97316;
-    animation: dot 1.2s ease-in-out infinite;
-  }
-  .dots span:nth-child(2) { animation-delay: 0.2s; }
-  .dots span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes dot {
-    0%, 60%, 100% { opacity: 0.3; transform: scale(1); }
-    30% { opacity: 1; transform: scale(1.3); }
-  }
-</style></head>
-<body>
-  <img class="logo" src="data:image/png;base64,${getSplashLogoBase64()}" />
-  <div class="text">Loading<span class="dots"><span></span><span></span><span></span></span></div>
-</body></html>`;
-
-  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-  return win;
-}
-
-function getSplashLogoBase64(): string {
-  try {
-    const logoPath = app.isPackaged
-      ? path.join(process.resourcesPath, "pneuma", "dist", "logo.png")
-      : path.join(__dirname, "..", "..", "..", "public", "logo.png");
-    const fs = require("node:fs");
-    return fs.readFileSync(logoPath).toString("base64");
-  } catch {
-    return ""; // Fallback: empty image
-  }
-}

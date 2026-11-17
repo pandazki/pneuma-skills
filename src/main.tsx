@@ -9,6 +9,8 @@ import i18n, { syncLocaleFromServer } from "./i18n/index.js";
 import { getApiBase } from "./utils/api.js";
 import App from "./App.js";
 import { useStore } from "./store.js";
+import { readEntryParams } from "./launcher-route.js";
+import { preloadLauncher } from "./launcher-preload.js";
 
 // Fire-and-forget: apply user-saved locale once the server responds.
 // Initial render uses navigator-detected locale, which avoids blank-frame
@@ -39,8 +41,13 @@ void syncLocaleFromServer(getApiBase());
 (window as any).__PNEUMA_STORE__ = useStore;
 (window as any).__PNEUMA_I18N__ = { i18next: i18n, reactI18next: ReactI18next };
 
-createRoot(document.getElementById("root")!).render(
+const root = createRoot(document.getElementById("root")!);
+const render = () => root.render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
+// A launcher URL is already showing its skeleton; render once the launcher's
+// code is here so React commits the launcher itself (see launcher-preload.ts).
+if (readEntryParams(location.search).opensLauncher) void preloadLauncher().then(render);
+else render();

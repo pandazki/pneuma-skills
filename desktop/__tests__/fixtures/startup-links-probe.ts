@@ -53,12 +53,14 @@ mock.module(resolve(root, "bun-process.js"), () => ({
   getLauncherUrl: () => launcherReady ? "http://localhost:1234" : null, killAllProcesses() {},
 }));
 let launcher: FakeWindow | undefined;
+let skeletonShown = 0;
 const prepareLauncher = () => {
   if (!launcher || launcher.isDestroyed()) launcher = new FakeWindow({ show: false });
   return launcher;
 };
 mock.module(resolve(root, "window-manager.js"), () => ({
   prepareLauncherWindow: prepareLauncher,
+  showLauncherSkeleton: () => { skeletonShown++; prepareLauncher().show(); },
   createLauncherWindow: (url: string) => { launcherNavigations.push(url); prepareLauncher().show(); },
   getLauncherWindow: () => launcher?.isDestroyed() ? null : launcher,
   createModeWindow: (url: string) => foregroundSessions.push(url), getAllModeWindows: () => [],
@@ -79,12 +81,29 @@ mock.module(resolve(root, "build-policy.js"), () => ({
 const handoff = (intent: string) => `pneuma://handoff?mode=doc&intent=${intent}`;
 const openUrl = (url: string) => app.emit("open-url", { preventDefault() {} }, url);
 const secondInstance = (url: string) => app.emit("second-instance", {}, ["pneuma", url]);
+if (scenario === "foreground-cold") {
+  // An ordinary launch: the launcher window is on screen with its skeleton
+  // while the service starts, and that same window is what navigates.
+  await import(resolve(root, "index.ts"));
+  finishElectron();
+  await started;
+  assert.equal(windows.length, 1, "Startup opens exactly one window");
+  assert.equal(skeletonShown, 1);
+  assert.equal(launcher?.isVisible(), true, "The launcher window shows its skeleton before the service is ready");
+  assert.deepEqual(launcherNavigations, []);
+  finishLauncher();
+  await Bun.sleep(0);
+  assert.deepEqual(launcherNavigations, ["http://localhost:1234"]);
+  assert.equal(windows.length, 1, "The service URL loads into the window already showing the skeleton");
+  process.exit(0);
+}
 process.argv.push(handoff("initial"));
 await import(resolve(root, "index.ts"));
 finishElectron();
 await started;
 assert.equal(app.isReady(), true);
-assert.equal(windows.length, 0, "A background cold start must create neither splash nor launcher");
+assert.equal(windows.length, 0, "A background cold start must create no launcher window");
+assert.equal(skeletonShown, 0);
 openUrl(handoff("second"));
 if (scenario === "mixed-open") openUrl("pneuma://open");
 if (scenario === "mixed-handoff") openUrl(`${handoff("foreground")}&background=0`);

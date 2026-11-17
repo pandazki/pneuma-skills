@@ -4,6 +4,7 @@ import { parseExternalPopupUrl } from "./window-policy.js";
 import { logEntry } from "./logger.js";
 import { getLauncherUrl } from "./bun-process.js";
 import { markBoot } from "./boot-profile.js";
+import { LAUNCHER_BACKGROUND, launcherSkeletonPage, resolveLauncherTheme } from "./launcher-skeleton.js";
 
 let launcherWindow: BrowserWindow | null = null;
 const modeWindows: Set<BrowserWindow> = new Set();
@@ -34,6 +35,7 @@ async function openPopupInBrowser(url: string): Promise<void> {
 
 let launcherNavigationStarted = false;
 let launcherNavigationSequence = 0;
+let launcherSkeletonRequested = false;
 
 /** Allocate Chromium while Bun starts; no page, focus, or reveal is requested yet. */
 export function prepareLauncherWindow(): BrowserWindow {
@@ -47,7 +49,7 @@ export function prepareLauncherWindow(): BrowserWindow {
     height,
     minWidth: 800,
     minHeight: 500,
-    backgroundColor: "#09090b",
+    backgroundColor: LAUNCHER_BACKGROUND[resolveLauncherTheme()],
     show: false,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 18 },
@@ -60,13 +62,15 @@ export function prepareLauncherWindow(): BrowserWindow {
   });
   launcherWindow = win;
   launcherNavigationStarted = false;
+  launcherSkeletonRequested = false;
   markBoot("launcher-window-created");
 
   const reveal = () => {
-    // A prepared about:blank window is not the launcher's first paint.
-    if (win.isDestroyed() || !launcherNavigationStarted || !/^https?:/.test(win.webContents.getURL())) return;
+    // A prepared about:blank window has nothing to show; the skeleton page or
+    // the launcher itself is the first paint worth revealing.
+    if (win.isDestroyed() || !(launcherNavigationStarted || launcherSkeletonRequested) || !/^(https?|file):/.test(win.webContents.getURL())) return;
     win.removeListener("ready-to-show", reveal);
-    markBoot("launcher-ready-to-show");
+    markBoot(launcherNavigationStarted ? "launcher-ready-to-show" : "launcher-skeleton-ready-to-show");
     win.show();
   };
   win.on("ready-to-show", reveal);
@@ -95,9 +99,34 @@ export function prepareLauncherWindow(): BrowserWindow {
     if (launcherWindow === win) {
       launcherWindow = null;
       launcherNavigationStarted = false;
+      launcherSkeletonRequested = false;
     }
   });
   return win;
+}
+
+/**
+ * Open the prepared launcher window right away on the launcher's skeleton
+ * while the service starts. The same window then navigates to the launcher,
+ * whose first paint is that same skeleton, so startup is one window filling in.
+ */
+export function showLauncherSkeleton(): void {
+  const win = launcherWindow;
+  if (!win || win.isDestroyed() || launcherNavigationStarted || launcherSkeletonRequested) return;
+  launcherSkeletonRequested = true;
+  const page = launcherSkeletonPage();
+  if (!page) {
+    // No production build in this checkout: the themed window is still immediate feedback.
+    logEntry("warn", "window-manager", "No built launcher skeleton page; opening the launcher window without it");
+    win.show();
+    return;
+  }
+  void win.loadFile(page, { query: { theme: resolveLauncherTheme() } }).catch((error: Error & { code?: string }) => {
+    // The launcher navigation replaces this page as soon as the service is ready.
+    if (win.isDestroyed() || launcherNavigationStarted || error.code === "ERR_ABORTED") return;
+    logEntry("warn", "window-manager", `Launcher skeleton page failed to load: ${error.message}`);
+    if (!win.isVisible()) win.show();
+  });
 }
 
 /** Reuse the prepared singleton, navigating it once the service URL is known. */

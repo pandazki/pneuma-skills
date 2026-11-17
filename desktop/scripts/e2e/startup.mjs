@@ -182,6 +182,9 @@ async function launch(fixture, sampleName) {
         if (pending.has(win)) return;
         pending.add(win);
         observe(win);
+        // Best-effort evidence of what the launcher window shows while the service starts.
+        win.waitForLoadState("load").then(() => win.url().startsWith("file:")
+          ? win.screenshot({ path: join(out, `${sampleName}-skeleton.png`), timeout: 2000 }) : undefined).catch(() => {});
         win.waitForURL(/^http:\/\/(localhost|127\.0\.0\.1):/, { timeout: 30_000 })
           .then(() => { cleanup(); resolve(win); }).catch(() => {});
       };
@@ -194,7 +197,7 @@ async function launch(fixture, sampleName) {
         events: global.__pneumaE2E.events,
         windows: BrowserWindow.getAllWindows().map((win) => ({ visible: win.isVisible(), url: win.webContents.getURL() })),
       }));
-      assert.equal(state.windows.length, 1, "Cold background handoff must not create a launcher or splash");
+      assert.equal(state.windows.length, 1, "Cold background handoff must not create a launcher window");
       assert.equal(state.windows[0].visible, false, "Background handoff window must remain hidden");
       assert(!state.events.some((event) => event.stage === "window-shown"), "Cold background handoff flashed a window");
       const shown = app.evaluate(({ BrowserWindow }) => new Promise((resolve, reject) => {
@@ -227,9 +230,13 @@ async function launch(fixture, sampleName) {
     }));
     assert.equal(mainState.name, "Pneuma Skills Preview", "Preview policy must disable updates and protocol registration");
     assert(mainState.userData.startsWith(fixture.appData), "Application profile escaped isolated directory");
-    const shown = mainState.events.find((event) => event.stage === "window-shown" && /^http:\/\//.test(event.url));
-    assert(shown, "Real HTTP launcher window was never shown");
-    const result = { sample: sampleName, shownMs: shown.at - start, localReadyMs: localReadyAt - start, start,
+    // The launcher window is the one that loads the HTTP launcher. It may be
+    // shown before that load (on its skeleton page) or by it (older builds).
+    const loaded = mainState.events.find((event) => event.stage === "window-loaded" && /^http:\/\//.test(event.url));
+    assert(loaded, "The HTTP launcher never finished loading");
+    const shown = mainState.events.find((event) => event.stage === "window-shown" && event.id === loaded.id);
+    assert(shown, "The launcher window was never shown");
+    const result = { sample: sampleName, shownMs: shown.at - start, launcherLoadedMs: loaded.at - start, localReadyMs: localReadyAt - start, start,
       localReadyAt, events: mainState.events, responseEvents, errors };
     return { app, page, result, logs, errors, fixture, previousPids };
   } catch (error) {
@@ -354,11 +361,13 @@ async function smoke(run, scenario) {
     checks.push("failed remote registry exposes Retry while local gallery remains usable");
   }
   if (scenario === "fresh") {
-    const realShown = run.result.events.find((event) => event.stage === "window-shown" && event.url?.startsWith("http:"));
-    const splashShown = run.result.events.find((event) => event.stage === "window-shown" && event.id !== realShown.id);
-    const splashClosed = run.result.events.find((event) => event.stage === "window-closed" && event.id === splashShown?.id);
-    assert(splashClosed && splashClosed.at >= realShown.at, "Splash was destroyed before the real launcher was shown");
-    checks.push("splash remains until real launcher show");
+    const launcherLoaded = run.result.events.find((event) => event.stage === "window-loaded" && event.url?.startsWith("http:"));
+    const firstShown = run.result.events.find((event) => event.stage === "window-shown");
+    assert.equal(firstShown?.id, launcherLoaded.id, "The first window shown must be the launcher window itself");
+    assert.match(firstShown.url, /^file:.*\/launcher-skeleton\.html\?theme=(light|dark)$/, "The launcher window must open on its skeleton page");
+    assert(firstShown.at < launcherLoaded.at, "The skeleton must be visible before the launcher loads");
+    assert.equal(run.result.events.filter((event) => event.stage === "window-created").length, 1, "Startup must create exactly one window");
+    checks.push("one launcher window opens on its skeleton page and loads the launcher in place");
     await page.getByTitle("Settings", { exact: true }).click();
     await page.getByRole("dialog", { name: "Settings" }).waitFor();
     await page.getByRole("dialog", { name: "Settings" }).getByRole("button", { name: "Close", exact: true }).click();
@@ -418,7 +427,7 @@ for (const name of scenarioNames) {
         const run = await launch(fixture, sampleName);
         samples.push({ scenario: name, ...run.result });
         await appendFile(join(out, "samples.jsonl"), JSON.stringify({ scenario: name, ...run.result }) + "\n");
-        console.log(`${sampleName}: shown=${run.result.shownMs}ms local=${run.result.localReadyMs}ms`);
+        console.log(`${sampleName}: shown=${run.result.shownMs}ms loaded=${run.result.launcherLoadedMs}ms local=${run.result.localReadyMs}ms`);
         try {
           if (runE2E && index === 0) e2e.push(await smoke(run, name));
         } catch (error) {
@@ -441,7 +450,7 @@ if (runE2E) {
 const percentile = (values, p) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * p) - 1];
 const summary = Object.fromEntries(scenarioNames.map((scenario) => {
   const rows = samples.filter((row) => row.scenario === scenario);
-  return [scenario, Object.fromEntries(["shownMs", "localReadyMs"].map((key) => [key, {
+  return [scenario, Object.fromEntries(["shownMs", "launcherLoadedMs", "localReadyMs"].map((key) => [key, {
     median: percentile(rows.map((row) => row[key]), .5), p90: percentile(rows.map((row) => row[key]), .9),
     min: Math.min(...rows.map((row) => row[key])), max: Math.max(...rows.map((row) => row[key])),
   }]))];

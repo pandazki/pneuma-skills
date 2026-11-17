@@ -104,7 +104,9 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     expect(host.textContent).toContain("Local Board");
     expect(host.querySelector("main")?.dataset.launcherLocalReady).toBe("true");
     expect(host.querySelector("main")?.dataset.launcherBackendsReady).toBe("false");
-    expect(host.textContent).toContain("Checking community modes");
+    // Pending agents and community discovery hold no place on the page: nothing waits on them visibly.
+    expect(host.querySelectorAll("main [data-launcher-skeleton]")).toHaveLength(0);
+    expect(host.textContent).not.toContain("Checking community modes");
     const tile = [...host.querySelectorAll("button")].find((node) => node.textContent?.includes("Local Board"))!;
     await click(tile);
     expect(button("Launch").disabled).toBe(true);
@@ -119,6 +121,47 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     expect(host.querySelector("main")?.dataset.launcherBackendsReady).toBe("true");
     expect(button("Launch").disabled).toBe(false);
     expect(requests.filter((path) => path === "/api/launch")).toHaveLength(0);
+  });
+
+  test("each section holds its skeleton until its own resource arrives, without loading text", async () => {
+    const modes = Promise.withResolvers<Response>();
+    const sessions = Promise.withResolvers<Response>();
+    const projects = Promise.withResolvers<Response>();
+    routes.set("/api/registry", () => modes.promise);
+    routes.set("/api/sessions", () => sessions.promise);
+    routes.set("/api/projects", () => projects.promise);
+    await mount();
+    const skeleton = (resource: string) => host.querySelector(`main [data-launcher-skeleton="${resource}"]`);
+    for (const resource of ["featured", "projects", "sessions", "modes"]) expect(skeleton(resource)).not.toBeNull();
+    expect(host.textContent).not.toMatch(/Loading|Checking/);
+    expect(host.textContent).not.toContain("No projects yet");
+    // The gallery stays reachable, but no count is claimed before the modes arrive.
+    expect(button("All Modes").textContent).toBe("All Modes");
+
+    await act(async () => sessions.resolve(Response.json({ sessions: [{ id: "one", mode: "board", displayName: "Draft", sessionName: "My local draft", workspace: "/work/draft", backendType: "codex", lastAccessed: Date.now() }], homeDir: "/home/test" })));
+    expect(skeleton("sessions")).toBeNull();
+    expect(host.textContent).toContain("My local draft");
+    expect(skeleton("projects")).not.toBeNull();
+
+    await act(async () => projects.resolve(Response.json({ projects: [] })));
+    expect(skeleton("projects")).toBeNull();
+    expect(host.textContent).toContain("No projects yet");
+
+    await act(async () => modes.resolve(Response.json(registry())));
+    expect(skeleton("featured")).toBeNull();
+    expect(skeleton("modes")).toBeNull();
+    expect(button("All Modes (1)")).toBeDefined();
+    expect(host.querySelector("main [aria-busy=\"true\"]")).toBeNull();
+  });
+
+  test("a section with no records leaves once its read completes", async () => {
+    const sessions = Promise.withResolvers<Response>();
+    routes.set("/api/sessions", () => sessions.promise);
+    await mount();
+    expect(host.querySelector('main [data-launcher-skeleton="sessions"]')).not.toBeNull();
+    await act(async () => sessions.resolve(Response.json({ sessions: [], homeDir: "/home/test" })));
+    expect(host.querySelector('main [data-launcher-skeleton="sessions"]')).toBeNull();
+    expect([...host.querySelectorAll("main h2")].map((node) => node.textContent)).not.toContain("Continue");
   });
 
   test("sessions display before modes or projects return, with independent failures and retries", async () => {
@@ -238,17 +281,18 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     const allModes = [...host.querySelectorAll("button")].find((node) => node.textContent?.includes("All Modes"))!;
     await click(allModes);
     const gallery = host.querySelector('[role="dialog"][aria-label="Mode Gallery"]')!;
-    expect(gallery.textContent).toContain("Loading local modes");
+    expect(gallery.querySelector('[data-launcher-skeleton="modes"]')).not.toBeNull();
     expect(gallery.textContent).not.toContain("No local modes yet");
     await act(async () => initial.resolve(new Response("offline", { status: 503 })));
     expect(gallery.textContent).toContain("Could not load local modes");
+    expect(gallery.querySelector('[data-launcher-skeleton="modes"]')).toBeNull();
     expect(gallery.textContent).not.toContain("No local modes yet");
 
     routes.set("/api/registry", () => Response.json(registry("Local Board", "loading")));
     await click(gallery.querySelector('[data-launcher-resource="modes"] button')!);
     expect(gallery.textContent).toContain("Local Board");
     expect(gallery.textContent).toContain("Published");
-    expect(gallery.textContent).toContain("Checking community modes");
+    expect(gallery.querySelector('[data-launcher-skeleton="published"]')).not.toBeNull();
 
     routes.set("/api/registry", () => Response.json({ ...registry(), publishedStatus: { state: "error", error: "Offline" } }));
     await act(async () => { window.dispatchEvent(new Event("pneuma:libraries-updated")); });

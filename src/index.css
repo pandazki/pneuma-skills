@@ -411,6 +411,74 @@ img {
   }
 }
 
+/* Launcher backdrop — shared by the launcher and its skeleton so the page
+   behind the content never changes when real content replaces the skeleton. */
+.launcher-ambient {
+  background: radial-gradient(ellipse, oklch(50% 0.08 55 / 0.06) 0%, transparent 70%);
+}
+
+.launcher-light .launcher-ambient {
+  background: radial-gradient(ellipse, oklch(85% 0.02 55 / 0.12) 0%, transparent 65%);
+}
+
+.launcher-ambient-secondary {
+  display: none;
+  background: radial-gradient(ellipse, oklch(88% 0.02 35 / 0.08) 0%, transparent 60%);
+}
+
+.launcher-light .launcher-ambient-secondary {
+  display: block;
+}
+
+/* Launcher skeleton blocks (src/components/LauncherSkeleton.tsx). The sweep is
+   positioned against the viewport, and every surface offsets it by the same
+   wall-clock phase (--launcher-skeleton-delay), so the static first paint, the
+   desktop's pre-start page and the React skeletons continue one motion
+   across handoffs instead of restarting it. The 1800ms period must equal
+   LAUNCHER_SKELETON_PERIOD_MS. Layered so shape utilities (rounded-*,
+   inline-block) on a block still apply. */
+@layer components {
+  .launcher-skeleton {
+    border-radius: 0.375rem;
+    background-color: color-mix(in oklab, var(--color-cc-fg) 6%, transparent);
+    background-image: linear-gradient(100deg, transparent 35%, color-mix(in oklab, var(--color-cc-fg) 7%, transparent) 50%, transparent 65%);
+    background-size: 100vw 100%;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    animation: launcherSkeletonSweep 1800ms linear infinite;
+    animation-delay: var(--launcher-skeleton-delay, 0ms);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .launcher-skeleton {
+      animation: none;
+      background-image: none;
+    }
+  }
+}
+
+/* Content taking a skeleton's place: it starts part-way in and does not move,
+   so the swap reads as one surface resolving rather than a blank then a fade. */
+@keyframes launcherContentIn {
+  from {
+    opacity: 0.4;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes launcherSkeletonSweep {
+  from {
+    background-position: -100vw 0;
+  }
+
+  to {
+    background-position: 100vw 0;
+  }
+}
+
 @keyframes overlayFadeIn {
   from {
     opacity: 0;

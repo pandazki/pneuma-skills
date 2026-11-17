@@ -19,6 +19,14 @@ import { DirBrowser } from "./DirBrowser.js";
 import { ProjectCard, type ProjectCardEntry } from "./ProjectCard.js";
 import { AgentCommandBanner, AgentCommandHooks } from "./AgentCommandPanel.js";
 import { ModeIcon } from "./ModeIcon.js";
+import {
+  FeaturedModeSkeleton,
+  GalleryCardsSkeleton,
+  ProjectCardsSkeleton,
+  QuickStartSkeleton,
+  SessionRowsSkeleton,
+  launcherSkeletonDelay,
+} from "./LauncherSkeleton.js";
 import { useLauncherResource } from "../hooks/useLauncherResource.js";
 import type { PublishedMode, PublishedRegistryStatus } from "../../core/types/mode-registry.js";
 import { useFavorites, sortFavoritesFirst, favoriteKey } from "../hooks/useFavorites.js";
@@ -708,10 +716,7 @@ function FeaturedMode({
   };
 
   return (
-    <section
-      className="mb-20"
-      style={{ animation: "launcherFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both" }}
-    >
+    <section className="mb-20" style={{ animation: CONTENT_REVEAL }}>
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 lg:h-[420px]">
         {/* Left: Media */}
         <div className="lg:col-span-3 h-full">
@@ -1862,6 +1867,9 @@ interface LauncherLoadState {
   refresh: (query?: Record<string, string>) => Promise<void>;
 }
 
+/** Entrance for content that replaces a section skeleton. Section frames stay put. */
+const CONTENT_REVEAL = "launcherContentIn 0.24s ease-out both";
+
 function LauncherNotice({ resource, message, error, onRetry }: {
   resource: string;
   message: string;
@@ -2020,13 +2028,18 @@ function ModeGallery({
 
       {/* Gallery content */}
       <div className="max-w-6xl mx-auto px-6 py-8" ref={ref}>
-        {registryIncomplete && (
+        {registryStatus.error ? (
           <div className="mb-6">
             <LauncherNotice resource="modes" error={registryStatus.error}
-              message={t(registryStatus.error ? "startup.failed" : "startup.loading", { section: t("startup.sections.modes") })}
+              message={t("startup.failed", { section: t("startup.sections.modes") })}
               onRetry={() => { void registryStatus.refresh(); }} />
           </div>
-        )}
+        ) : registryIncomplete ? (
+          <div className="mb-12" aria-busy="true">
+            <div className="h-4 flex items-center mb-6" aria-hidden="true"><span className="launcher-skeleton h-2.5 w-24" /></div>
+            <GalleryCardsSkeleton count={6} resource="modes" />
+          </div>
+        ) : null}
         {[
           { id: "builtin", label: t("gallery.group_builtin"), items: builtin, alwaysShow: false },
           // Local always renders its header when an install action exists, so users can
@@ -2054,11 +2067,13 @@ function ModeGallery({
                 )}
               </div>
               {group.id === "published" && publishedPending && (
-                <div className="mb-6">
-                  <LauncherNotice resource="published"
-                    message={t(publishedStatus.state === "error" ? "startup.published_failed" : "startup.published_loading")}
-                    error={publishedStatus.state === "error" ? publishedStatus.error : null}
-                    onRetry={() => { void registryStatus.refresh({ refreshPublished: "1" }); }} />
+                <div className="mb-6" aria-busy={publishedStatus.state !== "error"}>
+                  {publishedStatus.state === "error" ? (
+                    <LauncherNotice resource="published"
+                      message={t("startup.published_failed")}
+                      error={publishedStatus.error}
+                      onRetry={() => { void registryStatus.refresh({ refreshPublished: "1" }); }} />
+                  ) : <GalleryCardsSkeleton count={3} resource="published" />}
                 </div>
               )}
               {group.items.length === 0 && group.id === "local" && !registryIncomplete ? (
@@ -2142,13 +2157,15 @@ function ModeGallery({
                 </button>
               )}
             </div>
-            {(!librariesStatus.loaded || librariesStatus.error) && (
+            {librariesStatus.error ? (
               <div className="mb-6">
                 <LauncherNotice resource="libraries" error={librariesStatus.error}
-                  message={t(librariesStatus.error ? "startup.failed" : "startup.loading", { section: t("startup.sections.libraries") })}
+                  message={t("startup.failed", { section: t("startup.sections.libraries") })}
                   onRetry={() => { void librariesStatus.refresh(); }} />
               </div>
-            )}
+            ) : !librariesStatus.loaded ? (
+              <div className="mb-6" aria-busy="true"><GalleryCardsSkeleton count={2} resource="libraries" /></div>
+            ) : null}
             {libraries.length === 0 && librariesStatus.loaded && !librariesStatus.error ? (
               <p className="text-[11px] text-cc-muted/50 italic" dangerouslySetInnerHTML={{ __html: t("gallery.no_libraries_hint").replace("<code>", "<code class=\"text-cc-muted/70\">") }} />
             ) : (
@@ -5076,6 +5093,15 @@ export default function Launcher() {
   const { refresh: refreshLibraries } = librariesResource;
   const backendReadinessError = backendResource.error
     ? t("startup.backends_failed") : !backendResource.loaded ? t("startup.backends_loading") : undefined;
+  // Section skeletons continue the sweep of the page skeleton this replaced.
+  // The phase is taken at commit, when their animations start: a render can
+  // precede its commit by hundreds of milliseconds.
+  const rootRef = useRef<HTMLDivElement>(null);
+  React.useLayoutEffect(() => {
+    rootRef.current?.style.setProperty("--launcher-skeleton-delay", launcherSkeletonDelay());
+  }, []);
+  /** A first read still in flight; a failed read shows its error instead. */
+  const pending = (resource: { loaded: boolean; error: string | null }) => !resource.loaded && !resource.error;
   /**
    * Modes this tab just finished installing. `/api/registry` is cached
    * server-side for a minute (SWR), so a refetch right after a download can
@@ -5602,31 +5628,18 @@ export default function Launcher() {
   const hasContinueItems = continueItems.length > 0;
 
   return (
-    <div className={`min-h-screen bg-cc-bg text-cc-fg font-body relative ${isLight ? "cc-theme-light launcher-light" : ""}`}>
+    <div ref={rootRef} className={`min-h-screen bg-cc-bg text-cc-fg font-body relative ${isLight ? "cc-theme-light launcher-light" : ""}`}>
       {windowError && <p role="alert" className="px-6 py-2 text-sm text-cc-error">{windowError}</p>}
       {/* Light mode texture overlay */}
       {isLight && <div className="fixed inset-0 pointer-events-none launcher-light-texture" />}
-      {/* Subtle warm ambient */}
-      <div
-        className="fixed top-[-20%] left-[10%] w-[50%] h-[50%] pointer-events-none"
-        style={{
-          background: isLight
-            ? "radial-gradient(ellipse, oklch(85% 0.02 55 / 0.12) 0%, transparent 65%)"
-            : "radial-gradient(ellipse, oklch(50% 0.08 55 / 0.06) 0%, transparent 70%)",
-        }}
-      />
-      {/* Secondary warm glow — bottom right for light mode depth */}
-      {isLight && (
-        <div
-          className="fixed bottom-[-10%] right-[5%] w-[40%] h-[40%] pointer-events-none"
-          style={{
-            background: "radial-gradient(ellipse, oklch(88% 0.02 35 / 0.08) 0%, transparent 60%)",
-          }}
-        />
-      )}
+      {/* Subtle warm ambient, plus a bottom-right glow for light mode depth.
+          Shared with LauncherPageSkeleton through the launcher-ambient classes. */}
+      <div className="fixed top-[-20%] left-[10%] w-[50%] h-[50%] pointer-events-none launcher-ambient" />
+      <div className="fixed bottom-[-10%] right-[5%] w-[40%] h-[40%] pointer-events-none launcher-ambient-secondary" />
 
-      {/* Header — sticky above overlays, draggable in Electron */}
-      <div ref={headerRef} className="sticky top-0 z-[60] bg-cc-bg/80 backdrop-blur-md" style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1)", WebkitAppRegion: "drag" } as React.CSSProperties}>
+      {/* Header — sticky above overlays, draggable in Electron. It does not
+          fade in: the skeleton this replaces already shows the same header. */}
+      <div ref={headerRef} className="sticky top-0 z-[60] bg-cc-bg/80 backdrop-blur-md" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
       <header
         className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between"
         style={(window as any).pneumaDesktop ? { paddingLeft: "5rem" } : undefined}
@@ -5685,27 +5698,29 @@ export default function Launcher() {
         data-launcher-local-ready={modesResource.loaded && !modesResource.error && sessionsResource.loaded && !sessionsResource.error && projectsResource.loaded && !projectsResource.error}
         data-launcher-backends-ready={backendResource.loaded && !backendResource.error}
       >
+          {/* Loading is shown in place by section skeletons; only failures
+              need words here, each with its own Retry. */}
           <div className="pt-5 space-y-2" aria-live="polite">
             {([
               ["backends", backendResource], ["modes", modesResource],
               ["sessions", sessionsResource], ["running", runningResource],
               ["projects", projectsResource], ["archived", archivedResource], ["libraries", librariesResource],
             ] as const).map(([key, item]) => {
-              return item.error || !item.loaded ? (
+              return item.error ? (
                 <LauncherNotice key={key} resource={key} error={item.error}
-                  message={t(item.error ? "startup.failed" : "startup.loading", { section: t(`startup.sections.${key}`) })}
+                  message={t("startup.failed", { section: t(`startup.sections.${key}`) })}
                   onRetry={() => { void item.refresh(); }} />
               ) : null;
             })}
-            {modesResource.data.publishedStatus && modesResource.data.publishedStatus.state !== "ready" && modesResource.loaded && (
+            {modesResource.data.publishedStatus?.state === "error" && modesResource.loaded && (
               <LauncherNotice resource="published"
-                message={t(modesResource.data.publishedStatus.state === "error" ? "startup.published_failed" : "startup.published_loading")}
-                error={modesResource.data.publishedStatus.state === "error" ? modesResource.data.publishedStatus.error : null}
+                message={t("startup.published_failed")}
+                error={modesResource.data.publishedStatus.error}
                 onRetry={() => { void refreshModes({ refreshPublished: "1" }); }} />
             )}
           </div>
           {/* Featured Mode */}
-          {featuredMode && (
+          {featuredMode ? (
             <FeaturedMode
               mode={featuredMode}
               isLight={isLight}
@@ -5713,7 +5728,7 @@ export default function Launcher() {
               onLaunch={() => { void openMode(featuredMode); }}
               onExplore={() => setShowGallery(true)}
             />
-          )}
+          ) : pending(modesResource) ? <FeaturedModeSkeleton /> : null}
 
           {/* First-run prompt for /handoff-pneuma slash command. Self-hides
               when dismissed or any backend already has it installed. */}
@@ -5781,10 +5796,7 @@ export default function Launcher() {
             // More than 3 + 5 visible → surface the "All Projects" overlay.
             const hasOverflow = rest.length > COMPACT_MAX;
             return (
-              <section
-                className="mb-10 pt-8 border-t border-cc-border"
-                style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both" }}
-              >
+              <section className="mb-10 pt-8 border-t border-cc-border" aria-busy={pending(projectsResource)}>
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">
                     {t("main.recent_projects")}
@@ -5826,10 +5838,12 @@ export default function Launcher() {
                     </button>
                   </div>
                 </div>
-                {projects.length === 0 && projectsResource.loaded && !projectsResource.error ? (
-                  <div className="text-cc-muted/60 text-sm">{t("main.no_projects")}</div>
+                {pending(projectsResource) ? (
+                  <ProjectCardsSkeleton />
+                ) : projects.length === 0 && !projectsResource.error ? (
+                  <div className="text-cc-muted/60 text-sm" style={{ animation: CONTENT_REVEAL }}>{t("main.no_projects")}</div>
                 ) : (
-                  <>
+                  <div style={{ animation: CONTENT_REVEAL }}>
                     {featured.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
                         {featured.map((p) => (
@@ -5856,7 +5870,7 @@ export default function Launcher() {
                         ))}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
                 {/* Archived bucket — toggled open from the section header.
                     Rendered as a compact row list below the active list,
@@ -5885,11 +5899,8 @@ export default function Launcher() {
           })()}
 
           {/* Continue — max 3, running as cards, recent as compact rows */}
-          {hasContinueItems && (
-            <section
-              className="mb-10 pt-8 border-t border-cc-border"
-              style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both" }}
-            >
+          {(hasContinueItems || pending(sessionsResource)) && (
+            <section className="mb-10 pt-8 border-t border-cc-border" aria-busy={pending(sessionsResource)}>
               <div className="flex items-baseline justify-between mb-5">
                 <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">{t("main.continue_title")}</h2>
                 <div className="flex items-center gap-3">
@@ -5909,9 +5920,10 @@ export default function Launcher() {
                   )}
                 </div>
               </div>
-              <LayoutGroup>
+              {pending(sessionsResource) ? <SessionRowsSkeleton /> : (
+              <div style={{ animation: CONTENT_REVEAL }}><LayoutGroup>
                 {/* Running items — thumbnail cards with ChromaGrid spotlight */}
-                <AnimatePresence mode="popLayout">
+                <AnimatePresence mode="popLayout" initial={false}>
                   {continueItems.some((i) => i.type === "running") && (
                     <motion.div
                       key="running-section"
@@ -5923,7 +5935,7 @@ export default function Launcher() {
                       className="mb-3"
                     >
                       <ChromaGridWrap radius={250}>
-                        <AnimatePresence mode="popLayout">
+                        <AnimatePresence mode="popLayout" initial={false}>
                           {continueItems.filter((i) => i.type === "running").map((item) => (
                             <motion.div
                               key={item.key}
@@ -5959,7 +5971,7 @@ export default function Launcher() {
                   )}
                 </AnimatePresence>
                 {/* Recent items — compact list */}
-                <AnimatePresence mode="popLayout">
+                <AnimatePresence mode="popLayout" initial={false}>
                   {continueItems.filter((i) => i.type === "recent").map((item) => (
                     <motion.div
                       key={item.key}
@@ -5982,24 +5994,31 @@ export default function Launcher() {
                     </motion.div>
                   ))}
                 </AnimatePresence>
-              </LayoutGroup>
+              </LayoutGroup></div>
+              )}
             </section>
           )}
 
           {/* Quick Start */}
-          <section className="pt-12" style={{ animation: "launcherFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both" }}>
+          <section className="pt-12" aria-busy={pending(modesResource)}>
             <div className="flex items-baseline justify-between mb-5">
               <div>
                 <h2 className="text-sm font-medium text-cc-fg/70 tracking-wide">{t("main.create_new")}</h2>
                 <p className="text-xs text-cc-muted/50 mt-1">{t("main.create_new_subtitle")}</p>
               </div>
+              {/* The gallery stays reachable while modes load; their count is
+                  unknown until then ("All Modes (0)" would say there are none). */}
               <button
                 onClick={() => setShowGallery(true)}
                 className="text-xs text-cc-muted/50 hover:text-cc-fg transition-colors cursor-pointer"
               >
-                {t("main.all_modes_count", { count: pickableModes.length })}
+                {pending(modesResource) ? (
+                  <>{t("main.all_modes")}<span className="launcher-skeleton inline-block align-middle ml-1.5 h-2.5 w-5" aria-hidden="true" /></>
+                ) : t("main.all_modes_count", { count: pickableModes.length })}
               </button>
             </div>
+            {pending(modesResource) ? <QuickStartSkeleton /> : (
+            <div style={{ animation: CONTENT_REVEAL }}>
             <WarmSpotlightWrap gridClass="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3" radius={160}>
               {quickStartModes.map((mode) => (
                 <QuickStartTile
@@ -6027,6 +6046,8 @@ export default function Launcher() {
                 />
               ))}
             </WarmSpotlightWrap>
+            </div>
+            )}
 
             {/* Mode Maker — prominent hero card. In a release that does not
                 ship Mode Maker, the hero is the only way in, so it carries

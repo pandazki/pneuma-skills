@@ -38,9 +38,12 @@ The default six scenarios run five samples each:
 Each application process has a new in-memory server cache. The operating system
 disk cache is not flushed. The delayed backend response isolates the frontend
 request dependency; it does not simulate synchronous binary probes blocking the
-Bun event loop. The first timing is from the launch request to the
-native `show` event of the actual HTTP launcher window, excluding the splash.
-The second waits for the same DOM predicate on both revisions: Create New with a
+Bun event loop. `shownMs` is from the launch request to the native `show` event
+of the window that loads the HTTP launcher: the launcher window opens on its
+skeleton page (`dist/launcher-skeleton.html`) while Bun starts, while older
+builds showed it only once the launcher painted, behind a separate splash.
+`launcherLoadedMs` is that window finishing the HTTP launcher document. The
+third waits for the same DOM predicate on both revisions: Create New with a
 populated All Modes button, successful local sessions/projects responses, then
 two animation frames. It measures local browsing readiness, not readiness to
 start an agent. Playwright's normal Electron loader and debugging connection are
@@ -68,13 +71,14 @@ npm run test:startup -- --project /absolute/candidate --samples 1 --e2e \
   --out /tmp/pneuma-startup-e2e
 ```
 
-These checks open the gallery and Settings with trusted clicks, check splash
-handover, native minimize/restore and singleton/deep-link behavior, and close/reopen the launcher without
+These checks open the gallery and Settings with trusted clicks, check that one
+launcher window opens on its skeleton page and loads the launcher in place
+(`<sample>-skeleton.png` records the skeleton), native minimize/restore and singleton/deep-link behavior, and close/reopen the launcher without
 spawning another service. The import POST is intercepted before it can import
 files. The no-backend case removes the fake executable and overrides the backend
 API availability fields to false, so globally installed host binaries cannot
 invalidate the fixture. A cold background-handoff case substitutes a local inert session
-page for agent creation, verifies no splash/launcher appears, and sends real
+page for agent creation, verifies no launcher window appears, and sends real
 preload status IPC to reveal the completed session. Notifications and external
 browser launches are recorded instead of sent to the operating system.
 The delayed-registry check records the fixture's actual completion timestamp
@@ -83,5 +87,5 @@ compares readiness against the observed HTTP response.
 
 The E2E checks target the improved behavior; running them against an older
 revision is expected to fail where that revision still blocks local content or
-destroys its splash before the launcher is shown. Inspect saved screenshots as
+opens a splash instead of the launcher window's skeleton. Inspect saved screenshots as
 well as the assertions before accepting UI changes.

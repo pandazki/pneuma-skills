@@ -1,11 +1,9 @@
 {
   "startup": {
-    "loading": "{{section}}を読み込み中…",
     "failed": "{{section}}を読み込めませんでした。",
     "retry": "再試行",
     "backends_loading": "利用可能なエージェントを確認中…",
     "backends_failed": "エージェントの利用可否を確認できませんでした。起動前に再試行してください。",
-    "published_loading": "コミュニティモードを確認中… ローカルモードは閲覧できます。",
     "published_failed": "コミュニティモードを更新できません。ローカルモードは引き続き利用できます。",
     "sections": {
       "backends": "エージェント",
@@ -333,6 +331,7 @@
     "all_sessions_count": "すべてのセッション ({{count}})",
     "create_new": "新規作成",
     "create_new_subtitle": "新しいワークスペースを始める",
+    "all_modes": "すべてのモード",
     "all_modes_count": "すべてのモード ({{count}})",
     "mode_maker_title": "Mode Maker",
     "edit_prefix": "編集: {{name}}",

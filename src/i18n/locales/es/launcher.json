@@ -1,11 +1,9 @@
 {
   "startup": {
-    "loading": "Cargando {{section}}…",
     "failed": "No se pudieron cargar {{section}}.",
     "retry": "Reintentar",
     "backends_loading": "Comprobando agentes disponibles…",
     "backends_failed": "No se pudo comprobar la disponibilidad de los agentes. Reintenta antes de iniciar.",
-    "published_loading": "Comprobando modos de la comunidad… Ya puedes explorar los modos locales.",
     "published_failed": "No se pudieron actualizar los modos de la comunidad. Los modos locales siguen disponibles.",
     "sections": {
       "backends": "agentes",
@@ -333,6 +331,7 @@
     "all_sessions_count": "Todas las sesiones ({{count}})",
     "create_new": "Crear nuevo",
     "create_new_subtitle": "Comenzar un espacio de trabajo nuevo",
+    "all_modes": "Todos los modos",
     "all_modes_count": "Todos los modos ({{count}})",
     "mode_maker_title": "Mode Maker",
     "edit_prefix": "Editar: {{name}}",

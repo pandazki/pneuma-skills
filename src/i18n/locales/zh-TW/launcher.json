@@ -1,11 +1,9 @@
 {
   "startup": {
-    "loading": "正在載入{{section}}…",
     "failed": "無法載入{{section}}。",
     "retry": "重試",
     "backends_loading": "正在檢查可用代理…",
     "backends_failed": "無法確認代理是否可用，請重試後啟動。",
-    "published_loading": "正在檢查社群模式… 本機模式已可瀏覽。",
     "published_failed": "暫時無法重新整理社群模式，本機模式仍可使用。",
     "sections": {
       "backends": "代理",
@@ -333,6 +331,7 @@
     "all_sessions_count": "所有工作階段（{{count}}）",
     "create_new": "新建",
     "create_new_subtitle": "開啟一個全新工作區",
+    "all_modes": "所有模式",
     "all_modes_count": "所有模式（{{count}}）",
     "mode_maker_title": "Mode Maker",
     "edit_prefix": "編輯：{{name}}",

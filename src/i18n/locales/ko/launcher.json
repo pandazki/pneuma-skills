@@ -1,11 +1,9 @@
 {
   "startup": {
-    "loading": "{{section}} 불러오는 중…",
     "failed": "{{section}}을(를) 불러오지 못했습니다.",
     "retry": "다시 시도",
     "backends_loading": "사용 가능한 에이전트 확인 중…",
     "backends_failed": "에이전트 사용 가능 여부를 확인하지 못했습니다. 실행 전에 다시 시도하세요.",
-    "published_loading": "커뮤니티 모드 확인 중… 로컬 모드는 탐색할 수 있습니다.",
     "published_failed": "커뮤니티 모드를 새로 고치지 못했습니다. 로컬 모드는 계속 사용할 수 있습니다.",
     "sections": {
       "backends": "에이전트",
@@ -333,6 +331,7 @@
     "all_sessions_count": "전체 세션 ({{count}})",
     "create_new": "새로 만들기",
     "create_new_subtitle": "새 워크스페이스로 시작",
+    "all_modes": "전체 모드",
     "all_modes_count": "전체 모드 ({{count}})",
     "mode_maker_title": "Mode Maker",
     "edit_prefix": "편집: {{name}}",

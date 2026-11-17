@@ -13,10 +13,12 @@ paths:
 
 ## Gotchas
 
-- **Startup readiness has separate stages.** Prepare the hidden launcher while
-  Bun starts, navigate only to its reported URL, and retire the splash when the
-  launcher is shown. Backend availability must not gate opening the launcher;
-  background handoff cold starts still open neither window. Shell PATH capture
+- **Startup readiness has separate stages.** Open the launcher window on its
+  skeleton page (`dist/launcher-skeleton.html`, saved theme) while Bun starts,
+  and navigate that same window only to the reported URL; there is no splash
+  window. The skeleton is built from `src/components/LauncherSkeleton.tsx`, so
+  change the launcher's layout there too. Backend availability must not gate
+  opening the launcher; background handoff cold starts open no window. Shell PATH capture
   is bounded and asynchronous, with its completed attempt passed to Bun through
   `PNEUMA_DESKTOP_PATH_READY=1`; the server reuses that environment instead of
   starting another login shell. Preserve fallback directories and observable

@@ -156,7 +156,7 @@ pneuma-skills/
 ├── cloud/collaboration/       # Optional cloud authority: Project Durable Object, R2 and public assets
 ├── desktop/                   # Electron client
 ├── web/                       # Landing page (CF Pages)
-├── snapshot/                  # Snapshot export, R2 push/pull and public viewer asset builds
+├── snapshot/                  # Snapshot export, R2 push/pull, public viewer asset builds, launcher skeleton build
 ├── vendor/                    # Vendored third-party bundles (dom-to-pptx)
 ├── scripts/                   # Repo scripts — player deploy, reseed, smoke
 ├── public/ + dist-player/     # Static assets + built online-player output
@@ -368,12 +368,24 @@ Agent 维护的持久偏好。两个 scope 同一 schema:
 
 ### Desktop startup
 
-The desktop prepares a hidden launcher window while its Bun launcher service
-starts. It navigates only after the service reports its actual URL, and keeps
-the splash until the launcher can be shown. Background handoff cold starts
-create neither a splash nor a launcher window. Agent installation is checked
-through the launcher's backend capabilities rather than a Claude-only gate
-before the window opens.
+The desktop opens the launcher window at once on the launcher skeleton
+(`dist/launcher-skeleton.html`, in the theme saved in `~/.pneuma/settings.json`)
+while its Bun launcher service starts. The same window navigates only after the
+service reports its actual URL, and the launcher's first paint is that same
+skeleton, so startup is one window filling in. Background handoff cold starts
+create no launcher window. Agent installation is checked through the
+launcher's backend capabilities rather than a Claude-only gate before the
+window opens.
+
+The skeleton has one definition, `src/components/LauncherSkeleton.tsx`. The
+build (`snapshot/launcher-skeleton.ts`) renders it into `index.html`, where a
+boot script shows it on launcher URLs before any bundle runs, and into the
+desktop's pre-start page. React's first commit replaces the static copy with
+the launcher, whose sections keep their skeletons until their own resource
+arrives; failures show an error with Retry instead. `main.tsx` loads the
+launcher code before the first render of a launcher URL, so no Suspense
+fallback (held at least ~300 ms by React once shown) delays the launcher's
+data requests.
 
 Protocol URLs received before service readiness are queued in arrival order and
 all dispatched after startup. Only a queue containing exclusively background

@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { watch } from "chokidar";
 import { hostAbiImportMap } from "./snapshot/host-abi.js";
+import { LAUNCHER_SKELETON_PAGE, launcherSkeletonIndexTags, launcherSkeletonPage } from "./snapshot/launcher-skeleton.js";
 
 const require = createRequire(import.meta.url);
 
@@ -194,8 +195,33 @@ function pneumaHostAbiImportMap(): Plugin {
   };
 }
 
+/**
+ * The launcher skeleton is the app entry's first paint, and the desktop shows
+ * the same page from `dist/` while its launcher service starts.
+ */
+function pneumaLauncherSkeleton(): Plugin {
+  const indexHtml = path.resolve(__dirname, "index.html");
+  return {
+    name: "pneuma-launcher-skeleton",
+    transformIndexHtml: {
+      order: "pre",
+      handler: (_html, ctx) => path.resolve(ctx.filename) === indexHtml ? launcherSkeletonIndexTags() : undefined,
+    },
+    generateBundle(_options, bundle) {
+      const entry = Object.values(bundle).find((item) => item.type === "chunk" && item.isEntry && item.facadeModuleId === indexHtml);
+      const stylesheets = entry?.type === "chunk" ? [...(entry.viteMetadata?.importedCss ?? [])] : [];
+      const css = stylesheets.map((name) => {
+        const asset = bundle[name];
+        return asset?.type === "asset" ? String(asset.source) : "";
+      }).join("\n");
+      if (!css) this.error("The launcher skeleton page needs the index.html stylesheet, which this build did not produce");
+      this.emitFile({ type: "asset", fileName: LAUNCHER_SKELETON_PAGE, source: launcherSkeletonPage(css) });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), pneumaWorkspaceResolve(), pneumaProdUrlsExternal(), pneumaHostAbiImportMap()],
+  plugins: [react(), tailwindcss(), pneumaWorkspaceResolve(), pneumaProdUrlsExternal(), pneumaHostAbiImportMap(), pneumaLauncherSkeleton()],
   resolve: {
     alias: {
       // Ensure external modes use the project's React (prevent duplicate instances).

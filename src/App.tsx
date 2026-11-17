@@ -16,7 +16,10 @@ import { loadReplay } from "./replay-engine.js";
 import { loadSessionMode } from "./utils/load-session-mode.js";
 import { ModeLoadError } from "./components/ModeLoadError.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
-import { useAppTheme } from "./hooks/useAppTheme.js";
+import { resolveInitialTheme, useAppTheme } from "./hooks/useAppTheme.js";
+import { LauncherPageSkeleton, launcherSkeletonPhase } from "./components/LauncherSkeleton.js";
+import { readEntryParams } from "./launcher-route.js";
+import { preloadedLauncher } from "./launcher-preload.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import { ReplayPlayer } from "./components/ReplayPlayer";
 import { useViewerProps } from "./hooks/useViewerProps.js";
@@ -58,26 +61,15 @@ export default function App() {
 }
 
 function SessionApp() {
-  // Launcher mode — lightweight marketplace UI
-  const [isLauncher] = useState(() => {
-    const params = new URLSearchParams(location.search);
-    // Launcher if explicitly requested OR no session/mode params (bare URL)
-    return params.has("launcher") || (!params.has("session") && !params.has("mode"));
-  });
-  const [projectParam] = useState(() => new URLSearchParams(location.search).get("project"));
+  // Launcher mode — lightweight marketplace UI. Empty shell — `?project=<root>`
+  // with no session/mode — renders the editor chrome + TopBar without spawning
+  // an agent; ProjectChip mounts inside the surviving TopBar to expose the
+  // project's sessions.
+  const [{ isLauncher, projectParam, isEmptyShell }] = useState(() => readEntryParams(location.search));
   // Tear-off chat window — `?surface=chat` renders ONLY the conversation,
   // full-window, for the same session (desktop "open in new window"). Same
   // sessionId → same WS → same live conversation as the main window.
   const [isChatWindow] = useState(() => new URLSearchParams(location.search).get("surface") === "chat");
-  // Empty shell — `?project=<root>` with no session/mode. Renders the editor
-  // chrome + TopBar without spawning an agent. ProjectChip (Phase 2) will
-  // mount inside the surviving TopBar to expose the project's sessions.
-  // Tied directly to URL params (not `isLauncher`) so a manual `?launcher=1`
-  // can't drag a project session URL into empty shell.
-  const [isEmptyShell] = useState(() => {
-    const params = new URLSearchParams(location.search);
-    return params.has("project") && !params.has("session") && !params.has("mode");
-  });
 
   // Background mode — relay turn status to Electron main (no-ops on web).
   // Placed before the early returns below so its hook order stays stable
@@ -93,9 +85,20 @@ function SessionApp() {
     );
   }
   if (isLauncher) {
+    // main.tsx normally loads the launcher before this first render. Otherwise
+    // the lazy path shows the same skeleton the page's first paint already
+    // shows (index.html), so loading the launcher code changes nothing on screen.
+    const LauncherView = preloadedLauncher() ?? Launcher;
+    const skeleton = (
+      <LauncherPageSkeleton
+        light={resolveInitialTheme() === "light"}
+        desktop={!!(window as { pneumaDesktop?: unknown }).pneumaDesktop}
+        style={launcherSkeletonPhase()}
+      />
+    );
     return (
-      <Suspense fallback={<LazyFallback />}>
-        <Launcher />
+      <Suspense fallback={skeleton}>
+        <LauncherView />
       </Suspense>
     );
   }
