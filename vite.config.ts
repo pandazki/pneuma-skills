@@ -201,14 +201,17 @@ function pneumaHostAbiImportMap(): Plugin {
  */
 function pneumaLauncherSkeleton(): Plugin {
   const indexHtml = path.resolve(__dirname, "index.html");
+  // Rollup and Vite report ids with forward slashes on every platform, so
+  // compare through path.resolve, which also normalizes Windows separators.
+  const isIndexHtml = (id: string | null | undefined) => !!id && path.resolve(id) === indexHtml;
   return {
     name: "pneuma-launcher-skeleton",
     transformIndexHtml: {
       order: "pre",
-      handler: (_html, ctx) => path.resolve(ctx.filename) === indexHtml ? launcherSkeletonIndexTags() : undefined,
+      handler: (_html, ctx) => isIndexHtml(ctx.filename) ? launcherSkeletonIndexTags() : undefined,
     },
     generateBundle(_options, bundle) {
-      const entry = Object.values(bundle).find((item) => item.type === "chunk" && item.isEntry && item.facadeModuleId === indexHtml);
+      const entry = Object.values(bundle).find((item) => item.type === "chunk" && item.isEntry && isIndexHtml(item.facadeModuleId));
       const stylesheets = entry?.type === "chunk" ? [...(entry.viteMetadata?.importedCss ?? [])] : [];
       const css = stylesheets.map((name) => {
         const asset = bundle[name];
