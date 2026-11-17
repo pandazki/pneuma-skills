@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.63.2] - 2026-11-17
+
+### Improved
+- **Startup shows the launcher's shape right away** — The desktop app no longer opens a small splash window. Its launcher window appears at once, in your saved theme, with a skeleton of the launcher's layout, and the same window fills in when the service is ready. In a browser the launcher's first paint is that same skeleton. The "Loading agents… / Loading local modes…" lines are gone: each section keeps its own placeholder until its data arrives, so recent sessions no longer wait for the mode list. Load failures still show an error with Retry.
+- **Launcher data starts loading sooner** — The launcher no longer waits behind a loading placeholder before requesting its data, so its first requests go out about 300 ms earlier.
+
 ## [3.63.1] - 2026-11-16
 
 ### Fixed
