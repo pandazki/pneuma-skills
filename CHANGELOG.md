@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.63.4] - 2026-11-23
+
+### Improved
+
+- **Faster desktop launcher** — The home page loads its own interface and language on demand. In 32 local Electron starts per version, the English home page loaded 54% less JavaScript and its 90th-percentile time to become browsable fell from 1.04 seconds to 0.73 seconds.
+- **Agent checks on demand** — Browse projects, open saved sessions for viewing and watch replays with every agent CLI idle. Starting an editing session checks the chosen backend. Kimi’s capability check now runs asynchronously, so the project list stays responsive while Kimi is being checked.
+
 ## [3.63.3] - 2026-11-17
 
 ### Fixed

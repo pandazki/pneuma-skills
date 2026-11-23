@@ -125,7 +125,7 @@ Download the latest release for your platform:
 | Windows ARM64 | [`.exe` installer](https://github.com/pandazki/pneuma-skills/releases/latest) |
 | Linux x64 | [`.AppImage`](https://github.com/pandazki/pneuma-skills/releases/latest) / [`.deb`](https://github.com/pandazki/pneuma-skills/releases/latest) |
 
-The desktop app bundles Bun — no runtime install needed. You can open the launcher before installing an agent CLI; choose an available backend when starting a session. Claude Code, Codex, and Moonshot Kimi are supported. Local projects and modes load independently of backend checks and the online mode directory, with loading and retry states for unavailable data.
+The desktop app bundles Bun. You can browse projects, view saved sessions and watch replays before installing an agent CLI. When you start editing, Pneuma checks the selected Claude Code, Codex or Moonshot Kimi backend.
 
 ### CLI
 
