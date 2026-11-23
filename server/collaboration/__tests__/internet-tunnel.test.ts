@@ -52,26 +52,41 @@ const options = { targetUrl: "http://127.0.0.1:18999", startupTimeoutMs: 3000, s
 
 describe("owned collaboration tunnel processes", () => {
   test("returns only after the actual edge-connection PID marker, then awaits termination and cleanup", async () => {
-    const fixture = await fake(`console.error('https://unit-test.trycloudflare.com'); setTimeout(async()=>{await writeFile(pidPath,String(process.pid));},150); setInterval(()=>{},1000);`);
-    let settled = false;
-    const starting = startCollaborationTunnel({ ...options, binaryPath: fixture.binaryPath }).then((handle) => { handles.push(handle); settled = true; return handle; });
-    await until(async () => Bun.file(fixture.reportPath).exists());
-    const report = JSON.parse(await readFile(fixture.reportPath, "utf8"));
-    await Bun.sleep(40);
-    expect(settled).toBe(false);
-    const handle = await starting;
-    expect(handle.origin).toBe("https://unit-test.trycloudflare.com");
-    expect(handle.pid).toBe(report.pid);
-    expect(report.configMode).toBe(0o600);
-    expect(report.directoryMode).toBe(0o700);
-    expect(report.args).toContain("--no-autoupdate");
-    expect(report.args[report.args.indexOf("--protocol") + 1]).toBe("http2");
-    expect(report.args[report.args.indexOf("--metrics") + 1]).toBe("127.0.0.1:0");
-    expect(report.config).toBe("{}\n");
-    await Promise.all([handle.stop(), handle.stop()]);
-    expect(alive(handle.pid)).toBe(false);
-    expect(await Bun.file(join(report.directory, "runner.json")).exists()).toBe(false);
-  });
+    const fixture = await fake(`
+console.error('https://unit-test.trycloudflare.com');
+await writeFile(reportPath+'.url-emitted','1');
+while (!await Bun.file(reportPath+'.connect').exists()) await Bun.sleep(20);
+await writeFile(pidPath,String(process.pid));
+setInterval(()=>{},1000);`);
+    const controller = new AbortController();
+    const starting = startCollaborationTunnel({
+      ...options, binaryPath: fixture.binaryPath, signal: controller.signal, startupTimeoutMs: 15_000,
+    });
+    try {
+      // The fixture withholds the connection marker until the test releases it.
+      // A cold watchdog and provider can take several seconds to start on macOS.
+      const pendingAfterUrl = until(() => Bun.file(fixture.reportPath + ".url-emitted").exists(), 15_000)
+        .then(() => Bun.sleep(75)).then(() => "waiting");
+      expect(await Promise.race([starting.then(() => "ready"), pendingAfterUrl])).toBe("waiting");
+      const report = JSON.parse(await readFile(fixture.reportPath, "utf8"));
+      await writeFile(fixture.reportPath + ".connect", "1");
+      const handle = await starting;
+      expect(handle.origin).toBe("https://unit-test.trycloudflare.com");
+      expect(handle.pid).toBe(report.pid);
+      expect(report.configMode).toBe(0o600);
+      expect(report.directoryMode).toBe(0o700);
+      expect(report.args).toContain("--no-autoupdate");
+      expect(report.args[report.args.indexOf("--protocol") + 1]).toBe("http2");
+      expect(report.args[report.args.indexOf("--metrics") + 1]).toBe("127.0.0.1:0");
+      expect(report.config).toBe("{}\n");
+      await Promise.all([handle.stop(), handle.stop()]);
+      expect(alive(handle.pid)).toBe(false);
+      expect(await Bun.file(join(report.directory, "runner.json")).exists()).toBe(false);
+    } finally {
+      controller.abort();
+      await starting.then(handle => handle.stop(), () => {});
+    }
+  }, 20_000);
 
   test("URL-only provider times out and is cleaned up", async () => {
     const fixture = await fake(`console.error('https://not-connected.trycloudflare.com'); await writeFile(reportPath+'.scenario','url-emitted'); setInterval(()=>{},1000);`);
