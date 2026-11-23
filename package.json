@@ -71,6 +71,7 @@
     "test:frontend": "bun test src modes",
     "test:server": "bun test core server bin snapshot plugins scripts/__tests__",
     "test:modes": "bun test modes",
+    "test:cleanup-sessions": "bun scripts/cleanup-test-sessions.ts",
     "test:backends": "PNEUMA_TEST_LIVE=1 bun test backends",
     "prepublishOnly": "bun run build",
     "build:collaboration": "bun snapshot/collaboration-build.ts"

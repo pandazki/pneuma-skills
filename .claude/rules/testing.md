@@ -82,6 +82,18 @@ paths:
 - **Backend lifecycle suites** count `(skip) ... binary not available` toward `skip`, not `fail` — those are fine on machines without the CLI installed. Any `fail` is a stop.
 - Prefer real code over mocks where cheap — Bun spins up real servers/files fast. Don't write tests that only exercise the mock.
 
+## Live session cleanup
+
+The backend lifecycle harness records native Claude and Codex IDs and cleans its own
+finished scenarios after their processes stop. It takes no action for Kimi.
+For old runs, `bun run test:cleanup-sessions --backend codex --limit 10` previews
+verified IDs. Use `--backend claude-code` for Claude. To delete one reviewed
+result, pass `--apply --backend <backend> --id <uuid>`. Every run rechecks the
+closed temporary workspace, native session identity, and harness prompts. Claude
+cleanup removes only the matching transcript. Codex deletion goes through the
+local app-server. Historical discovery opens SQLite read-only.
+Native Codex histories without a verified local rollout are listed as preview-only.
+
 ## Gotchas
 
 - **Bun 1.4.0 with symlinked worktree dependencies** (macOS, Vite 7.3.2, 2026-11-06): install dependencies inside the test worktree with `bun install --frozen-lockfile` instead of symlinking its `node_modules` to another checkout. Running `server/__tests__/project-session-network.test.ts` followed by `snapshot/__tests__/dev-host-abi.test.ts` in one Bun process failed to import the second generated `.vite-temp` module with the symlink. The same five tests passed after a real worktree install, with the same lockfile and byte-identical Vite loader. Running the ABI test file alone did not reproduce the failure. Preserve both tests and their assertions.

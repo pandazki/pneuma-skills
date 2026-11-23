@@ -45,6 +45,7 @@ import { describe, it, expect } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { cleanTestSession } from "../../scripts/cleanup-test-sessions.js";
 import { ClaudeCodeBackend } from "../claude-code/index.js";
 import type {
   AgentBackend,
@@ -129,11 +130,13 @@ export async function runLifecycleHarness(opts: HarnessOptions): Promise<void> {
 
       const runner = SCENARIOS[name];
       it(name, async () => {
-        const ctx = await createScenarioContext(opts.module, opts.workspaceRoot, name);
+        const resources = createScenarioResources(opts.module, opts.workspaceRoot, name);
+        let ctx: ScenarioContext | undefined;
         try {
+          ctx = attachScenario(resources);
           await runner(ctx);
         } finally {
-          await teardownScenario(ctx);
+          await teardownScenario(ctx ?? resources);
         }
       }, timeoutMs);
     }
@@ -142,13 +145,18 @@ export async function runLifecycleHarness(opts: HarnessOptions): Promise<void> {
 
 // ── Scenario context ─────────────────────────────────────────────────────────
 
-interface ScenarioContext {
+interface ScenarioResources {
   module: BackendModule;
   scenario: ScenarioName;
+  nativeIds: Set<string>;
+  resumedBackend?: AgentBackend;
   workspace: string;
   store: MessageStore;
   backend: AgentBackend;
   sessionId: string;
+}
+
+interface ScenarioContext extends ScenarioResources {
   /**
    * `attached` is the session-level wiring object:
    *   - codex/kimi → the live `BridgeBackend` (`kind: "bridge"`)
@@ -170,33 +178,30 @@ interface AttachedClaude {
   disconnect: () => Promise<void>;
 }
 
-async function createScenarioContext(
-  module: BackendModule,
-  workspaceRoot: string,
-  scenario: ScenarioName,
-): Promise<ScenarioContext> {
-  if (!existsSync(workspaceRoot)) mkdirSync(workspaceRoot, { recursive: true });
-  const workspace = mkdtempSync(join(workspaceRoot, `${module.type}-${scenario}-`));
+function createScenarioResources(module: BackendModule, workspaceRoot: string, scenario: ScenarioName): ScenarioResources {
+  const backend = module.createBackend(0);
+  mkdirSync(workspaceRoot, { recursive: true });
+  return {
+    module, scenario, backend,
+    workspace: mkdtempSync(join(workspaceRoot, `${module.type}-${scenario}-`)),
+    sessionId: `harness-${module.type}-${scenario}-${Date.now()}`,
+    store: new MessageStore(),
+    nativeIds: new Set(),
+  };
+}
 
-  const sessionId = `harness-${module.type}-${scenario}-${Date.now()}`;
-  const store = new MessageStore();
-
+function attachScenario(resources: ScenarioResources): ScenarioContext {
+  const { module, workspace, sessionId, store, nativeIds, backend } = resources;
   // claude-code returns null from createBridgeBackend — we drive its stdio
   // directly through `setStreamHandlers` and translate inline.
   if (module.type === "claude-code") {
-    const backend = module.createBackend(0);
     if (!(backend instanceof ClaudeCodeBackend)) {
       throw new Error("claude-code BackendModule.createBackend did not return ClaudeCodeBackend");
     }
-    const observer = new ClaudeStdioObserver(sessionId, store);
+    const observer = new ClaudeStdioObserver(sessionId, store, nativeIds);
     backend.setStreamHandlers(observer.handlers());
     return {
-      module,
-      scenario,
-      workspace,
-      store,
-      backend,
-      sessionId,
+      ...resources,
       attached: {
         kind: "claude-stdio",
         observer,
@@ -206,7 +211,6 @@ async function createScenarioContext(
   }
 
   // codex / kimi-cli: real BridgeBackend path.
-  const backend = module.createBackend(0);
 
   // Need to launch first so the adapter is registered with the backend
   // (codex / kimi look it up via `backend.getAdapter(sessionId)` inside
@@ -247,6 +251,7 @@ async function createScenarioContext(
     },
     workspace,
     onAgentSessionId: (_sid, agentSessionId) => {
+      nativeIds.add(agentSessionId);
       backend.setAgentSessionId(sessionId, agentSessionId);
     },
     getOrCreateSession: () => session,
@@ -280,12 +285,7 @@ async function createScenarioContext(
   bridge.attach();
 
   return {
-    module,
-    scenario,
-    workspace,
-    store,
-    backend,
-    sessionId,
+    ...resources,
     attached: {
       kind: "bridge",
       bridge,
@@ -296,24 +296,33 @@ async function createScenarioContext(
   };
 }
 
-async function teardownScenario(ctx: ScenarioContext): Promise<void> {
-  // Best-effort: kill the backend, disconnect any wrappers, remove the tmp
-  // workspace. Errors here are swallowed — the assertion that just ran is
-  // the source of truth, and a noisy teardown shouldn't override it.
+async function teardownScenario(ctx: ScenarioResources & { attached?: ScenarioContext["attached"] }): Promise<void> {
+  // Keep the workspace as a guard if shutdown fails. The cleanup command refuses
+  // a workspace that still exists, including a concurrently running scenario.
   try {
-    await ctx.backend.kill(ctx.sessionId);
-  } catch {}
-  try {
-    await ctx.attached.disconnect();
-  } catch {}
-  try {
-    await ctx.backend.killAll();
-  } catch {}
-  try {
-    if (existsSync(ctx.workspace)) {
-      rmSync(ctx.workspace, { recursive: true, force: true });
+    try {
+      await ctx.backend.kill(ctx.sessionId);
+    } finally {
+      try { await ctx.attached?.disconnect(); }
+      finally { await Promise.all([ctx.backend.killAll(), ctx.resumedBackend?.killAll()]); }
     }
-  } catch {}
+    rmSync(ctx.workspace, { recursive: true, force: true });
+  } catch (error) {
+    console.warn("[lifecycle-harness] Incomplete teardown; skipped session cleanup", error);
+    return;
+  }
+  const backend = ctx.module.type;
+  if (backend !== "claude-code" && backend !== "codex") return;
+  for (const id of ctx.nativeIds) {
+    try {
+      const deleted = await cleanTestSession(
+        { backend, id, cwd: ctx.workspace }, { apply: true, observedByHarness: true },
+      );
+      console.log(`[lifecycle-harness] ${deleted ? "Cleaned" : "Skipped"} ${backend} test session ${id}`);
+    } catch (error) {
+      console.warn(`[lifecycle-harness] Could not clean ${backend} test session ${id}:`, error instanceof Error ? error.message : error);
+    }
+  }
 }
 
 // ── MessageStore — backend-agnostic envelope sink ────────────────────────────
@@ -409,6 +418,7 @@ class ClaudeStdioObserver {
   constructor(
     private readonly sessionId: string,
     private readonly store: MessageStore,
+    private readonly nativeIds: Set<string>,
   ) {
     this.connectPromise = new Promise<void>((resolve) => {
       this.resolveConnect = resolve;
@@ -482,6 +492,7 @@ class ClaudeStdioObserver {
       // Synthesize a session_init envelope mirroring what WsBridge would
       // build from `makeDefaultState` plus the CC init payload. Only the
       // fields the harness scenarios assert on are populated.
+      if (typeof msg.session_id === "string") this.nativeIds.add(msg.session_id);
       const session = makeDefaultState(this.sessionId, "claude-code");
       session.model = (msg as { model?: string }).model ?? "";
       session.cwd = (msg as { cwd?: string }).cwd ?? "";
@@ -570,7 +581,7 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
     );
     expect(init.type).toBe("session_init");
     // Pin that the backend really did launch (catches a regression where a
-    // future refactor moves launch() out of createScenarioContext without
+    // future refactor moves launch() out of attachScenario without
     // updating this scenario — boot would silently become a no-op observation).
     expect(ctx.backend.isAlive(ctx.sessionId)).toBe(true);
     if (init.type === "session_init") {
@@ -715,10 +726,11 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
 
     if (ctx.module.type === "claude-code") {
       const resumedBackend = ctx.module.createBackend(0);
+      ctx.resumedBackend = resumedBackend;
       if (!(resumedBackend instanceof ClaudeCodeBackend)) {
         throw new Error("claude-code resume: createBackend did not return ClaudeCodeBackend");
       }
-      const resumedObs = new ClaudeStdioObserver(resumedSessionId, resumedStore);
+      const resumedObs = new ClaudeStdioObserver(resumedSessionId, resumedStore, ctx.nativeIds);
       resumedBackend.setStreamHandlers(resumedObs.handlers());
       resumedBackend.launch({
         cwd: ctx.workspace,
@@ -744,6 +756,7 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
     } else {
       // codex/kimi — same approach but through createBridgeBackend.
       const resumedBackend = ctx.module.createBackend(0);
+      ctx.resumedBackend = resumedBackend;
       resumedBackend.launch({
         cwd: ctx.workspace,
         sessionId: resumedSessionId,
@@ -778,7 +791,10 @@ const SCENARIOS: Record<ScenarioName, ScenarioFn> = {
           s.processedClientMessageIds = s.processedClientMessageIds.filter((entry) => entry !== id);
         },
         workspace: ctx.workspace,
-        onAgentSessionId: (_sid, aid) => resumedBackend.setAgentSessionId(resumedSessionId, aid),
+        onAgentSessionId: (_sid, aid) => {
+          ctx.nativeIds.add(aid);
+          resumedBackend.setAgentSessionId(resumedSessionId, aid);
+        },
         getOrCreateSession: () => session,
         prepareIncomingUserMessage: (s, msg, opts) => {
           const historyEntry = {
@@ -845,7 +861,7 @@ function sendUserMessage(ctx: ScenarioContext, content: string): void {
  * are wrapped here so scenarios stay backend-agnostic at the call site.
  *
  * The scenario's preceding step is responsible for ensuring the backend is
- * launched (codex/kimi launch in `createScenarioContext`; claude-code launches
+ * launched (codex/kimi launch in `attachScenario`; claude-code launches
  * lazily inside the scenario before this call).
  */
 async function sendPrompt(ctx: ScenarioContext, content: string): Promise<void> {
