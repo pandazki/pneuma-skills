@@ -110,6 +110,7 @@ Bun.serve = function(options) {
       return Response.json({error:"Intentional import fixture; no files imported"}, {status:503});
     }` : ""}
     if (new URL(request.url).pathname === "/api/backends") {
+      ${runE2E ? `await Bun.write(${JSON.stringify(join(root, "backend-request"))}, new URL(request.url).search);` : ""}
       await new Promise(r => setTimeout(r, ${config.backendDelay ?? 0}));
       ${config.backendFailure ? 'return Response.json({error:"Backend fixture unavailable"}, {status:503});' : ""}
     }
@@ -327,6 +328,8 @@ async function smoke(run, scenario) {
   assert.equal((await page.request.get(`${new URL(url).origin}/api/running`)).status(), 200);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: join(out, `${scenario}-launcher.png`) });
+  assert(!existsSync(join(fixture.root, "backend-request")), "Browsing or focusing the launcher started backend discovery");
+  checks.push("home, gallery and refocusing the launcher trigger zero backend checks");
   if (scenario === "no-backend") {
     const backends = await (await page.request.get(`${new URL(url).origin}/api/backends`)).json();
     assert(backends.backends.every((backend) => !backend.available), "No-backend response fixture was not applied");
@@ -337,8 +340,13 @@ async function smoke(run, scenario) {
     checks.push("launch dialog explains unavailable backend and disables Launch");
   }
   if (scenario === "slow-backends") {
-    assert(!run.result.responseEvents.some((event) => event.path === "/api/backends" && event.at <= run.result.localReadyAt), "Local content waited for delayed backend response");
-    checks.push("local content and gallery usable before the delayed backend response");
+    await page.getByRole("button", { name: "Launch", exact: true }).first().click();
+    await page.getByRole("status").filter({ hasText: "Checking available agents" }).waitFor();
+    const launchButton = page.getByRole("button", { name: "Launch", exact: true }).last();
+    assert(await launchButton.isDisabled(), "Launch became available before discovery completed");
+    await page.waitForFunction(() => !Array.from(document.querySelectorAll("button")).filter(b => b.textContent?.trim() === "Launch").at(-1)?.disabled);
+    assert.equal(await readFile(join(fixture.root, "backend-request"), "utf8"), "?scope=enabled");
+    checks.push("opening the picker starts discovery and enables Launch once its agents are checked");
   }
   if (scenario === "slow-registry") {
     let request;
@@ -353,8 +361,9 @@ async function smoke(run, scenario) {
     checks.push("local content became usable before the recorded remote registry completion");
   }
   if (scenario === "failed-backends") {
-    await page.locator('[data-launcher-resource="backends"]').getByRole("button", { name: "Retry" }).waitFor();
-    checks.push("failed backend request exposes Retry while local gallery remains usable");
+    await page.getByRole("button", { name: "Launch", exact: true }).first().click();
+    await page.getByRole("status").getByRole("button", { name: "Retry" }).waitFor();
+    checks.push("a failed on-demand backend request exposes Retry inside the picker");
   }
   if (scenario === "failed-registry") {
     await page.locator('[data-launcher-resource="published"]').getByRole("button", { name: "Retry" }).waitFor();

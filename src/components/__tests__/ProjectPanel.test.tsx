@@ -20,6 +20,9 @@ if (process.env.PNEUMA_HANDOFF_UI_TEST !== "1") {
   let win: Window;
   let unmount: () => Promise<void>;
   let host: HTMLElement;
+  let backendReads: string[] = [];
+  let sessions: Array<{ sessionId: string; mode: string; displayName: string; backendType: string; editing?: boolean }> = [];
+  let backendResponse: (() => Promise<Response> | Response) | undefined;
   let closes = 0;
   let rejected = false;
   let requests: Array<{ path: string; body: Record<string, unknown> }> = [];
@@ -38,6 +41,7 @@ if (process.env.PNEUMA_HANDOFF_UI_TEST !== "1") {
       lng: "en", fallbackLng: "en", interpolation: { escapeValue: false },
       resources: { en: {
         "project-panel": (await import("../../i18n/locales/en/project-panel.json")).default,
+        launcher: (await import("../../i18n/locales/en/launcher.json")).default,
         handoff: (await import("../../i18n/locales/en/handoff.json")).default,
       } },
     });
@@ -59,9 +63,16 @@ if (process.env.PNEUMA_HANDOFF_UI_TEST !== "1") {
         }
         if (path.endsWith("/api/launch/prepare")) return Response.json({ initParams: [] });
       }
-      if (path.endsWith("/sessions")) return Response.json({ project: { name: "demo", displayName: "Demo", root: "/demo" }, sessions: [] });
+      if (path.endsWith("/sessions")) return Response.json({ project: { name: "demo", displayName: "Demo", root: "/demo" }, sessions });
       if (path.endsWith("/api/registry")) return Response.json({ builtins: [{ name: "slide", displayName: "Slides" }] });
-      if (path.endsWith("/api/backends")) return Response.json({
+      if (path.includes("/api/backends")) {
+        backendReads.push(path);
+        if (backendResponse) return backendResponse();
+      }
+      if (path.endsWith("/api/backends?type=codex")) return Response.json({
+        defaultBackendType: "claude-code", backends: [{ type: "codex", disabled: true, available: true, implemented: true }],
+      });
+      if (path.includes("/api/backends?scope=enabled")) return Response.json({
         defaultBackendType: "claude-code",
         backends: [
           { type: "claude-code", label: "Claude Code", implemented: true, available: true },
@@ -76,6 +87,9 @@ if (process.env.PNEUMA_HANDOFF_UI_TEST !== "1") {
     (await import("../../store.js")).useStore.setState(initialState, true);
     document.body.innerHTML = "";
     requests = [];
+    backendResponse = undefined;
+    backendReads = [];
+    sessions = [];
     closes = 0;
     rejected = false;
   });
@@ -113,6 +127,55 @@ if (process.env.PNEUMA_HANDOFF_UI_TEST !== "1") {
       textarea.dispatchEvent(new win.Event("input", { bubbles: true }) as unknown as Event);
     });
   }
+
+  test.each([true, false])("browsing a populated project and resuming a saved session (editing %s)", async editing => {
+    sessions = [{ sessionId: "saved", mode: "doc", displayName: "Saved draft", backendType: "codex", editing }];
+    await mountPanel();
+    const { useStore } = await import("../../store.js");
+    await act(async () => {
+      useStore.getState().bumpSessionMetaTick();
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    const row = host.querySelector('[title="Saved draft"]')!;
+    expect(row).not.toBeNull();
+    expect(backendReads).toEqual([]);
+    await act(async () => { row.dispatchEvent(new win.MouseEvent("click", { bubbles: true }) as unknown as Event); });
+    expect(backendReads).toEqual(editing ? ["/api/backends?type=codex"] : []);
+    const body = requests.find(r => r.path.endsWith("/api/launch"))?.body;
+    expect(body?.sessionId).toBe("saved");
+    expect(body?.backendType).toBeUndefined();
+    expect(body?.viewing).toBe(editing ? undefined : true);
+  });
+
+  test("a pending or failed refresh cannot submit a stale choice, and retry falls back to an enabled agent", async () => {
+    await mountPanel();
+    await clickButton("Slides");
+    await clickButton("Codex");
+    const delayed = Promise.withResolvers<Response>();
+    backendResponse = () => delayed.promise;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(backendReads).toEqual([
+      "/api/backends?scope=enabled",
+      "/api/backends?scope=enabled&preferred=codex",
+      "/api/backends?scope=enabled&preferred=codex",
+    ]);
+    const confirm = () => [...host.querySelectorAll("button")].find(b => b.textContent === "Confirm")!;
+    expect(confirm().disabled).toBe(true);
+    await act(async () => delayed.resolve(new Response(null, { status: 503 })));
+    expect(confirm().disabled).toBe(true);
+    expect(host.textContent).toContain("Agent availability could not be checked");
+    backendResponse = () => Response.json({ defaultBackendType: "codex", backends: [
+      { type: "codex", disabled: true, available: true, implemented: true },
+      { type: "kimi-cli", label: "Kimi", available: true, implemented: true },
+    ] });
+    await clickButton("Retry");
+    await clickButton("Confirm");
+    expect(requests.find(r => r.path.endsWith("/api/launch"))?.body.backendType).toBe("kimi-cli");
+  });
 
   test("Codex selection is sent to the server even when Claude is the default and source", async () => {
     await chooseHandoff();

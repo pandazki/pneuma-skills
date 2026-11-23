@@ -1,3 +1,4 @@
+import { registerBackendAvailabilityRoute } from "./backend-availability-route.js";
 import { createRegistryCache } from "./registry-cache.js";
 import { isSessionStatePath } from "../core/session-state.js";
 import { Hono } from "hono";
@@ -9,7 +10,7 @@ import { join, resolve, relative, basename, dirname, sep } from "node:path";
 import { execFileSync, execSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { WsBridge } from "./ws-bridge.js";
-import { getBackendDescriptors, getDefaultBackendType, detectBackendAvailability } from "../backends/index.js";
+import { getBackendDescriptors, getDefaultBackendType } from "../backends/index.js";
 import type { AgentBackendType } from "../core/types/agent-backend.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { TerminalSocketData } from "./ws-bridge-types.js";
@@ -119,6 +120,8 @@ export interface ServerOptions {
   manifestProxy?: Record<string, ProxyRoute>; // Manifest-declared proxy routes
   editing?: boolean; // Initial editing state (from session.json or --viewing flag)
   editingSupported?: boolean; // Mode supports editing ↔ viewing toggle
+  /** Check the selected CLI before a viewer or replay starts editing. */
+  ensureAgentAvailable?: () => Promise<void>;
   backendType?: string; // Backend type for correct instructions file selection (claude-code | codex)
   refreshStrategy?: "auto" | "manual"; // Viewer refresh strategy (default: "auto")
 
@@ -1213,6 +1216,8 @@ export async function startServer(options: ServerOptions) {
     });
   };
 
+  registerBackendAvailabilityRoute(app);
+
   // Setup help belongs to both private server flavours, never the public authority.
   registerCollaborationSetupRoutes(app, {
     packageRoot: options.projectRoot || resolve(import.meta.dir, ".."),
@@ -1233,27 +1238,6 @@ export async function startServer(options: ServerOptions) {
 
     mountRegistryRoute(app);
     mountCatalogRoutes(app);
-
-    app.get("/api/backends", async (c) => {
-      const descriptors = getBackendDescriptors();
-      const availability = await detectBackendAvailability();
-      const { getBackendPrefs } = await import("../core/backend-prefs.js");
-      const prefs = getBackendPrefs();
-      const backends = descriptors.map((desc) => {
-        const avail = availability.find((a) => a.type === desc.type);
-        return {
-          ...desc,
-          available: avail?.available ?? false,
-          reason: avail?.reason,
-          // Per-user disable flag. Persistent; defaults to enabled (false).
-          // Session-creation pickers should treat `disabled: true` as "hide";
-          // the launcher Settings panel still surfaces it so the user can
-          // re-enable.
-          disabled: prefs[desc.type]?.disabled === true,
-        };
-      });
-      return c.json({ backends, defaultBackendType: getDefaultBackendType() });
-    });
 
     // Toggle the per-user disable flag for a backend. Used by the launcher
     // Settings panel — see `BackendsSection` in `Launcher.tsx`. Disabling
@@ -1547,6 +1531,7 @@ export async function startServer(options: ServerOptions) {
         return c.json({
           hasSession: true,
           mode: session.mode,
+          editing: session.editing !== false,
           backendType: session.backendType || getDefaultBackendType(),
           config,
         });
@@ -2608,6 +2593,8 @@ export async function startServer(options: ServerOptions) {
   let serverReplayMode = options.replayMode ?? !!options.replayPackagePath;
   let replayContinueCallback: (() => Promise<void>) | null = null;
   let currentEditing: boolean = options.editing ?? true;
+  let changingEditing = false;
+  let continuingReplay = false;
   let editingLaunchCallback: (() => Promise<void>) | null = null;
   let editingKillCallback: (() => Promise<void>) | null = null;
 
@@ -2770,49 +2757,47 @@ export async function startServer(options: ServerOptions) {
       return c.json({ error: "editing must be a boolean" }, 400);
     }
 
+    if (newEditing && !currentEditing && options.ensureAgentAvailable && !editingLaunchCallback) {
+      return c.json({ error: "Session is still starting" }, 503);
+    }
+    if (changingEditing) return c.json({ error: "Editing mode is changing" }, 409);
+    changingEditing = true;
     const oldEditing = currentEditing;
-    currentEditing = newEditing;
-
-    // Persist to session.json
     try {
-      const sessionPath = join(stateDirForSession, "session.json");
-      if (existsSync(sessionPath)) {
-        const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
-        session.editing = newEditing;
-        writeFileSync(sessionPath, JSON.stringify(session, null, 2));
+      let agentStatus: "launched" | "killed" | "unchanged" = "unchanged";
+      if (newEditing && !oldEditing && editingLaunchCallback) {
+        await options.ensureAgentAvailable?.();
+        await editingLaunchCallback();
+        agentStatus = "launched";
+      } else if (!newEditing && oldEditing) {
+        const activeId = wsBridge.getActiveSessionId();
+        if (activeId) wsBridge.broadcastToSession(activeId, { type: "cli_disconnected" });
+        await editingKillCallback?.();
+        agentStatus = "killed";
       }
+
+      currentEditing = newEditing;
+
+      // Persist to session.json
+      try {
+        const sessionPath = join(stateDirForSession, "session.json");
+        if (existsSync(sessionPath)) {
+          const session = JSON.parse(readFileSync(sessionPath, "utf-8"));
+          session.editing = newEditing;
+          writeFileSync(sessionPath, JSON.stringify(session, null, 2));
+        }
+      } catch (err) {
+        console.error("[server] Failed to persist editing:", err);
+      }
+
+      console.log(`[server] Editing: ${oldEditing} → ${newEditing} (agent: ${agentStatus})`);
+      return c.json({ ok: true, agentStatus });
     } catch (err) {
-      console.error("[server] Failed to persist editing:", err);
+      console.error("[server] Failed to change editing mode:", err);
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    } finally {
+      changingEditing = false;
     }
-
-    // Agent lifecycle: launch when editing, kill when not editing
-    let agentStatus: "launched" | "killed" | "unchanged" = "unchanged";
-
-    if (newEditing === true && oldEditing === false) {
-      if (editingLaunchCallback) {
-        try {
-          await editingLaunchCallback();
-          agentStatus = "launched";
-        } catch (err) {
-          console.error("[server] Failed to launch agent:", err);
-          return c.json({ error: "Failed to launch agent" }, 500);
-        }
-      }
-    } else if (newEditing === false && oldEditing === true) {
-      const activeId = wsBridge.getActiveSessionId();
-      if (activeId) wsBridge.broadcastToSession(activeId, { type: "cli_disconnected" });
-      agentStatus = "killed";
-      if (editingKillCallback) {
-        try {
-          await editingKillCallback();
-        } catch (err) {
-          console.error("[server] Failed to kill agent:", err);
-        }
-      }
-    }
-
-    console.log(`[server] Editing: ${oldEditing} → ${newEditing} (agent: ${agentStatus})`);
-    return c.json({ ok: true, agentStatus });
   });
 
   // ── Session-meta refine (agent-driven via `pneuma session refine` CLI) ─
@@ -3369,7 +3354,11 @@ export async function startServer(options: ServerOptions) {
       return c.json({ error: "Not in replay mode" }, 400);
     }
 
+    if (options.ensureAgentAvailable && !replayContinueCallback) return c.json({ error: "Replay is still loading" }, 503);
+    if (continuingReplay) return c.json({ error: "Replay is already continuing" }, 409);
+    continuingReplay = true;
     try {
+      await options.ensureAgentAvailable?.();
       const { prepareWorkspaceForContinue } = await import("./replay-continue.js");
 
       // 1. Apply final checkpoint files directly to workspace
@@ -3405,6 +3394,8 @@ export async function startServer(options: ServerOptions) {
     } catch (err: any) {
       console.error("[server] Continue Work failed:", err);
       return c.json({ error: err.message || String(err) }, 500);
+    } finally {
+      continuingReplay = false;
     }
   });
 

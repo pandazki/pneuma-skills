@@ -101,9 +101,9 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     routes.set("/api/backends", () => backend.promise);
     routes.set("/api/registry", () => Response.json(registry("Local Board", "loading")));
     await mount();
+    expect(requests.filter(path => path.startsWith("/api/backends"))).toEqual([]);
     expect(host.textContent).toContain("Local Board");
     expect(host.querySelector("main")?.dataset.launcherLocalReady).toBe("true");
-    expect(host.querySelector("main")?.dataset.launcherBackendsReady).toBe("false");
     // Pending agents and community discovery hold no place on the page: nothing waits on them visibly.
     expect(host.querySelectorAll("main [data-launcher-skeleton]")).toHaveLength(0);
     expect(host.textContent).not.toContain("Checking community modes");
@@ -115,10 +115,9 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
       window.dispatchEvent(new Event("focus"));
       document.dispatchEvent(new Event("visibilitychange"));
     });
-    expect(requests.filter((path) => path === "/api/backends")).toHaveLength(1);
-    expect(signals.get("/api/backends")?.aborted).toBe(false);
+    expect(requests.filter((path) => path === "/api/backends?scope=enabled")).toHaveLength(1);
+    expect(signals.get("/api/backends?scope=enabled")?.aborted).toBe(false);
     await act(async () => backend.resolve(Response.json(backends)));
-    expect(host.querySelector("main")?.dataset.launcherBackendsReady).toBe("true");
     expect(button("Launch").disabled).toBe(false);
     expect(requests.filter((path) => path === "/api/launch")).toHaveLength(0);
   });
@@ -152,6 +151,42 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     expect(skeleton("modes")).toBeNull();
     expect(button("All Modes (1)")).toBeDefined();
     expect(host.querySelector("main [aria-busy=\"true\"]")).toBeNull();
+  });
+
+  test("browsing populated lists, returning, and opening a viewing session never check agents", async () => {
+    const session = { id: "one", mode: "board", sessionName: "My draft", workspace: "/work/one", backendType: "codex", lastAccessed: Date.now() };
+    routes.set("/api/sessions", () => Response.json({ sessions: [session, { ...session, id: "two", sessionName: "My app", workspace: "/work/two", editing: false, layout: "app" }] }));
+    routes.set("/api/projects", () => Response.json({ projects: [{ id: "p", root: "/p", displayName: "My project", modeBreakdown: [], sessionCount: 1, lastAccessed: Date.now() }] }));
+    await mount();
+    expect(host.textContent).toContain("My draft");
+    expect(host.textContent).toContain("My project");
+    await click([...host.querySelectorAll("button")].find(b => b.textContent?.includes("My app"))!);
+    expect(requests).toContain("/api/launch");
+    await click(button("All Modes (1)"));
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(requests.filter(path => path.startsWith("/api/backends"))).toEqual([]);
+    expect(host.textContent).not.toContain("Checking available agents");
+  });
+
+  test("resuming a saved session verifies only its backend and surfaces its reason", async () => {
+    routes.set("/api/sessions", () => Response.json({ sessions: [{
+      id: "one", mode: "board", sessionName: "My draft", workspace: "/work/one", backendType: "codex", lastAccessed: Date.now(),
+    }] }));
+    routes.set("/api/backends?type=codex", () => Response.json({
+      ...backends, backends: [{ ...backends.backends[0], disabled: true, available: false, reason: "Install Codex" }],
+    }));
+    await mount();
+    const title = [...host.querySelectorAll("*")].find(el => !el.children.length && el.textContent === "My draft")!;
+    await click(title);
+    expect(host.textContent).toContain("Install Codex");
+    expect(requests).not.toContain("/api/launch");
+    routes.set("/api/backends?type=codex", () => Response.json({ ...backends, backends: [{ ...backends.backends[0], disabled: true }] }));
+    await click(title);
+    expect(requests).toContain("/api/launch");
+    expect(requests.filter(path => path.startsWith("/api/backends"))).toEqual(["/api/backends?type=codex", "/api/backends?type=codex"]);
   });
 
   test("a section with no records leaves once its read completes", async () => {
@@ -214,10 +249,11 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     const backend = Promise.withResolvers<Response>();
     routes.set("/api/backends", () => backend.promise);
     await mount();
-    expect(signals.get("/api/backends")?.aborted).toBe(false);
+    await click([...host.querySelectorAll("button")].find(b => b.textContent?.includes("Local Board"))!);
+    expect(signals.get("/api/backends?scope=enabled")?.aborted).toBe(false);
     await unmount?.();
     unmount = undefined;
-    expect(signals.get("/api/backends")?.aborted).toBe(true);
+    expect(signals.get("/api/backends?scope=enabled")?.aborted).toBe(true);
     const count = requests.length;
     await act(async () => backend.resolve(Response.json(backends)));
     expect(requests).toHaveLength(count);
@@ -231,6 +267,9 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
     await click(tile);
     expect(button("Launch").disabled).toBe(true);
     expect(host.textContent).toContain("Agent availability could not be checked");
+    routes.set("/api/backends?scope=enabled", () => Response.json(backends));
+    await click(button("Retry"));
+    expect(button("Launch").disabled).toBe(false);
     expect(requests.filter((path) => path === "/api/launch")).toHaveLength(0);
   });
 
@@ -249,7 +288,7 @@ if (process.env.PNEUMA_LAUNCHER_STARTUP_UI_TEST !== "1") {
       const events = firstEvent === "focus" ? ["focus", "visibilitychange"] : ["visibilitychange", "focus"];
       for (const event of events) (event === "focus" ? window : document).dispatchEvent(new Event(event));
     });
-    expect(requests.filter((path) => path === "/api/backends")).toHaveLength(2);
+    expect(requests.filter((path) => path === "/api/backends?scope=enabled")).toHaveLength(2);
     expect(button("Launch").disabled).toBe(true);
     await act(async () => installed.resolve(Response.json(backends)));
     expect(button("Launch").disabled).toBe(false);

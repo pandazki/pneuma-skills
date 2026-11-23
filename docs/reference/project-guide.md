@@ -213,7 +213,7 @@ publish anything automatically. Brand Studio is the first consumer.
 | **Source\<T\>** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` + `FileChannel` + `FileChangeEvent` + `SourceDescriptor` | `core/types/source.ts` | `core/source-registry.ts` picks provider by `kind` from `manifest.sources` | Built-in providers in `core/sources/{file-glob,json-file,aggregate-file,memory}.ts` (all extend `core/sources/base.ts` which enforces the four invariants); viewer subscribes via `src/hooks/useSource.ts` |
 | **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle; `AgentCapabilities.steer` gates the queued-message steer-in affordance and maps to each backend's native in-flight input protocol (see `docs/reference/steer-in.md`) |
 | **AgentProtocolAdapter** _(reserved/unused — see `BridgeBackend` row for the real seam)_ | `core/types/agent-backend.ts` | — (no production implementor) | — (no production consumer) |
-| **BackendModule** (incl. the optional install-seam fields `commandsDir` / `workflowsDir`) | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file; `server/skill-installer.ts` gates the session-command and workflow-script install steps on the FIELDS being defined. Callers await `checkRequirements()` so a CLI capability probe can yield while the launcher serves other requests. |
+| **BackendModule** (incl. the optional install-seam fields `commandsDir` / `workflowsDir`) | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file; `server/skill-installer.ts` gates the session-command and workflow-script install steps on the FIELDS being defined. The availability route awaits `checkRequirements()` only for the requested backends and returns `BackendOptions` to the launcher and ProjectPanel. |
 | **BridgeBackend** | `server/ws-bridge-backend.ts` | `BackendModule.createBridgeBackend()` per non-Claude backend | `server/ws-bridge.ts` central bridge dispatches; Claude legacy NDJSON path returns `null` here |
 | **ToolFileRef** | `backends/tool-file-ref.ts` | `BackendModule.toolFileRef(toolName, input)` | `server/file-ref.ts::stampFileRefs` decorates `tool_use` blocks; front-end `FilePreview` + `ToolFileActions` (open / editor / reveal via `/api/system/*`) consume |
 | **Reasoning effort + session token usage** — `ModeManifest.agent.reasoningEffort` → `AgentLaunchOptions.reasoningEffort` → codex `turn/start.effort` (`thread/start` has no such field); `SessionState.token_usage` (cumulative input / cached / output / reasoning, raw and unpriced) on `session_update`, filled by the Codex adapter from `thread/tokenUsage/updated.total` | `core/types/mode-manifest.ts`, `core/types/agent-backend.ts`, `server/session-types.ts` | `bin/pneuma.ts` passes the manifest's effort at launch; `backends/codex/codex-adapter.ts` sends it per turn and reports usage | `src/components/ContextPanel.tsx` shows the tokens; a mode prices them itself (`modes/lucid/skill/scripts/costs.mjs` → the cost panel) |
@@ -386,8 +386,7 @@ arrives; failures show an error with Retry instead. `main.tsx` loads the
 renderer and the requested launcher, project, or session view in parallel.
 The launcher commits over the skeleton as soon as its view is ready. English
 fallback resources ship with the entry point; other languages load on demand.
-Backend discovery awaits external capability checks so local browsing routes
-can serve requests while an installed CLI starts.
+Browsing the launcher and mode gallery starts no agent capability checks.
 
 Protocol URLs received before service readiness are queued in arrival order and
 all dispatched after startup. Only a queue containing exclusively background
@@ -531,12 +530,25 @@ Do not infer automatic recovery from the existence of a durable result file.
 
 无 mode 参数时启动(`bun run dev` / `pneuma`)。Marketplace UI:Recent Sessions、Recent Projects、Built-in Modes、Local Modes、Published Modes、Backend Picker。入口在 `server/index.ts` launcher block 与 `src/components/Launcher.tsx`。
 
-The launcher loads backend availability, registry buckets, sessions, running
-instances, and current/archived projects independently. A slow or failed request
-does not discard successful data or hide the whole page. Pending backend checks
-cannot be mistaken for an installed backend when starting a session.
-Returning to the launcher rechecks backend availability, and successful backend
-visibility changes in Settings refresh the launcher's options without reloading.
+The launcher loads registry buckets, sessions, running instances, and projects
+independently. Browsing these lists or returning to them leaves agent CLIs idle.
+The launcher and ProjectPanel verify the default agent when a new-session picker
+opens and check another agent when the user selects it. While it is open, returning focus or retrying refreshes the choices.
+Launch and Smart Handoff wait for a verified choice. Saved-session resumes
+check the saved backend even when hidden from new-session pickers. Viewing
+a saved session skips that check.
+
+Both private servers serve `GET /api/backends`. The unqualified request used by
+Settings checks every registered backend and includes each user's disable flag.
+`?scope=enabled` lists enabled choices, checks the default and stops at the
+first usable fallback. With `&preferred=<backend>` it checks that enabled
+choice. Other choices omit `available` until selected. `?type=<backend>` checks a single
+backend, and `?type=default` resolves the registry default for legacy records.
+All three return the same `{ backends, defaultBackendType }` shape, including
+the reason for each unavailable option. The catalog can be read without loading
+any agent transport. Each backend factory loads its own runtime when launching.
+Viewing an existing session or replay requires no installed CLI. Switching to
+editing or continuing a replay verifies the selected CLI first.
 
 `GET /api/registry` returns local builtins, the pinned release catalog, and
 installed/library modes without waiting for the community directory. The

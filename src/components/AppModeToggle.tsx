@@ -63,6 +63,7 @@ export default function AppModeToggle() {
   const [overButton, setOverButton] = useState(false);
   const [focused, setFocused] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [launchError, setLaunchError] = useState("");
   // No hover to reveal with — the button has to be drawn to exist at all.
   const [hoverless, setHoverless] = useState(false);
   // Mirrors `nearEdge` so the move handler can decide without re-subscribing.
@@ -113,22 +114,25 @@ export default function AppModeToggle() {
 
   const enterEditing = useCallback(async () => {
     setSwitching(true);
+    setLaunchError("");
     try {
       const res = await fetch(`${getApiBase()}/api/session/editing`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ editing: true }),
       });
-      if (res.ok) {
-        setEditing(true);
-        desktop?.setEditing?.(true);
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}));
+        throw new Error(result.error || t("launcher:launch_dialog.agent_unavailable"));
       }
+      setEditing(true);
+      desktop?.setEditing?.(true);
     } catch (err) {
-      console.error("Failed to switch to editing:", err);
+      setLaunchError(err instanceof Error ? err.message : String(err));
     } finally {
       setSwitching(false);
     }
-  }, [setEditing]);
+  }, [setEditing, t]);
 
   return (
     <div
@@ -143,6 +147,9 @@ export default function AppModeToggle() {
         pointerEvents: "none",
       }}
     >
+      {launchError && (
+        <span role="alert" title={launchError} className="max-w-[70vw] truncate bg-cc-bg px-2 text-[10px] leading-3 text-cc-error">{launchError}</span>
+      )}
       <button
         onClick={enterEditing}
         onFocus={() => setFocused(true)}

@@ -105,6 +105,7 @@ describe("scanProjectSessions", () => {
         mode: "doc",
         backendType: "codex",
         sessionName: "Hero Section",
+        editing: false,
         createdAt: 100,
       })
     );
@@ -114,6 +115,7 @@ describe("scanProjectSessions", () => {
     const sessions = await scanProjectSessions(tmp);
     const named = sessions.find((s) => s.sessionId === "named");
     expect(named).toBeDefined();
+    expect(named!.editing).toBe(false);
     expect(named!.backendType).toBe("codex");
     expect(named!.displayName).toBe("Hero Section");
     // lastAccessed is mtime-based; we can't predict the exact ms but it must

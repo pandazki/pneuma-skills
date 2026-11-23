@@ -59,10 +59,8 @@ import {
 import { handleViewerActionResponse, registerPrivateViewer, unregisterPrivateViewer } from "./ws-bridge-viewer.js";
 import { stampFileRefs } from "./file-ref.js";
 import type { CodexAdapter } from "../backends/codex/codex-adapter.js";
-import { CodexBridge } from "./ws-bridge-codex.js";
 import { isSlashCommandMessage } from "../core/utils/slash-command.js";
 import type { KimiAdapter } from "../backends/kimi-cli/kimi-adapter.js";
-import { KimiBridge } from "./ws-bridge-kimi.js";
 import type { BridgeBackend, BridgeBackendDeps } from "./ws-bridge-backend.js";
 
 // ─── Bridge ───────────────────────────────────────────────────────────────────
@@ -143,6 +141,7 @@ export class WsBridge {
    */
   attachCodexAdapter(sessionId: string, adapter: CodexAdapter): void {
     const session = this.getOrCreateSession(sessionId, "codex");
+    const { CodexBridge } = require("./ws-bridge-codex.js") as typeof import("./ws-bridge-codex.js");
     const bridge = new CodexBridge(sessionId, session, adapter, this.bridgeBackendDeps());
     this.attachStreamingBackend(sessionId, bridge);
   }
@@ -154,6 +153,7 @@ export class WsBridge {
    */
   attachKimiAdapter(sessionId: string, adapter: KimiAdapter): void {
     const session = this.getOrCreateSession(sessionId, "kimi-cli");
+    const { KimiBridge } = require("./ws-bridge-kimi.js") as typeof import("./ws-bridge-kimi.js");
     const bridge = new KimiBridge(sessionId, session, adapter, this.bridgeBackendDeps());
     this.attachStreamingBackend(sessionId, bridge);
   }

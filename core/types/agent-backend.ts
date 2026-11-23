@@ -19,6 +19,18 @@ export interface AgentBackendDescriptor {
   implemented: boolean;
 }
 
+/** An agent choice. An untouched picker alternative has no availability result yet. */
+export interface BackendOption extends AgentBackendDescriptor {
+  available?: boolean;
+  reason?: string;
+  disabled: boolean;
+}
+
+export interface BackendOptions {
+  backends: BackendOption[];
+  defaultBackendType: AgentBackendType;
+}
+
 /** Agent session info */
 export interface AgentSessionInfo {
   /** Server routing session ID (UUID) */

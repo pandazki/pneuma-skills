@@ -1,8 +1,6 @@
 import type { BackendModule } from "../../core/types/agent-backend.js";
 import { resolveBinary } from "../../server/path-resolver.js";
 import { defaultToolFileRef } from "../tool-file-ref.js";
-import { CodexBackend } from "./index.js";
-import { CodexBridge } from "../../server/ws-bridge-codex.js";
 
 const INSTALL_HINT = `Install: npm install -g @openai/codex
 Verify: codex --version
@@ -41,6 +39,7 @@ export const codexModule: BackendModule = {
     // CodexBackend takes no constructor args (the `port` parameter from the
     // BackendModule signature applies to backends that need an HTTP transport
     // — codex is pure stdio JSON-RPC).
+    const { CodexBackend } = loadBackend();
     return new CodexBackend();
   },
 
@@ -53,6 +52,7 @@ export const codexModule: BackendModule = {
    *     `createBridgeBackend` signature.
    */
   createBridgeBackend(deps, backend, sessionId) {
+    const { CodexBackend } = loadBackend();
     if (!(backend instanceof CodexBackend)) {
       throw new Error("codex.createBridgeBackend: expected CodexBackend instance");
     }
@@ -66,6 +66,7 @@ export const codexModule: BackendModule = {
       );
     }
     const session = deps.getOrCreateSession(sessionId, "codex");
+    const { CodexBridge } = require("../../server/ws-bridge-codex.js") as typeof import("../../server/ws-bridge-codex.js");
     return new CodexBridge(sessionId, session, adapter, deps);
   },
 
@@ -79,3 +80,7 @@ export const codexModule: BackendModule = {
 
   toolFileRef: defaultToolFileRef,
 };
+
+function loadBackend(): typeof import("./index.js") {
+  return require("./index.js");
+}

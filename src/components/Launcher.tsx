@@ -51,41 +51,14 @@ import {
   RefreshGlyph,
 } from "./CatalogInstall.js";
 
-export type BackendType = "claude-code" | "codex" | "kimi-cli";
+import type { AgentBackendType as BackendType } from "../../core/types/agent-backend.js";
+import { useBackendOptions, useBackendPicker, verifySavedBackend } from "../hooks/useBackendPicker.js";
 
-export interface BackendOption {
-  type: BackendType;
-  label: string;
-  description: string;
-  implemented: boolean;
-  available?: boolean;
-  reason?: string;
-  /** User explicitly disabled this backend from session-creation pickers (per-user pref). */
-  disabled?: boolean;
-}
-
-export const FALLBACK_BACKENDS: BackendOption[] = [
-  {
-    type: "claude-code",
-    label: "Claude Code",
-    description: "Anthropic Claude Code CLI via stdio stream-json transport.",
-    implemented: true,
-    available: true,
-  },
-  {
-    type: "codex",
-    label: "Codex",
-    description: "OpenAI Codex CLI via app-server transport.",
-    implemented: true,
-    available: true,
-  },
-  {
-    type: "kimi-cli",
-    label: "Kimi",
-    description: "Moonshot AI Kimi Code CLI via stdio stream-json transport.",
-    implemented: true,
-    available: true,
-  },
+// Static labels for handoff summaries, independent of installed CLIs.
+export const FALLBACK_BACKENDS = [
+  { type: "claude-code", label: "Claude Code" },
+  { type: "codex", label: "Codex" },
+  { type: "kimi-cli", label: "Kimi" },
 ];
 
 interface BuiltinMode {
@@ -883,7 +856,6 @@ function SessionCard({
   onOpen,
   onRename,
   isLight,
-  backendUnavailableReason,
 }: {
   session?: RecentSession;
   homeDir: string;
@@ -897,7 +869,6 @@ function SessionCard({
   onOpen?: () => void;
   onRename?: (name: string) => void;
   isLight?: boolean;
-  backendUnavailableReason?: string;
 }) {
   const { t } = useTranslation("launcher");
   const [launching, setLaunching] = useState(false);
@@ -918,7 +889,6 @@ function SessionCard({
   }, [runningProcess]);
 
   const handleClick = async () => {
-    if (backendUnavailableReason) return;
     if (isRunning && onOpen) {
       onOpen();
       return;
@@ -1031,18 +1001,6 @@ function SessionCard({
           )}
           {/* Soft vignette — feathers thumbnail edges into card bg */}
           <div className="absolute inset-0 pointer-events-none rounded-lg session-card-vignette" />
-
-        {/* Backend unavailable overlay */}
-        {backendUnavailableReason && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm rounded-lg">
-            <div className="text-center px-4">
-              <svg className="w-6 h-6 text-red-400 mx-auto mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-              </svg>
-              <p className="text-xs text-red-300 font-medium">{backendUnavailableReason}</p>
-            </div>
-          </div>
-        )}
 
         {/* Running badge */}
         {isRunning && (
@@ -1187,7 +1145,6 @@ function CompactSessionRow({
   onDelete,
   onReplay,
   onRename,
-  backendUnavailableReason,
 }: {
   session: RecentSession;
   homeDir: string;
@@ -1196,7 +1153,6 @@ function CompactSessionRow({
   onDelete: () => void;
   onReplay?: () => void;
   onRename?: (name: string) => void;
-  backendUnavailableReason?: string;
 }) {
   const { t } = useTranslation("launcher");
   const [launching, setLaunching] = useState(false);
@@ -1211,7 +1167,7 @@ function CompactSessionRow({
   const [highlightsOpen, setHighlightsOpen] = useState(false);
 
   const handleClick = async () => {
-    if (backendUnavailableReason || launching || skillUpdate) return;
+    if (launching || skillUpdate) return;
     setLaunching(true);
     try {
       const res = await fetch(`${getApiBase()}/api/launch/skill-check`, {
@@ -1241,13 +1197,10 @@ function CompactSessionRow({
     <div
       onClick={handleClick}
       className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-        backendUnavailableReason
-          ? "opacity-50 cursor-not-allowed"
-          : launching
-            ? "opacity-50 pointer-events-none"
-            : "cursor-pointer hover:bg-cc-hover/50"
+        launching
+          ? "opacity-50 pointer-events-none"
+          : "cursor-pointer hover:bg-cc-hover/50"
       }`}
-      title={backendUnavailableReason || undefined}
     >
       <div className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg bg-cc-surface/60">
         <ModeIcon svg={icon} className="w-4 h-4 text-cc-muted/40" />
@@ -1287,11 +1240,7 @@ function CompactSessionRow({
           )}
         </div>
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`text-[10px] px-1 py-0.5 rounded uppercase tracking-wide shrink-0 ${
-            backendUnavailableReason
-              ? "bg-red-500/10 text-red-400"
-              : "bg-cc-surface/80 text-cc-muted/60"
-          }`}>
+          <span className="text-[10px] px-1 py-0.5 rounded uppercase tracking-wide shrink-0 bg-cc-surface/80 text-cc-muted/60">
             {backendLabel(session.backendType)}
           </span>
           <p className="text-[10px] text-cc-muted/40 font-mono truncate">{shortenPath(session.workspace, homeDir)}</p>
@@ -1386,7 +1335,6 @@ function AllSessions({
   onDelete,
   onReplay,
   onRename,
-  getBackendUnavailableReason,
   className,
   closing,
   headerHeight = 0,
@@ -1399,7 +1347,6 @@ function AllSessions({
   onDelete: (id: string) => void;
   onReplay: (session: RecentSession) => void;
   onRename: (id: string, name: string) => void;
-  getBackendUnavailableReason: (type: BackendType) => string | undefined;
   className?: string;
   closing?: boolean;
   headerHeight?: number;
@@ -1464,7 +1411,6 @@ function AllSessions({
                   isRunning
                   isLight={isLight}
                   runningProcess={item.process}
-                  backendUnavailableReason={item.session ? getBackendUnavailableReason(item.session.backendType) : undefined}
                   onResume={item.session ? (skipSkill) => onResume(item.session!, skipSkill) : undefined}
                   onDelete={item.session ? () => onDelete(item.session!.id) : undefined}
                   onReplay={item.session?.hasReplayData ? () => onReplay(item.session!) : undefined}
@@ -1500,7 +1446,6 @@ function AllSessions({
                   onDelete={() => onDelete(item.session!.id)}
                   onReplay={item.session!.hasReplayData ? () => onReplay(item.session!) : undefined}
                   onRename={(name) => onRename(item.session!.id, name)}
-                  backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                 />
               ))}
             </div>
@@ -2851,9 +2796,6 @@ export function LaunchDialog({
   defaultWorkspace,
   defaultInitParams,
   forkSource,
-  backendOptions,
-  backendReadinessError,
-  defaultBackendType,
   homeDir,
   onClose,
   closing,
@@ -2871,9 +2813,6 @@ export function LaunchDialog({
    *  empty workspace. Used by gallery "Edit" which means "start a mode
    *  package seeded from an existing mode". */
   forkSource?: { sourceMode?: string; sourcePath?: string };
-  backendOptions: BackendOption[];
-  backendReadinessError?: string;
-  defaultBackendType: BackendType;
   homeDir: string;
   onClose: () => void;
   closing?: boolean;
@@ -2893,18 +2832,13 @@ export function LaunchDialog({
   const [preparing, setPreparing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [browsing, setBrowsing] = useState(false);
-  const [selectedBackendType, setSelectedBackendType] = useState<BackendType>(() => {
-    // Auto-select first available backend if default isn't available
-    const defaultAvail = backendOptions.find((b) => b.type === defaultBackendType);
-    if (defaultAvail?.available !== false) return defaultBackendType;
-    const firstAvail = backendOptions.find((b) => b.available && b.implemented);
-    return firstAvail?.type ?? defaultBackendType;
-  });
+  const [preferredBackend, setPreferredBackend] = useState<BackendType>();
   const [workspaceCheck, setWorkspaceCheck] = useState<{
     path: string;
     session: {
       mode: string;
       backendType: BackendType;
+      editing: boolean;
       config: Record<string, string | number>;
     } | null;
     error?: string;
@@ -2917,18 +2851,15 @@ export function LaunchDialog({
   const checkingWorkspace = currentWorkspaceCheck === null;
   const effectiveParamValues = existingSession && Object.keys(existingSession.config).length > 0
     ? existingSession.config : paramValues;
-  const selectedBackend = backendOptions.find((backend) => backend.type === (existingSession?.backendType ?? selectedBackendType));
-  const backendError = backendReadinessError || (!selectedBackend?.implemented || selectedBackend.available !== true || (selectedBackend.disabled && !existingSession)
-    ? selectedBackend?.reason || t("launch_dialog.agent_unavailable") : undefined);
+  const viewing = existingSession?.editing === false;
+  const picker = useBackendPicker(
+    !closing && !viewing && !checkingWorkspace && !currentWorkspaceCheck?.error,
+    preferredBackend, existingSession?.backendType,
+  );
+  const selectedBackendType = viewing ? existingSession.backendType : picker.choice?.type;
+  const backendError = viewing ? undefined : picker.error;
   const launchError = error || currentWorkspaceCheck?.error || backendError;
-  const canLaunch = !backendError && !loading && !preparing && !checkingWorkspace && !currentWorkspaceCheck?.error && !!workspace.trim();
-  useEffect(() => {
-    if (backendReadinessError || existingSession) return;
-    if (backendOptions.some((backend) => backend.type === selectedBackendType && backend.available && backend.implemented && !backend.disabled)) return;
-    const available = backendOptions.filter((backend) => backend.available && backend.implemented && !backend.disabled);
-    const next = available.find((backend) => backend.type === defaultBackendType) ?? available[0];
-    if (next) setSelectedBackendType(next.type);
-  }, [backendOptions, backendReadinessError, defaultBackendType, existingSession, selectedBackendType]);
+  const canLaunch = !!selectedBackendType && !backendError && !closing && !loading && !preparing && !checkingWorkspace && !currentWorkspaceCheck?.error && !!workspace.trim();
   const { resolved: dialogTheme } = useAppTheme();
   const isLight = dialogTheme === "light";
 
@@ -2950,11 +2881,13 @@ export function LaunchDialog({
         const data = await res.json();
         if (controller.signal.aborted) return;
         if (!res.ok || data.error) throw new Error(data.error || t("launch_dialog.prepare_failed"));
+        if (data.hasSession && !data.backendType) throw new Error(t("launch_dialog.prepare_failed"));
         setWorkspaceCheck({
           path: workspace,
           session: data.hasSession ? {
             mode: data.mode,
-            backendType: (data.backendType || defaultBackendType) as BackendType,
+            backendType: data.backendType,
+            editing: data.editing !== false,
             config: data.config || {},
           } : null,
         });
@@ -2970,7 +2903,7 @@ export function LaunchDialog({
     };
     void check();
     return () => controller.abort();
-  }, [workspace, defaultBackendType, t]);
+  }, [workspace, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3015,7 +2948,8 @@ export function LaunchDialog({
         body: JSON.stringify({
           specifier,
           workspace,
-          backendType: existingSession?.backendType || selectedBackendType,
+          backendType: selectedBackendType,
+          ...(viewing ? { viewing: true } : {}),
           sessionName: sessionNameValue.trim() || undefined,
           initParams: {
             ...(defaultInitParams || {}),
@@ -3047,7 +2981,7 @@ export function LaunchDialog({
       setError(err instanceof Error ? err.message : t("launch_dialog.launch_failed"));
       setLoading(false);
     }
-  }, [canLaunch, specifier, workspace, selectedBackendType, existingSession, sessionNameValue, defaultInitParams, effectiveParamValues, onClose, forkSource, t]);
+  }, [canLaunch, specifier, workspace, selectedBackendType, viewing, sessionNameValue, defaultInitParams, effectiveParamValues, onClose, forkSource, t]);
 
   const [activeHighlight, setActiveHighlight] = useState(0);
   const highlights = showcase?.highlights;
@@ -3129,14 +3063,7 @@ export function LaunchDialog({
       )}
 
       {(() => {
-        // Filter out user-disabled backends so they don't clutter the
-        // picker. Exception: if the existing session was created with a
-        // now-disabled backend, keep it visible (and selected) so resume
-        // works.
-        const visibleBackends = backendOptions.filter((b) => {
-          if (b.disabled !== true) return true;
-          return existingSession?.backendType === b.type;
-        });
+        const visibleBackends = picker.options;
         if (visibleBackends.length <= 1) return null;
         return (
         <div className="mb-4">
@@ -3144,7 +3071,7 @@ export function LaunchDialog({
           <div className="flex gap-2">
             {visibleBackends.map((backend) => {
               const active = (existingSession?.backendType || selectedBackendType) === backend.type;
-              const unavailable = !!backendReadinessError || !backend.implemented || backend.available !== true;
+              const unavailable = !backend.implemented || backend.available === false;
               const disabled = !!existingSession || unavailable;
               return (
                 <button
@@ -3152,7 +3079,7 @@ export function LaunchDialog({
                   type="button"
                   disabled={disabled}
                   title={unavailable ? (backend.reason || t("launch_dialog.agent_unavailable")) : backend.label}
-                  onClick={() => setSelectedBackendType(backend.type)}
+                  onClick={() => setPreferredBackend(backend.type)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                     active && !unavailable
                       ? "border-cc-primary/50 bg-cc-primary/10 text-cc-fg"
@@ -3203,7 +3130,12 @@ export function LaunchDialog({
       )}
 
       {launchError && (
-        <p className={`text-sm mb-4 ${backendReadinessError && !backendOptions.length ? "text-cc-muted" : "text-cc-error"}`} role="status">{launchError}</p>
+        <p className={`text-sm mb-4 ${picker.pending ? "text-cc-muted" : "text-cc-error"}`} role="status">
+          {launchError}
+          {backendError && !picker.pending && !currentWorkspaceCheck?.error && (
+            <button type="button" className="ml-2 underline" onClick={picker.retry}>{t("startup.retry")}</button>
+          )}
+        </p>
       )}
     </>
   );
@@ -3363,19 +3295,11 @@ export function LaunchDialog({
 
 // ── Settings Panel (slide-out) ────────────────────────────────────────────
 
-function BackendsSection({ onBackendsChanged }: { onBackendsChanged: () => void }) {
+function BackendsSection() {
   const { t } = useTranslation("launcher");
-  const [backends, setBackends] = useState<any[]>([]);
+  const { result, failed, retry } = useBackendOptions("/api/backends");
+  const backends = result?.backends ?? [];
   const [togglingType, setTogglingType] = useState<string | null>(null);
-
-  const refresh = useCallback(() => {
-    fetch(`${getApiBase()}/api/backends`)
-      .then((r) => r.json())
-      .then((data) => setBackends(data.backends || []))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
 
   const toggleDisabled = useCallback(async (type: string, disabled: boolean) => {
     setTogglingType(type);
@@ -3385,13 +3309,12 @@ function BackendsSection({ onBackendsChanged }: { onBackendsChanged: () => void 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ disabled }),
       });
-      refresh();
-      if (response.ok) onBackendsChanged();
+      if (response.ok) window.dispatchEvent(new Event("pneuma:backend-preferences-changed"));
     } catch { /* ignore — refresh on next mount */ }
     finally {
       setTogglingType(null);
     }
-  }, [refresh, onBackendsChanged]);
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -3399,7 +3322,9 @@ function BackendsSection({ onBackendsChanged }: { onBackendsChanged: () => void 
       {/* One grouped surface with divided rows — far fewer color blocks than
           three separate cards, and the backend choice stays the focus. */}
       <div className="rounded-lg border border-cc-border bg-cc-surface/30 divide-y divide-cc-border/50">
-        {backends.map((b: any) => (
+        {!result && !failed && <p role="status" className="p-3 text-xs text-cc-muted">{t("startup.backends_loading")}</p>}
+        {failed && <LauncherNotice resource="backends" message={t("startup.backends_failed")} error={t("startup.backends_failed")} onRetry={retry} />}
+        {backends.map((b) => (
           <BackendRow
             key={b.type}
             backend={b}
@@ -4712,7 +4637,7 @@ function PublishToLibraryDialog({
   );
 }
 
-function SettingsPanel({ open, onClose, onBackendsChanged }: { open: boolean; onClose: () => void; onBackendsChanged: () => void }) {
+function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation("launcher");
   if (!open) return null;
 
@@ -4744,7 +4669,7 @@ function SettingsPanel({ open, onClose, onBackendsChanged }: { open: boolean; on
         {/* Sections */}
         <div className="p-6 space-y-8">
           <CollaborationSetupGuide />
-          <BackendsSection onBackendsChanged={onBackendsChanged} />
+          <BackendsSection />
           <ApiKeysSection />
           <CloudStorageSection />
           <GitHubSection />
@@ -5056,7 +4981,6 @@ export default function Launcher() {
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useAppTheme();
   const isLight = theme === "light";
   const locale = useSyncExternalStore(subscribeLocale, currentLocale, currentLocale);
-  const backendResource = useLauncherResource<{ backends: BackendOption[]; defaultBackendType?: BackendType }>("/api/backends", { backends: [] });
   const modesResource = useLauncherResource<{
     builtins: BuiltinMode[]; catalog: CatalogMode[]; published: PublishedMode[]; local: LocalMode[];
     publishedStatus?: PublishedRegistryStatus;
@@ -5066,8 +4990,6 @@ export default function Launcher() {
   const projectsResource = useLauncherResource<{ projects: ProjectListEntry[] }>("/api/projects", { projects: [] });
   const archivedResource = useLauncherResource<{ projects: ProjectListEntry[] }>("/api/projects?archived=true", { projects: [] });
   const librariesResource = useLauncherResource<{ libraries: InstalledLibrary[] }>("/api/libraries", { libraries: [] });
-  const backendOptions = backendResource.data.backends;
-  const defaultBackendType = backendResource.data.defaultBackendType ?? "codex";
   const { builtins, catalog, published, local } = modesResource.data;
   const sessions = sessionsResource.data.sessions;
   const homeDir = sessionsResource.data.homeDir ?? "";
@@ -5075,15 +4997,12 @@ export default function Launcher() {
   const projects = projectsResource.data.projects;
   const archivedProjects = archivedResource.data.projects;
   const libraries = librariesResource.data.libraries;
-  const { refresh: refreshBackends } = backendResource;
   const { refresh: refreshModes } = modesResource;
   const { refresh: refreshSessions } = sessionsResource;
   const { refresh: refreshRunning } = runningResource;
   const { refresh: reloadProjects } = projectsResource;
   const { refresh: reloadArchivedProjects } = archivedResource;
   const { refresh: refreshLibraries } = librariesResource;
-  const backendReadinessError = backendResource.error
-    ? t("startup.backends_failed") : !backendResource.loaded ? t("startup.backends_loading") : undefined;
   // Section skeletons continue the sweep of the page skeleton this replaced.
   // The phase is taken at commit, when their animations start: a render can
   // precede its commit by hundreds of milliseconds.
@@ -5215,7 +5134,6 @@ export default function Launcher() {
 
   const quickResumeProject = useCallback(
     async (project: ProjectCardEntry) => {
-      if (backendReadinessError) { setWindowError(backendReadinessError); return; }
       setWindowError("");
       try {
         const res = await fetch(
@@ -5227,6 +5145,7 @@ export default function Launcher() {
           sessionId: string;
           mode: string;
           backendType?: string;
+          editing?: boolean;
           lastAccessed?: number;
           internal?: boolean;
         }>;
@@ -5239,11 +5158,7 @@ export default function Launcher() {
         const latest = [...resumable].sort(
           (a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0),
         )[0];
-        const selectedBackend = backendOptions.find((backend) => backend.type === (latest.backendType ?? defaultBackendType));
-        if (!selectedBackend?.implemented || selectedBackend.available !== true) {
-          setWindowError(selectedBackend?.reason || t("launch_dialog.agent_unavailable"));
-          return;
-        }
+        if (latest.editing !== false) await verifySavedBackend(latest.backendType, t("launch_dialog.agent_unavailable"));
         const launchRes = await fetch(`${getApiBase()}/api/launch`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -5252,10 +5167,11 @@ export default function Launcher() {
             workspace: project.root,
             project: project.root,
             sessionId: latest.sessionId,
-            ...(latest.backendType ? { backendType: latest.backendType } : {}),
+            ...(latest.editing === false ? { viewing: true } : {}),
           }),
         });
-        const launchData = (await launchRes.json()) as { url?: string };
+        const launchData = (await launchRes.json()) as { url?: string; error?: string };
+        if (!launchRes.ok || launchData.error) throw new Error(launchData.error || `HTTP ${launchRes.status}`);
         if (launchData.url) {
           await openAppWindow({ kind: "session", url: launchData.url });
         }
@@ -5263,7 +5179,7 @@ export default function Launcher() {
         setWindowError(error instanceof Error ? error.message : String(error));
       }
     },
-    [backendOptions, backendReadinessError, defaultBackendType, t],
+    [t],
   );
 
   const restoreProject = useCallback(
@@ -5304,23 +5220,6 @@ export default function Launcher() {
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [refreshSessions, refreshRunning]);
-
-  // An agent may have been installed while the launcher was in the background.
-  // Recheck on return, coalescing the focus and visibility events from one return.
-  useEffect(() => {
-    let refreshing = false;
-    const handleReturn = () => {
-      if (backendResource.pending || document.visibilityState !== "visible" || refreshing) return;
-      refreshing = true;
-      void refreshBackends().finally(() => { refreshing = false; });
-    };
-    window.addEventListener("focus", handleReturn);
-    document.addEventListener("visibilitychange", handleReturn);
-    return () => {
-      window.removeEventListener("focus", handleReturn);
-      document.removeEventListener("visibilitychange", handleReturn);
-    };
-  }, [refreshBackends, backendResource.pending]);
 
   // Argument is the on-disk directory name under `~/.pneuma/modes/`
   // (i.e. `basename(mode.path)`), not the manifest's `name` field —
@@ -5384,31 +5283,16 @@ export default function Launcher() {
     } catch { }
   }, [refreshRunning]);
 
-  // Backend availability lookup for session cards
-  const getBackendUnavailableReason = useCallback(
-    (type: BackendType) => {
-      if (backendReadinessError) return backendReadinessError;
-      const b = backendOptions.find((o) => o.type === type);
-      if (!b) return t("backend_unavailable.unknown", { type });
-      if (!b.implemented) return t("backend_unavailable.coming_soon");
-      if (b.available === false) return b.reason || t("backend_unavailable.not_available");
-      return undefined;
-    },
-    [backendOptions, backendReadinessError, t],
-  );
-
   // Direct launch for session resume — no dialog, just go
   const directLaunch = useCallback(async (
-    specifier: string,
-    workspace: string,
-    backendType: BackendType,
+    session: RecentSession,
     skipSkill?: boolean,
-    viewing?: boolean,
   ) => {
-    const unavailable = !viewing && getBackendUnavailableReason(backendType);
-    if (unavailable) { setWindowError(unavailable); return; }
     setWindowError("");
     try {
+      const { mode: specifier, workspace, backendType } = session;
+      const viewing = session.editing === false;
+      if (!viewing) await verifySavedBackend(backendType, t("launch_dialog.agent_unavailable"));
       const res = await fetch(`${getApiBase()}/api/launch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -5421,6 +5305,7 @@ export default function Launcher() {
         }),
       });
       const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.url) {
         refreshSessions();
         refreshRunning();
@@ -5429,7 +5314,7 @@ export default function Launcher() {
     } catch (error) {
       setWindowError(error instanceof Error ? error.message : String(error));
     }
-  }, [refreshSessions, refreshRunning, getBackendUnavailableReason]);
+  }, [refreshSessions, refreshRunning, t]);
 
   // Build icon lookup
   const iconMap = React.useMemo(() => {
@@ -5679,13 +5564,12 @@ export default function Launcher() {
       <main
         className="relative z-10 max-w-6xl mx-auto px-6 pb-16"
         data-launcher-local-ready={modesResource.loaded && !modesResource.error && sessionsResource.loaded && !sessionsResource.error && projectsResource.loaded && !projectsResource.error}
-        data-launcher-backends-ready={backendResource.loaded && !backendResource.error}
       >
           {/* Loading is shown in place by section skeletons; only failures
               need words here, each with its own Retry. */}
           <div className="pt-5 space-y-2" aria-live="polite">
             {([
-              ["backends", backendResource], ["modes", modesResource],
+              ["modes", modesResource],
               ["sessions", sessionsResource], ["running", runningResource],
               ["projects", projectsResource], ["archived", archivedResource], ["libraries", librariesResource],
             ] as const).map(([key, item]) => {
@@ -5740,7 +5624,7 @@ export default function Launcher() {
                             void openAppWindow({ kind: "session", url: proc.url }).catch((error) => setWindowError(error instanceof Error ? error.message : String(error)));
                           }
                         } else {
-                          directLaunch(s.mode, s.workspace, s.backendType, false, true);
+                          directLaunch(s);
                         }
                       }}
                     >
@@ -5935,8 +5819,7 @@ export default function Launcher() {
                                 isRunning
                                 isLight={isLight}
                                 runningProcess={item.process}
-                                backendUnavailableReason={item.session ? getBackendUnavailableReason(item.session.backendType) : undefined}
-                                onResume={item.session ? (skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill) : undefined}
+                                onResume={item.session ? (skipSkill) => directLaunch(item.session!, skipSkill) : undefined}
                                 onDelete={item.session ? () => deleteSession(item.session!.id) : undefined}
                                 onReplay={item.session?.hasReplayData ? () => handleReplaySession(item.session!) : undefined}
                                 onRename={item.session ? (name) => renameSession(item.session!.id, name) : undefined}
@@ -5968,11 +5851,10 @@ export default function Launcher() {
                         session={item.session!}
                         homeDir={homeDir}
                         icon={iconMap[item.modeName]}
-                        onResume={(skipSkill) => directLaunch(item.session!.mode, item.session!.workspace, item.session!.backendType, skipSkill)}
+                        onResume={(skipSkill) => directLaunch(item.session!, skipSkill)}
                         onDelete={() => deleteSession(item.session!.id)}
                         onReplay={item.session!.hasReplayData ? () => handleReplaySession(item.session!) : undefined}
                         onRename={(name) => renameSession(item.session!.id, name)}
-                        backendUnavailableReason={getBackendUnavailableReason(item.session!.backendType)}
                       />
                     </motion.div>
                   ))}
@@ -6134,12 +6016,11 @@ export default function Launcher() {
           onClose={() => setShowAllSessions(false)}
           onResume={async (session, skipSkill) => {
             setShowAllSessions(false);
-            await directLaunch(session.mode, session.workspace, session.backendType, skipSkill);
+            await directLaunch(session, skipSkill);
           }}
           onDelete={(id) => deleteSession(id)}
           onReplay={(session) => handleReplaySession(session)}
           onRename={(id, name) => renameSession(id, name)}
-          getBackendUnavailableReason={getBackendUnavailableReason}
           className={isLight ? "cc-theme-light launcher-light" : ""}
           closing={allSessionsAnim.closing}
           headerHeight={headerH}
@@ -6173,17 +6054,14 @@ export default function Launcher() {
           defaultWorkspace={lastLaunchTarget.current.defaultWorkspace}
           defaultInitParams={lastLaunchTarget.current.defaultInitParams}
           forkSource={lastLaunchTarget.current.forkSource}
-          backendOptions={backendOptions}
-          backendReadinessError={backendReadinessError}
-          defaultBackendType={defaultBackendType}
           homeDir={homeDir}
           onClose={() => setLaunchTarget(null)}
-          closing={launchAnim.closing}
+          closing={!launchTarget}
         />
       )}
 
       {/* Settings slide-out panel */}
-      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} onBackendsChanged={refreshBackends} />
+      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Import dialog */}
       <ImportDialog

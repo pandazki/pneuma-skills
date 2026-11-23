@@ -58,6 +58,7 @@ export interface ProjectSessionRef {
    * backend instead of the launcher default.
    */
   backendType?: string;
+  editing?: boolean;
   /**
    * Human-readable session name (from `--session-name` or rename), if persisted
    * in `session.json` as `sessionName`/`displayName`. Undefined when the user
@@ -221,6 +222,7 @@ export async function scanProjectSessions(
         sessionId?: string;
         mode?: string;
         backendType?: string;
+        editing?: boolean;
         sessionName?: string;
         displayName?: string;
         description?: string;
@@ -303,6 +305,7 @@ export async function scanProjectSessions(
         sessionId,
         mode: data.mode,
         sessionDir,
+        ...(typeof data.editing === "boolean" ? { editing: data.editing } : {}),
         ...(typeof data.backendType === "string"
           ? { backendType: data.backendType }
           : {}),

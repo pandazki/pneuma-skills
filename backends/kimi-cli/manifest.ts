@@ -1,8 +1,6 @@
 import { probeAcpSubcommand } from "./acp-probe.js";
 import type { BackendModule } from "../../core/types/agent-backend.js";
 import { resolveBinary } from "../../server/path-resolver.js";
-import { KimiCliBackend } from "./index.js";
-import { KimiBridge } from "../../server/ws-bridge-kimi.js";
 import { defaultToolFileRef, KIND_BY_NAME, type ToolFileRef } from "../tool-file-ref.js";
 
 const INSTALL_HINT = `Install / upgrade: kimi upgrade (or see the docs for a fresh install)
@@ -63,6 +61,7 @@ export const kimiCliModule: BackendModule = {
     // KimiCliBackend takes no constructor args (the `port` parameter from the
     // BackendModule signature applies to backends that need an HTTP transport
     // — kimi is pure stdio JSON-RPC).
+    const { KimiCliBackend } = loadBackend();
     return new KimiCliBackend();
   },
 
@@ -77,6 +76,7 @@ export const kimiCliModule: BackendModule = {
    *     `createBridgeBackend` signature.
    */
   createBridgeBackend(deps, backend, sessionId) {
+    const { KimiCliBackend } = loadBackend();
     if (!(backend instanceof KimiCliBackend)) {
       throw new Error("kimi.createBridgeBackend: expected KimiCliBackend instance");
     }
@@ -90,6 +90,7 @@ export const kimiCliModule: BackendModule = {
       );
     }
     const session = deps.getOrCreateSession(sessionId, "kimi-cli");
+    const { KimiBridge } = require("../../server/ws-bridge-kimi.js") as typeof import("../../server/ws-bridge-kimi.js");
     return new KimiBridge(sessionId, session, adapter, deps);
   },
 
@@ -115,3 +116,7 @@ export const kimiCliModule: BackendModule = {
     return { ok: true, binaryPath: resolved };
   },
 };
+
+function loadBackend(): typeof import("./index.js") {
+  return require("./index.js");
+}

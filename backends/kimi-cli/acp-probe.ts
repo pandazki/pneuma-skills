@@ -1,5 +1,4 @@
-const TTL_MS = 60_000;
-const probes = new Map<string, { result: Promise<boolean>; expiresAt: number }>();
+const probes = new Map<string, Promise<boolean>>();
 
 async function supportsAcp(binaryPath: string): Promise<boolean> {
   try {
@@ -16,12 +15,11 @@ async function supportsAcp(binaryPath: string): Promise<boolean> {
   }
 }
 
-/** Concurrent launcher requests share the process. Cache its answer for a minute after exit. */
+/** Share concurrent subprocesses. The next request can observe an install or upgrade. */
 export function probeAcpSubcommand(binaryPath: string): Promise<boolean> {
-  const cached = probes.get(binaryPath);
-  if (cached && Date.now() < cached.expiresAt) return cached.result;
-  const entry = { result: supportsAcp(binaryPath), expiresAt: Infinity };
-  probes.set(binaryPath, entry);
-  void entry.result.then(() => { entry.expiresAt = Date.now() + TTL_MS; });
-  return entry.result;
+  const pending = probes.get(binaryPath);
+  if (pending) return pending;
+  const result = supportsAcp(binaryPath).finally(() => probes.delete(binaryPath));
+  probes.set(binaryPath, result);
+  return result;
 }

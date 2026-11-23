@@ -23,8 +23,11 @@ exit 1
     const second = probeAcpSubcommand(binary);
     writeFileSync(gate, "ready");
     expect(await Promise.all([first, second])).toEqual([true, true]);
-    expect(await probeAcpSubcommand(binary)).toBe(true);
     expect(readFileSync(join(dir, "calls"), "utf8").trim()).toBe("probe");
+    writeFileSync(binary, "#!/bin/sh\nexit 1\n");
+    expect(await probeAcpSubcommand(binary)).toBe(false);
+    writeFileSync(binary, "#!/bin/sh\nexit 0\n");
+    expect(await probeAcpSubcommand(binary)).toBe(true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

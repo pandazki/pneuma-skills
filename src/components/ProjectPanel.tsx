@@ -53,12 +53,9 @@ import {
 } from "../utils/mode-picker.js";
 import { InitParamForm, type InitParamWithAutoFill } from "./InitParamForm.js";
 import EditorPickerButton from "./EditorPickerButton.js";
-import {
-  BackendLogo,
-  FALLBACK_BACKENDS,
-  type BackendOption,
-  type BackendType,
-} from "./Launcher.js";
+import { BackendLogo } from "./Launcher.js";
+import type { AgentBackendType } from "../../core/types/agent-backend.js";
+import { enabledBackendsPath, newSessionBackend, readBackendOptions, useBackendPicker, verifySavedBackend } from "../hooks/useBackendPicker.js";
 
 interface ProjectInfo {
   name: string;
@@ -73,6 +70,7 @@ interface SessionRef {
   sessionDir: string;
   /** Backend the session was created with — drives resume routing. */
   backendType?: string;
+  editing?: boolean;
   /** Optional human-readable name (from --session-name / rename / agent refine). */
   displayName?: string;
   /** Last-accessed mtime; populated server-side when available. */
@@ -169,11 +167,10 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
         // fetch covers cover URL lookup + path shortening. We deliberately
         // avoid `/api/sessions` (launcher-only) to prevent 404s in active
         // sessions.
-        const [pRes, mRes, listRes, bRes] = await Promise.all([
+        const [pRes, mRes, listRes] = await Promise.all([
           fetch(`${apiBase}/api/projects/${encodeURIComponent(projectRoot)}/sessions`),
           fetch(`${apiBase}/api/registry`),
           fetch(`${apiBase}/api/projects`).catch(() => null),
-          fetch(`${apiBase}/api/backends`).catch(() => null),
         ]);
         if (cancelled) return;
         if (pRes.ok) {
@@ -199,30 +196,6 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
             );
             if (match?.coverImageUrl) setCoverImageUrl(match.coverImageUrl);
             if (listData.homeDir) setHomeDir(listData.homeDir);
-          } catch { /* ignore */ }
-        }
-        if (bRes && bRes.ok) {
-          try {
-            const bData = (await bRes.json()) as {
-              backends?: BackendOption[];
-              defaultBackendType?: BackendType;
-            };
-            if (bData.backends?.length) setBackendOptions(bData.backends);
-            // Metadata refreshes may update availability, but the server
-            // default only applies until the user chooses a backend.
-            if (!backendSelectionTouched.current) {
-              const opts = bData.backends ?? FALLBACK_BACKENDS;
-              const preferred = bData.defaultBackendType;
-              const preferredAvail = preferred
-                ? opts.find((o) => o.type === preferred)
-                : undefined;
-              if (preferred && preferredAvail?.available !== false) {
-                setSelectedBackendType(preferred);
-              } else {
-                const firstAvail = opts.find((o) => o.available && o.implemented);
-                if (firstAvail) setSelectedBackendType(firstAvail.type);
-              }
-            }
           } catch { /* ignore */ }
         }
       } catch {
@@ -292,16 +265,9 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     setSmartHandoff(false);
     setHandoffIntent("");
   };
-  // Backend picker for new sessions. Mirrors the launcher's
-  // BackendLaunchDialog — defaults to the server's `defaultBackendType` once
-  // /api/backends responds, otherwise falls back to "codex" matching
-  // Launcher's initial state. Selection is only meaningful when launching a
-  // fresh session in this project; resumes/continues ignore it.
-  const [backendOptions, setBackendOptions] =
-    useState<BackendOption[]>(FALLBACK_BACKENDS);
-  const [selectedBackendType, setSelectedBackendType] =
-    useState<BackendType>("codex");
-  const backendSelectionTouched = useRef(false);
+  const [preferredBackend, setPreferredBackend] = useState<AgentBackendType>();
+  const picker = useBackendPicker(!!launchTarget, preferredBackend);
+  const selectedBackendType = picker.choice?.type;
 
   const deleteSession = async (sessionId: string) => {
     if (deleting) return;
@@ -364,12 +330,28 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
     specifier: string,
     sessionId?: string,
     initParams?: Record<string, string | number>,
+    verifiedBackend?: AgentBackendType,
   ) => {
     if (launching) return;
     setLaunching(true);
     setLaunchingId(sessionId ?? `new:${specifier}`);
     setLaunchError(null);
     try {
+      let backendType = verifiedBackend;
+      let viewing = false;
+      if (sessionId) {
+        const saved = sessions.find(s => s.sessionId === sessionId);
+        if (!saved) throw new Error(t("error.launch_failed"));
+        viewing = saved.editing === false;
+        if (!viewing) await verifySavedBackend(saved.backendType, tc("launch_dialog.agent_unavailable"));
+      } else if (!backendType) {
+        // Project actions (Rediscover, Evolve, Tidy) create sessions without a picker.
+        const choice = newSessionBackend(await readBackendOptions(enabledBackendsPath(preferredBackend)), preferredBackend);
+        if (!choice?.implemented || choice.available !== true) {
+          throw new Error(choice?.reason || tc("launch_dialog.agent_unavailable"));
+        }
+        backendType = choice.type;
+      }
       // Source-context for `<pneuma:env reason="switched">` — only attached
       // when we're spawning *from* a live session (active id present). The
       // mode/displayName come from the store (viewer + project context); the
@@ -402,7 +384,8 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
           // Only attach backendType when spawning a fresh session — resumes
           // (sessionId present) read the persisted backend from session.json
           // and ignore this field server-side.
-          ...(sessionId ? { sessionId } : { backendType: selectedBackendType }),
+          ...(sessionId ? { sessionId } : { backendType }),
+          ...(viewing ? { viewing: true } : {}),
           ...(initParams && Object.keys(initParams).length > 0
             ? { initParams }
             : {}),
@@ -702,7 +685,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
   const canHandoff = !!ctx && !!activeSessionId && !!sessionMode;
 
   const confirmLaunch = async () => {
-    if (!launchTarget || launching) return;
+    if (!launchTarget || launching || sheetPreparing || picker.error || !selectedBackendType) return;
     if (smartHandoff && canHandoff) {
       const flat = handoffIntent.replace(/\s+/g, " ").trim();
       if (!flat) {
@@ -739,7 +722,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
       }
       return;
     }
-    void launch(launchTarget.name, undefined, sheetValues);
+    void launch(launchTarget.name, undefined, sheetValues, selectedBackendType);
   };
 
   const revealInFinder = async () => {
@@ -1502,13 +1485,13 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               </button>
             </div>
 
-            {backendOptions.length > 1 ? (
+            {picker.options.length > 1 ? (
               <div className="flex flex-col gap-2">
                 <p className="text-[11px] uppercase tracking-wider text-cc-muted/60 font-medium">
                   {t("sections.agent")}
                 </p>
                 <div className="flex gap-2 flex-wrap">
-                  {backendOptions.map((backend) => {
+                  {picker.options.map((backend) => {
                     const active = selectedBackendType === backend.type;
                     const unavailable = !backend.implemented || backend.available === false;
                     return (
@@ -1517,10 +1500,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
                         type="button"
                         disabled={unavailable || launching}
                         title={unavailable ? (backend.reason || t("launch_sheet.backend_unavailable")) : backend.label}
-                        onClick={() => {
-                          backendSelectionTouched.current = true;
-                          setSelectedBackendType(backend.type);
-                        }}
+                        onClick={() => setPreferredBackend(backend.type)}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
                           active && !unavailable
                             ? "border-cc-primary/50 bg-cc-primary/10 text-cc-fg"
@@ -1600,6 +1580,12 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               </div>
             ) : null}
 
+            {picker.error && (
+              <div role="status" className={`text-xs ${picker.pending ? "text-cc-muted" : "text-cc-error"}`}>
+                {picker.error}
+                {!picker.pending && <button type="button" className="ml-2 underline" onClick={picker.retry}>{tc("startup.retry")}</button>}
+              </div>
+            )}
             {sheetError ? (
               <div className="text-cc-error/80 text-xs" role="alert">
                 {sheetError}
@@ -1621,7 +1607,7 @@ export default function ProjectPanel({ projectRoot, onClose }: ProjectPanelProps
               </button>
               <button
                 type="button"
-                disabled={launching || sheetPreparing}
+                disabled={launching || sheetPreparing || !!picker.error}
                 onClick={confirmLaunch}
                 className="bg-cc-primary text-white rounded-md px-4 py-2 text-sm font-medium hover:bg-cc-primary/90 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >

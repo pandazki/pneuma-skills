@@ -15,7 +15,7 @@ import * as p from "@clack/prompts";
 import { t } from "./i18n.js";
 import { startServer } from "../server/index.js";
 import { createBackend, getDefaultBackendType, getBackendModule } from "../backends/index.js";
-import { ClaudeCodeBackend } from "../backends/claude-code/index.js";
+import type { ClaudeCodeBackend } from "../backends/claude-code/index.js";
 import { installSkill, installSessionCommands, readInboundHandoff, type InboundHandoffPayload } from "../server/skill-installer.js";
 import { buildEnvTag } from "./env-tag.js";
 import { ensureCliWrapper } from "./cli-wrapper.js";
@@ -106,16 +106,14 @@ const PROJECT_ROOT = resolve(dirname(import.meta.path), "..");
  *
  * No-op when the backend is anything other than claude-code — every other
  * backend uses its own `BridgeBackend` (codex/kimi) instead of the legacy
- * stdio-NDJSON path. Identity is checked via `instanceof` so this stays
- * the only place in the launcher that has to know about claude-code's
- * concrete class.
+ * stdio-NDJSON path. Keep its transport optional so opening a viewer does
+ * not import the Claude runtime.
  */
 function wireClaudeCodeStdio(
-  backend: ReturnType<typeof createBackend>,
+  backend: ReturnType<typeof createBackend> & Partial<Pick<ClaudeCodeBackend, "setStreamHandlers">>,
   wsBridge: import("../server/ws-bridge.js").WsBridge,
 ): void {
-  if (!(backend instanceof ClaudeCodeBackend)) return;
-  backend.setStreamHandlers({
+  backend.setStreamHandlers?.({
     onMessage: (sid, line) => wsBridge.feedCLIMessage(sid, line),
     onConnect: (sid, sendInput, close) =>
       wsBridge.attachCLITransport(sid, { send: sendInput, close }),
@@ -531,13 +529,12 @@ async function checkBackendRequirements(backendType: AgentBackendType) {
   const module = getBackendModule(backendType);
   const result = await module.checkRequirements();
   if (!result.ok) {
-    p.cancel(
+    throw new Error(
       t("pneuma.backend_unavailable", {
         label: module.label,
         reason: result.reason ?? t("pneuma.backend_unavailable_no_detail"),
       }),
     );
-    process.exit(1);
   }
 }
 
@@ -2119,9 +2116,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Verify the selected backend is available before proceeding
-  await checkBackendRequirements(backendType);
-
   // Check if the mode supports the selected backend
   if (manifest.supportedBackends && manifest.supportedBackends.length > 0) {
     if (!manifest.supportedBackends.includes(backendType)) {
@@ -2167,6 +2161,9 @@ async function main() {
   });
   const stateDir = startup.paths.stateDir;
   const sessionDir = startup.paths.sessionDir;
+  const initialEditing = !viewing && (loadSession(stateDir)?.editing ?? true);
+  const ensureAgentAvailable = () => checkBackendRequirements(backendType);
+  if (initialEditing && !replayPackage && !replaySource) await ensureAgentAvailable();
   if (startup.kind === "project") {
     mkdirSync(sessionDir, { recursive: true });
     p.log.info(t("pneuma.project_session_info", { sessionId: startup.sessionId }));
@@ -2316,7 +2313,7 @@ async function main() {
   const seedBaseDir = resolved.seedBase
     ?? (resolved.type === "builtin" ? PROJECT_ROOT : resolved.path);
   const skillTarget = join(sessionDir, ".claude", "skills", manifest.skill.installName);
-  let skipSkillInstall = skipSkill || !!replayPackage || viewing; // Skip for replay/viewing — installed on Continue Work or edit switch
+  let skipSkillInstall = skipSkill || !!replayPackage || !initialEditing; // Skip for replay/viewing — installed on Continue Work or edit switch
 
   // Compute the effective API port (same logic as server startup in step 3)
   // Dev mode: backend on 17007, Prod mode: backend on 17996
@@ -2567,6 +2564,7 @@ async function main() {
       p.log.info(t("pneuma.exported_replay_package", { path: replayPackage }));
     } catch (err: any) {
       p.log.warn(t("pneuma.export_replay_failed", { message: err.message }));
+      if (initialEditing) await ensureAgentAvailable();
     }
   }
 
@@ -2574,9 +2572,6 @@ async function main() {
   //    Dev mode:  backend on 17007, Vite on 17996 (user-facing)
   //    Prod mode: backend on 17996 (serves everything)
   const serverPort = effectiveApiPort;
-  // Determine initial editing: --viewing flag > existing session > default true
-  const existingSession = loadSession(stateDir);
-  const initialEditing: boolean = viewing ? false : (existingSession?.editing ?? true);
 
   // 2.8 Project cache — every registered project's watch is registered here,
   // BEFORE the workspace watcher: under Bun on macOS each `fs.watch` add
@@ -2627,6 +2622,7 @@ async function main() {
     layout: manifest.layout,
     window: manifest.window,
     editing: initialEditing,
+    ensureAgentAvailable,
     editingSupported: !!manifest.editing?.supported,
     backendType,
     // Per-session paths (project sessions) — server writes session-state under
