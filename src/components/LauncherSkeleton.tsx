@@ -1,14 +1,13 @@
 /**
  * Launcher skeleton — the one definition of what the launcher looks like
- * before its content arrives. It is rendered in four places, which must agree
+ * before its content arrives. It is rendered in three places, which must agree
  * so each handoff is invisible:
  *
  * 1. Built into `index.html` (`snapshot/launcher-skeleton.ts`), so the first
  *    paint of a launcher URL is already this page.
  * 2. Built into `dist/launcher-skeleton.html`, which the desktop app shows
  *    while its launcher service starts.
- * 3. The launcher route's Suspense fallback while the launcher code loads.
- * 4. Section by section inside the launcher while each resource loads.
+ * 3. Section by section inside the launcher while each resource loads.
  *
  * Everything here is static markup: no hooks, no translation, no data. It is
  * also rendered to static HTML at build time, where the theme, the desktop
@@ -27,10 +26,6 @@ export const LAUNCHER_SKELETON_PERIOD_MS = 1800;
  */
 export function launcherSkeletonDelay(now = Date.now()): string {
   return `${-(now % LAUNCHER_SKELETON_PERIOD_MS)}ms`;
-}
-
-export function launcherSkeletonPhase(now = Date.now()): CSSProperties {
-  return { "--launcher-skeleton-delay": launcherSkeletonDelay(now) } as CSSProperties;
 }
 
 function Bone({ className = "" }: { className?: string }) {

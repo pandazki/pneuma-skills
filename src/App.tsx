@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getApiBase } from "./utils/api.js";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import TopBar from "./components/TopBar.js";
-import { SessionCollaborationProvider, SessionViewerOverlays } from "./collaboration/SessionCollaboration.js";
+import { SessionViewerOverlays } from "./collaboration/SessionCollaboration.js";
 import ToolDock from "./components/ToolDock.js";
 import AgentSurfaceLayer from "./components/AgentSurfaceLayer.js";
 import ChatPanel from "./components/ChatPanel.js";
@@ -16,27 +16,19 @@ import { loadReplay } from "./replay-engine.js";
 import { loadSessionMode } from "./utils/load-session-mode.js";
 import { ModeLoadError } from "./components/ModeLoadError.js";
 import { useSystemPreferences } from "./hooks/useSystemPreferences.js";
-import { resolveInitialTheme, useAppTheme } from "./hooks/useAppTheme.js";
-import { LauncherPageSkeleton, launcherSkeletonPhase } from "./components/LauncherSkeleton.js";
-import { readEntryParams } from "./launcher-route.js";
-import { preloadedLauncher } from "./launcher-preload.js";
+import { useAppTheme } from "./hooks/useAppTheme.js";
+import { resolveLocalized } from "../core/types/mode-manifest.js";
 import { selectBestContentSet } from "../core/utils/content-set-matcher.js";
 import { ReplayPlayer } from "./components/ReplayPlayer";
 import { useViewerProps } from "./hooks/useViewerProps.js";
 import { useThumbnailCapture } from "./hooks/useThumbnailCapture.js";
 import { useCaptureAction } from "./hooks/useCaptureAction.js";
-import { useBackgroundStatusReporter } from "./hooks/useBackgroundStatusReporter.js";
-import { useWindowTitle } from "./hooks/useWindowTitle.js";
 import { normalizeViewerState, loadTabViewerState, viewerStateStorageKey } from "./utils/viewer-state.js";
 import { ViewerErrorBoundary } from "./components/ViewerErrorBoundary.js";
 import { countUserWorkspaceFiles } from "./utils/workspace-content.js";
 
-const Launcher = lazy(() => import("./components/Launcher.js"));
 const AppModeToggle = lazy(() => import("./components/AppModeToggle.js"));
 const HandoffCard = lazy(() => import("./components/HandoffCard.js"));
-const EmptyShell = lazy(() =>
-  import("./components/EmptyShell.js").then((m) => ({ default: m.EmptyShell })),
-);
 const GalleryEmptyState = lazy(() =>
   import("./components/GalleryEmptyState.js").then((m) => ({ default: m.GalleryEmptyState })),
 );
@@ -56,55 +48,15 @@ function LazyFallback() {
 // useSourceInstances + useViewerProps live in ./hooks/useViewerProps.tsx so the
 // read-only player (PlayerApp) mounts viewers through the identical code path.
 
-export default function App() {
-  return <SessionCollaborationProvider><SessionApp/></SessionCollaborationProvider>;
-}
-
-function SessionApp() {
-  // Launcher mode — lightweight marketplace UI. Empty shell — `?project=<root>`
-  // with no session/mode — renders the editor chrome + TopBar without spawning
-  // an agent; ProjectChip mounts inside the surviving TopBar to expose the
-  // project's sessions.
-  const [{ isLauncher, projectParam, isEmptyShell }] = useState(() => readEntryParams(location.search));
-  // Tear-off chat window — `?surface=chat` renders ONLY the conversation,
-  // full-window, for the same session (desktop "open in new window"). Same
-  // sessionId → same WS → same live conversation as the main window.
-  const [isChatWindow] = useState(() => new URLSearchParams(location.search).get("surface") === "chat");
-
-  // Background mode — relay turn status to Electron main (no-ops on web).
-  // Placed before the early returns below so its hook order stays stable
-  // across launcher / empty-shell / session renders.
-  useBackgroundStatusReporter();
-  useWindowTitle({ session: !isLauncher, projectRoot: isEmptyShell ? projectParam : null, chat: isChatWindow });
-
-  if (isEmptyShell && projectParam) {
-    return (
-      <Suspense fallback={<LazyFallback />}>
-        <EmptyShell projectRoot={projectParam} />
-      </Suspense>
-    );
-  }
-  if (isLauncher) {
-    // main.tsx normally loads the launcher before this first render. Otherwise
-    // the lazy path shows the same skeleton the page's first paint already
-    // shows (index.html), so loading the launcher code changes nothing on screen.
-    const LauncherView = preloadedLauncher() ?? Launcher;
-    const skeleton = (
-      <LauncherPageSkeleton
-        light={resolveInitialTheme() === "light"}
-        desktop={!!(window as { pneumaDesktop?: unknown }).pneumaDesktop}
-        style={launcherSkeletonPhase()}
-      />
-    );
-    return (
-      <Suspense fallback={skeleton}>
-        <LauncherView />
-      </Suspense>
-    );
-  }
-
+export default function App({ isChatWindow }: { isChatWindow: boolean }) {
   const PreviewComponent = useStore((s) => s.modeViewer?.PreviewComponent);
   const captureViewport = useStore((s) => s.modeViewer?.captureViewport);
+  const modeManifest = useStore((s) => s.modeManifest);
+  const { i18n } = useTranslation("common");
+  const language = i18n.resolvedLanguage;
+  useEffect(() => {
+    if (modeManifest) useStore.getState().setModeDisplayName(resolveLocalized(modeManifest.displayName, language));
+  }, [modeManifest, language]);
 
   // Flipped to true once the initial `/api/files` request resolves (success
   // OR empty). Gates the gallery's empty-state render so old sessions
@@ -135,12 +87,9 @@ function SessionApp() {
     setModeLoadPending(true);
     const loadModeAsync = async () => {
       const def = await loadSessionMode(modeName, { retry: modeLoadAttempt > 0, signal: controller.signal });
-      const { resolveLocalized } = await import("../core/types/mode-manifest.js");
-      const lang = (await import("./i18n/index.js")).currentLocale();
       controller.signal.throwIfAborted();
       useStore.getState().setModeViewer(def.viewer);
       useStore.getState().setModeManifest(def.manifest);
-      useStore.getState().setModeDisplayName(resolveLocalized(def.manifest.displayName, lang));
       useStore.getState().setModeCommands(def.manifest.viewerApi?.commands ?? []);
     };
 
@@ -330,14 +279,13 @@ function SessionApp() {
   // Classify here without removing files needed by other snapshot consumers.
   const filesForGallery = useStore((s) => s.files);
   const userContentCount = countUserWorkspaceFiles(filesForGallery, stateAtWorkspaceRoot);
-  const modeManifestForGallery = useStore((s) => s.modeManifest);
   // Must mirror `resolveSeedCatalog` on the server (seed-installer.ts):
   // a mode "has seeds" iff either init.seeds is non-empty, OR the
   // auto-derive rule finds at least one non-`_`-prefixed, directory-
   // shaped entry. Single-file seedFiles entries are framework setup,
   // not user-pickable templates, and don't qualify for the gallery.
   const hasSeedsDeclared = (() => {
-    const init = modeManifestForGallery?.init;
+    const init = modeManifest?.init;
     if (!init?.seedFiles) return false;
     if (init.seeds && init.seeds.length > 0) {
       // Trust the manifest author — declared seeds always count, even
@@ -391,7 +339,7 @@ function SessionApp() {
   // ── App layout (use mode only): Viewer fullscreen, no editor chrome ─────
   //    Edit mode falls through to the editor layout below for full editing experience.
 
-  const modeNameForError = modeManifestForGallery?.name;
+  const modeNameForError = modeManifest?.name;
 
   // Tear-off chat window — full-window conversation, no viewer/shell chrome.
   if (isChatWindow) {

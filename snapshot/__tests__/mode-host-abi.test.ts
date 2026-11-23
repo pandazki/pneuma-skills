@@ -124,7 +124,7 @@ describe("vendor shims", () => {
   }
 
   /**
-   * The globals exactly as `src/main.tsx` sets them, from the real packages.
+   * The globals exactly as `src/renderer.tsx` sets them, from the real packages.
    * The shims must re-export everything these expose — a missing name is a
    * link error in the browser, and the mode never loads (3.52.x shipped a
    * React shim without `version`, which is how Draw stopped rendering).

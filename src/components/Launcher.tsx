@@ -1,12 +1,11 @@
 import { openAppWindow } from "../utils/window-navigation.js";
 import { CollaborationSetupGuide } from "../collaboration/CollaborationSetupGuide.js";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { getApiBase } from "../utils/api.js";
 import {
   SUPPORTED_LOCALES,
   LOCALE_LABELS,
-  DEFAULT_LOCALE,
   currentLocale,
   persistLocale,
   type Locale,
@@ -4146,22 +4145,15 @@ const LOCALE_GLYPHS: Record<Locale, string> = {
   de: "ß",
 };
 
-function LanguagePopover() {
-  const { t, i18n: i18nInstance } = useTranslation("settings");
-  const [open, setOpen] = useState(false);
-  const [current, setCurrent] = useState<Locale>(currentLocale());
-  const ref = useRef<HTMLDivElement>(null);
+function subscribeLocale(onChange: () => void) {
+  window.addEventListener("pneuma:locale-changed", onChange);
+  return () => window.removeEventListener("pneuma:locale-changed", onChange);
+}
 
-  useEffect(() => {
-    const handler = (lng: string) => {
-      const normalized = SUPPORTED_LOCALES.includes(lng as Locale) ? (lng as Locale) : DEFAULT_LOCALE;
-      setCurrent(normalized);
-    };
-    i18nInstance.on("languageChanged", handler);
-    return () => {
-      i18nInstance.off("languageChanged", handler);
-    };
-  }, [i18nInstance]);
+function LanguagePopover({ current }: { current: Locale }) {
+  const { t } = useTranslation("settings");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -4181,7 +4173,6 @@ function LanguagePopover() {
 
   const handleSelect = async (locale: Locale) => {
     setOpen(false);
-    if (locale === current) return;
     await persistLocale(locale, getApiBase());
   };
 
@@ -5064,7 +5055,7 @@ export default function Launcher() {
   const { t } = useTranslation("launcher");
   const { preference: themePref, resolved: theme, cycle: cycleTheme } = useAppTheme();
   const isLight = theme === "light";
-  const [locale, setLocale] = useState(currentLocale);
+  const locale = useSyncExternalStore(subscribeLocale, currentLocale, currentLocale);
   const backendResource = useLauncherResource<{ backends: BackendOption[]; defaultBackendType?: BackendType }>("/api/backends", { backends: [] });
   const modesResource = useLauncherResource<{
     builtins: BuiltinMode[]; catalog: CatalogMode[]; published: PublishedMode[]; local: LocalMode[];
@@ -5197,14 +5188,6 @@ export default function Launcher() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [hasOverlay, launchTarget, showGallery, showAllSessions, showAllProjects]);
-
-  // A locale change supersedes the previous request; late translations cannot
-  // overwrite the current language. Other launcher resources remain usable.
-  useEffect(() => {
-    const onLocaleChange = () => setLocale(currentLocale());
-    window.addEventListener("pneuma:locale-changed", onLocaleChange);
-    return () => window.removeEventListener("pneuma:locale-changed", onLocaleChange);
-  }, []);
 
   // Only the published bucket is pending after the local registry arrives.
   // Stop polling on success or error; an explicit retry starts a new attempt.
@@ -5656,7 +5639,7 @@ export default function Launcher() {
         </div>
         <div className="flex items-center" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <div className={`flex items-center gap-1 transition-transform duration-300 ease-out ${hasOverlay ? "" : "translate-x-5"}`}>
-            <LanguagePopover />
+            <LanguagePopover current={locale} />
             <ThemeToggle preference={themePref} onClick={cycleTheme} />
             <button
               onClick={() => setShowSettings(true)}
