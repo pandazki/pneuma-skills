@@ -102,11 +102,11 @@ describe("lifecycle harness self-test", () => {
     ]);
   });
 
-  describe("when binary is unavailable", () => {
+  describe("when binary is unavailable", async () => {
     // The harness should register an `it.skip` per scenario rather than
     // throwing. We invoke it inside a child describe and rely on bun:test
     // to surface skipped tests in the report.
-    runLifecycleHarness({
+    await runLifecycleHarness({
       module: makeFakeModule({
         type: "claude-code",
         checkRequirements: () => ({ ok: false, reason: "self-test: pretend binary missing" }),
@@ -119,11 +119,11 @@ describe("lifecycle harness self-test", () => {
     });
   });
 
-  describe("when skip list is provided", () => {
+  describe("when skip list is provided", async () => {
     // ok=true but every scenario in the skip list — we should see no real
     // launch attempts. Since the harness skips before doing any setup, the
     // scenarios appear as "skipped" in the report.
-    runLifecycleHarness({
+    await runLifecycleHarness({
       module: makeFakeModule({
         // Pretend the binary IS available; the harness will move past the
         // initial guard and into per-scenario registration.

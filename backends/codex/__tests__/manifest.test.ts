@@ -74,8 +74,8 @@ describe("codex BackendModule", () => {
     ).toThrow(/no adapter/i);
   });
 
-  it("checkRequirements probes the binary", () => {
-    const r = codexModule.checkRequirements();
+  it("checkRequirements probes the binary", async () => {
+    const r = await codexModule.checkRequirements();
     if (r.ok) expect(r.binaryPath).toBeTruthy();
     else expect(r.reason).toMatch(/codex/i);
   });

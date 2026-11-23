@@ -198,7 +198,7 @@ publish anything automatically. Brand Studio is the first consumer.
 | **ViewerContract** + `ViewerPreviewProps` | `core/types/viewer-contract.ts` | Each mode's `modes/<name>/viewer/<Name>Preview.tsx` (referenced from `pneuma-mode.ts`) | `core/mode-loader.ts` dynamic import → `src/App.tsx` mounts `PreviewComponent` with props injected from `src/store/`; viewers await `onExport` and report dispatch failures. `captureViewport` answers a `ViewportCapture` (image + optional `note`, `{ error }` refusal, or `null` decline) to `src/utils/viewer-capture.ts` and `src/hooks/useThumbnailCapture.ts` |
 | **ModeCatalog** + `ModeCatalogEntry` / `ModeArchiveRef` / `ModeInstallRecord` / `ModePackageStamp` / `ModeInstallState` | `core/types/mode-catalog.ts` | `scripts/publish-modes.ts` 每次 release 生成 `modes/catalog.json`(不手写、不入库):`modes/distribution.json` 没 bundle 的每个 mode 都经 `snapshot/mode-build.ts` 就地构建、打上 `pneuma-package.json` stamp、去掉 `__tests__/` `harness/` `showcase/` 打包、传到 `official/v<core>/<name>-<modeVersion>.tar.gz`,并用 size + SHA-256 钉死;`displayName` / `description` / `icon` 由 `core/utils/manifest-parser.ts::parseManifestTs` 从 manifest 抄出 | `core/mode-catalog.ts`(读 catalog、装/校验/记录,判断 `installed` / `stale` / `not-installed`)→ `core/mode-resolver.ts`(`catalog` 源)、`core/local-modes.ts`(`installed` 标记)、`server/catalog-routes.ts`(`/api/catalog*`)、launcher 卡片;`scripts/verify-mode-catalog.ts` 是 release job 建 tag 前的闸门(先拿这个 checkout 的 catalog mode 全集与 catalog 对账——缺、多、或条目版本与树里 manifest 不符都算失败——再 HEAD 每个钉住的 archive);`package.json` 的 `files` 与 `desktop/electron-builder.yml` 只装 bundled 集合加 catalog(同样从 `distribution.json` 派生,由 `scripts/__tests__/release-packaging.test.ts` 守住)。不变量钉在 `core/__tests__/mode-distribution.test.ts` |
 | **PublishedMode** + **PublishedRegistryStatus** | `core/types/mode-registry.ts` | `server/registry-cache.ts` maintains the community-published list independently of local registry buckets; `GET /api/registry` adds `publishedStatus` | Launcher shows local modes immediately, polls while the published list is loading, and offers `refreshPublished=1` after failure. Last successful published entries remain available during refresh or failure. |
-| **Mode viewer host ABI** — `HOST_ABI_VENDOR_URLS` / `HOST_ABI_EXTERNALS` / `HOST_ABI_VENDOR_SHIMS` + `hostAbiImportMap()` / `resolveHostAbiExternal()` | `snapshot/mode-build.ts` | 一张数据表:外部 mode viewer 唯一可以向宿主借的东西 —— React、ReactDOM、两个 JSX runtime、宿主 Zustand store、i18next 与 react-i18next。externals 由 URL 表派生,shim 源码与它同表,所以「标成 external 的」「importmap 里写的」「server 真 serve 的」三者不会漂。React / react-dom(含 react-dom/client)/ 两个 JSX runtime / react-i18next 的 shim 导出名**从宿主实际安装的包读出**,不手写;`hostAbiExportNames()` 给出每个 specifier 可 import 的名字,`findUnresolvedHostAbiImports()` 据此检查产物,`buildModeViewer` 遇到 shim 不提供的名字直接构建失败 | `snapshot/mode-build.ts::buildModeViewer` 是**唯一** builder(`server/mode-viewer-routes.ts` 在会话内构建/恢复外部 mode、`scripts/publish-modes.ts` 发布 catalog mode、`snapshot/mode-publish.ts` 与 `server/mode-maker-routes.ts` 的 publish 路径都调它);`server/index.ts` 用 `HOST_ABI_VENDOR_SHIMS` serve `/vendor/*`、用 `hostAbiImportMap()` 往 index.html 注入 importmap;`src/main.tsx` 在加载任何 mode bundle 之前挂好 `window.__PNEUMA_*`。Bun 1.4.0 的两个坑与不变量钉在 `snapshot/__tests__/mode-host-abi.test.ts` |
+| **Mode viewer host ABI** — `HOST_ABI_VENDOR_URLS` / `HOST_ABI_EXTERNALS` / `HOST_ABI_VENDOR_SHIMS` + `hostAbiImportMap()` / `resolveHostAbiExternal()` | `snapshot/mode-build.ts` | 一张数据表:外部 mode viewer 唯一可以向宿主借的东西 —— React、ReactDOM、两个 JSX runtime、宿主 Zustand store、i18next 与 react-i18next。externals 由 URL 表派生,shim 源码与它同表,所以「标成 external 的」「importmap 里写的」「server 真 serve 的」三者不会漂。React / react-dom(含 react-dom/client)/ 两个 JSX runtime / react-i18next 的 shim 导出名**从宿主实际安装的包读出**,不手写;`hostAbiExportNames()` 给出每个 specifier 可 import 的名字,`findUnresolvedHostAbiImports()` 据此检查产物,`buildModeViewer` 遇到 shim 不提供的名字直接构建失败 | `snapshot/mode-build.ts::buildModeViewer` 是**唯一** builder(`server/mode-viewer-routes.ts` 在会话内构建/恢复外部 mode、`scripts/publish-modes.ts` 发布 catalog mode、`snapshot/mode-publish.ts` 与 `server/mode-maker-routes.ts` 的 publish 路径都调它);`server/index.ts` 用 `HOST_ABI_VENDOR_SHIMS` serve `/vendor/*`、用 `hostAbiImportMap()` 往 index.html 注入 importmap;`src/renderer.tsx` 在挂载视图、加载任何 mode bundle 之前挂好 `window.__PNEUMA_*`。Bun 1.4.0 的两个坑与不变量钉在 `snapshot/__tests__/mode-host-abi.test.ts` |
 | **ModeInfo** + **ModeViewerBuildState** + `modeViewerAssetUrl()` | `core/types/mode-viewer.ts` | `server/mode-viewer-routes.ts` owns each session's production viewer build (`building` / `failed` / `ready`); `snapshot/mode-build.ts` remains the sole builder | `GET /api/mode-info` reports state; `POST /api/mode-viewer/retry` starts or joins recovery for this session's mode. `src/utils/load-session-mode.ts` polls, loads CSS and uses fresh module URLs; `src/App.tsx` retries only viewer initialization, preserving the agent connection and chat draft. Missing/building/failed assets never fall through to HTML. |
 | **ModeShowcase** | `core/types/mode-manifest.ts` (declared); actual content in `modes/<name>/showcase/showcase.json` (sibling file, not inline in manifest) | Each mode's `showcase/showcase.json` + `hero.png` + `highlight-*` images or videos (`mediaType`) | `server/index.ts` serves via `GET /api/modes/:name/showcase/*`; launcher gallery cards consume |
 | **Craft project file** (`pneuma-craft/project/v1`) — `CraftProjectFile` / `CraftAsset` / `CraftProvenanceEdge` / `CraftCost` / `CraftFailure` | `core/types/craft-project.ts` | `modes/_shared/scripts/craft-project-io.mjs` (atomic load/save, probing, `runRegistered`, CLI `init/validate/reserve/land/fail/drop/show/cost`) plus each mode's sidecar key | Mode viewers through the pure, browser-safe `modes/_shared/scripts/craft-project.mjs` (`readProjectFile`, `indexAssets`, `summarizeCosts`, `resolveAssetUri`); clipcraft hydrates the same format (`modes/clipcraft/persistence.ts`). Invariants, lifecycle and cost/failure rules in [craft-project-file.md](craft-project-file.md); upstream mapping and every seed pinned by `core/__tests__/craft-project.test.ts` |
@@ -213,7 +213,7 @@ publish anything automatically. Brand Studio is the first consumer.
 | **Source\<T\>** + `SourceEvent<T>` + `SourceProvider` + `SourceContext` + `FileChannel` + `FileChangeEvent` + `SourceDescriptor` | `core/types/source.ts` | `core/source-registry.ts` picks provider by `kind` from `manifest.sources` | Built-in providers in `core/sources/{file-glob,json-file,aggregate-file,memory}.ts` (all extend `core/sources/base.ts` which enforces the four invariants); viewer subscribes via `src/hooks/useSource.ts` |
 | **AgentBackend** + `AgentCapabilities` + `AgentSessionInfo` + `AgentLaunchOptions` | `core/types/agent-backend.ts` | Each backend's `manifest.ts::createBackend(port)` | `bin/pneuma.ts` boots one per session; `server/ws-bridge*.ts` drives lifecycle; `AgentCapabilities.steer` gates the queued-message steer-in affordance and maps to each backend's native in-flight input protocol (see `docs/reference/steer-in.md`) |
 | **AgentProtocolAdapter** _(reserved/unused — see `BridgeBackend` row for the real seam)_ | `core/types/agent-backend.ts` | — (no production implementor) | — (no production consumer) |
-| **BackendModule** (incl. the optional install-seam fields `commandsDir` / `workflowsDir`) | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file; `server/skill-installer.ts` gates the session-command and workflow-script install steps on the FIELDS being defined |
+| **BackendModule** (incl. the optional install-seam fields `commandsDir` / `workflowsDir`) | `core/types/agent-backend.ts` | One per backend: `backends/{claude-code,codex,kimi-cli}/manifest.ts` | `backends/index.ts` is a pure registry — no `if (type === ...)` outside this file; `server/skill-installer.ts` gates the session-command and workflow-script install steps on the FIELDS being defined. The availability route awaits `checkRequirements()` only for the requested backends and returns `BackendOptions` to the launcher and ProjectPanel. |
 | **BridgeBackend** | `server/ws-bridge-backend.ts` | `BackendModule.createBridgeBackend()` per non-Claude backend | `server/ws-bridge.ts` central bridge dispatches; Claude legacy NDJSON path returns `null` here |
 | **ToolFileRef** | `backends/tool-file-ref.ts` | `BackendModule.toolFileRef(toolName, input)` | `server/file-ref.ts::stampFileRefs` decorates `tool_use` blocks; front-end `FilePreview` + `ToolFileActions` (open / editor / reveal via `/api/system/*`) consume |
 | **Reasoning effort + session token usage** — `ModeManifest.agent.reasoningEffort` → `AgentLaunchOptions.reasoningEffort` → codex `turn/start.effort` (`thread/start` has no such field); `SessionState.token_usage` (cumulative input / cached / output / reasoning, raw and unpriced) on `session_update`, filled by the Codex adapter from `thread/tokenUsage/updated.total` | `core/types/mode-manifest.ts`, `core/types/agent-backend.ts`, `server/session-types.ts` | `bin/pneuma.ts` passes the manifest's effort at launch; `backends/codex/codex-adapter.ts` sends it per turn and reports usage | `src/components/ContextPanel.tsx` shows the tokens; a mode prices them itself (`modes/lucid/skill/scripts/costs.mjs` → the cost panel) |
@@ -383,9 +383,10 @@ boot script shows it on launcher URLs before any bundle runs, and into the
 desktop's pre-start page. React's first commit replaces the static copy with
 the launcher, whose sections keep their skeletons until their own resource
 arrives; failures show an error with Retry instead. `main.tsx` loads the
-launcher code before the first render of a launcher URL, so no Suspense
-fallback (held at least ~300 ms by React once shown) delays the launcher's
-data requests.
+renderer and the requested launcher, project, or session view in parallel.
+The launcher commits over the skeleton as soon as its view is ready. English
+fallback resources ship with the entry point; other languages load on demand.
+Browsing the launcher and mode gallery starts no agent capability checks.
 
 Protocol URLs received before service readiness are queued in arrival order and
 all dispatched after startup. Only a queue containing exclusively background
@@ -529,12 +530,25 @@ Do not infer automatic recovery from the existence of a durable result file.
 
 无 mode 参数时启动(`bun run dev` / `pneuma`)。Marketplace UI:Recent Sessions、Recent Projects、Built-in Modes、Local Modes、Published Modes、Backend Picker。入口在 `server/index.ts` launcher block 与 `src/components/Launcher.tsx`。
 
-The launcher loads backend availability, registry buckets, sessions, running
-instances, and current/archived projects independently. A slow or failed request
-does not discard successful data or hide the whole page. Pending backend checks
-cannot be mistaken for an installed backend when starting a session.
-Returning to the launcher rechecks backend availability, and successful backend
-visibility changes in Settings refresh the launcher's options without reloading.
+The launcher loads registry buckets, sessions, running instances, and projects
+independently. Browsing these lists or returning to them leaves agent CLIs idle.
+The launcher and ProjectPanel verify the default agent when a new-session picker
+opens and check another agent when the user selects it. While it is open, returning focus or retrying refreshes the choices.
+Launch and Smart Handoff wait for a verified choice. Saved-session resumes
+check the saved backend even when hidden from new-session pickers. Viewing
+a saved session skips that check.
+
+Both private servers serve `GET /api/backends`. The unqualified request used by
+Settings checks every registered backend and includes each user's disable flag.
+`?scope=enabled` lists enabled choices, checks the default and stops at the
+first usable fallback. With `&preferred=<backend>` it checks that enabled
+choice. Other choices omit `available` until selected. `?type=<backend>` checks a single
+backend, and `?type=default` resolves the registry default for legacy records.
+All three return the same `{ backends, defaultBackendType }` shape, including
+the reason for each unavailable option. The catalog can be read without loading
+any agent transport. Each backend factory loads its own runtime when launching.
+Viewing an existing session or replay requires no installed CLI. Switching to
+editing or continuing a replay verifies the selected CLI first.
 
 `GET /api/registry` returns local builtins, the pinned release catalog, and
 installed/library modes without waiting for the community directory. The

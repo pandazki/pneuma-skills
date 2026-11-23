@@ -1,34 +1,11 @@
-import { spawnSync } from "node:child_process";
+import { probeAcpSubcommand } from "./acp-probe.js";
 import type { BackendModule } from "../../core/types/agent-backend.js";
 import { resolveBinary } from "../../server/path-resolver.js";
-import { KimiCliBackend } from "./index.js";
-import { KimiBridge } from "../../server/ws-bridge-kimi.js";
 import { defaultToolFileRef, KIND_BY_NAME, type ToolFileRef } from "../tool-file-ref.js";
 
 const INSTALL_HINT = `Install / upgrade: kimi upgrade (or see the docs for a fresh install)
 Verify: kimi acp --help
 Docs: https://moonshotai.github.io/kimi-code/`;
-
-/**
- * The `acp`-subcommand probe spawns the CLI (~400ms for the Node SEA binary),
- * and `/api/backends` calls `checkRequirements()` per request — cache the
- * probe per resolved binary path with a short TTL so the launcher stays
- * snappy while still noticing an install/upgrade within a minute.
- */
-const ACP_PROBE_TTL_MS = 60_000;
-const acpProbeCache = new Map<string, { ok: boolean; at: number }>();
-
-function probeAcpSubcommand(binaryPath: string): boolean {
-  const cached = acpProbeCache.get(binaryPath);
-  if (cached && Date.now() - cached.at < ACP_PROBE_TTL_MS) return cached.ok;
-  const probe = spawnSync(binaryPath, ["acp", "--help"], {
-    timeout: 15_000,
-    encoding: "utf-8",
-  });
-  const ok = !probe.error && probe.status === 0;
-  acpProbeCache.set(binaryPath, { ok, at: Date.now() });
-  return ok;
-}
 
 /**
  * Kimi Code's builtin tools use Claude-style names ("Read", "Write", "Edit",
@@ -84,6 +61,7 @@ export const kimiCliModule: BackendModule = {
     // KimiCliBackend takes no constructor args (the `port` parameter from the
     // BackendModule signature applies to backends that need an HTTP transport
     // — kimi is pure stdio JSON-RPC).
+    const { KimiCliBackend } = loadBackend();
     return new KimiCliBackend();
   },
 
@@ -98,6 +76,7 @@ export const kimiCliModule: BackendModule = {
    *     `createBridgeBackend` signature.
    */
   createBridgeBackend(deps, backend, sessionId) {
+    const { KimiCliBackend } = loadBackend();
     if (!(backend instanceof KimiCliBackend)) {
       throw new Error("kimi.createBridgeBackend: expected KimiCliBackend instance");
     }
@@ -111,6 +90,7 @@ export const kimiCliModule: BackendModule = {
       );
     }
     const session = deps.getOrCreateSession(sessionId, "kimi-cli");
+    const { KimiBridge } = require("../../server/ws-bridge-kimi.js") as typeof import("../../server/ws-bridge-kimi.js");
     return new KimiBridge(sessionId, session, adapter, deps);
   },
 
@@ -120,12 +100,12 @@ export const kimiCliModule: BackendModule = {
    * numbering restarted at 0.x — so semver comparison is actively wrong).
    * Probe for the `acp` subcommand instead; only Kimi Code has it.
    */
-  checkRequirements() {
+  async checkRequirements() {
     const resolved = resolveBinary("kimi");
     if (!resolved) {
       return { ok: false, reason: `"kimi" CLI not found in PATH.\n${INSTALL_HINT}` };
     }
-    if (!probeAcpSubcommand(resolved)) {
+    if (!(await probeAcpSubcommand(resolved))) {
       return {
         ok: false,
         reason:
@@ -136,3 +116,7 @@ export const kimiCliModule: BackendModule = {
     return { ok: true, binaryPath: resolved };
   },
 };
+
+function loadBackend(): typeof import("./index.js") {
+  return require("./index.js");
+}

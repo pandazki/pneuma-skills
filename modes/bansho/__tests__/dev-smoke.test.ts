@@ -33,9 +33,12 @@ import { getAllBackendModules } from "../../../backends/index.js";
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
 
 /** Any installed backend will do — viewing mode never launches it. */
-const availableBackend = getAllBackendModules().find(
-  (m) => m.checkRequirements().ok,
-)?.type;
+async function findAvailableBackend() {
+  for (const backend of getAllBackendModules()) {
+    if ((await backend.checkRequirements()).ok) return backend.type;
+  }
+}
+const availableBackend = await findAvailableBackend();
 
 /** Ports away from the 17996/17007 dev defaults, randomized per run so a
  *  concurrently running dev server (or a previous crashed run in

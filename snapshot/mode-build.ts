@@ -98,7 +98,7 @@ function destructureExports(names: readonly string[], from: string): string {
   return names.length ? `export const { ${names.join(", ")} } = ${from};` : "";
 }
 
-// `src/main.tsx` exposes `import * as React from "react"`: the namespace,
+// `src/renderer.tsx` exposes `import * as React from "react"`: the namespace,
 // whose keys are the package's exports.
 function reactShim(): VendorShim {
   const names = hostExportNames("react");
@@ -111,7 +111,7 @@ ${destructureExports(names, "R")}`,
   };
 }
 
-// `src/main.tsx` exposes `{ ...ReactDOM, createRoot, hydrateRoot }` — the
+// `src/renderer.tsx` exposes `{ ...ReactDOM, createRoot, hydrateRoot }` — the
 // `react-dom` namespace with the `react-dom/client` entry points merged in —
 // so this shim covers both packages' surfaces.
 //
@@ -131,7 +131,7 @@ export const ${COMPAT} = RD.${COMPAT} || ((fn, ...args) => fn(...args));`,
   };
 }
 
-// `src/main.tsx` exposes `import * as JsxRuntime from "react/jsx-runtime"`.
+// `src/renderer.tsx` exposes `import * as JsxRuntime from "react/jsx-runtime"`.
 function jsxRuntimeShim(): VendorShim {
   const names = hostExportNames("react/jsx-runtime");
   return {

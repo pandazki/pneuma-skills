@@ -1,31 +1,6 @@
-import i18n from "i18next";
+import i18n, { type BackendModule, type ResourceLanguage } from "i18next";
 import { initReactI18next } from "react-i18next";
-
-const enModules = import.meta.glob("./locales/en/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
-const zhCNModules = import.meta.glob("./locales/zh-CN/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
-const zhTWModules = import.meta.glob("./locales/zh-TW/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
-const jaModules = import.meta.glob("./locales/ja/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
-const koModules = import.meta.glob("./locales/ko/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
-const esModules = import.meta.glob("./locales/es/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
-const deModules = import.meta.glob("./locales/de/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>;
-
-function buildResources(modules: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
-  const out: Record<string, Record<string, unknown>> = {};
-  for (const [path, content] of Object.entries(modules)) {
-    const match = path.match(/\/([^/]+)\.json$/);
-    if (!match) continue;
-    out[match[1]] = content;
-  }
-  return out;
-}
-
-const enResources = buildResources(enModules);
-const zhCNResources = buildResources(zhCNModules);
-const zhTWResources = buildResources(zhTWModules);
-const jaResources = buildResources(jaModules);
-const koResources = buildResources(koModules);
-const esResources = buildResources(esModules);
-const deResources = buildResources(deModules);
+import english from "./bundles/en.js";
 
 export const SUPPORTED_LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko", "es", "de"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -86,89 +61,109 @@ function detectBrowserLocale(): Locale {
   return DEFAULT_LOCALE;
 }
 
-const NAMESPACES = Array.from(new Set([
-  ...Object.keys(enResources),
-  ...Object.keys(zhCNResources),
-  ...Object.keys(zhTWResources),
-  ...Object.keys(jaResources),
-  ...Object.keys(koResources),
-  ...Object.keys(esResources),
-  ...Object.keys(deResources),
-]));
+// These import boundaries keep all namespaces for one optional language in one chunk.
+const loadBundle = {
+  de: () => import("./bundles/de.js"),
+  es: () => import("./bundles/es.js"),
+  ja: () => import("./bundles/ja.js"),
+  ko: () => import("./bundles/ko.js"),
+  "zh-CN": () => import("./bundles/zh-CN.js"),
+  "zh-TW": () => import("./bundles/zh-TW.js"),
+} satisfies Record<Exclude<Locale, "en">, () => Promise<{ default: ResourceLanguage }>>;
 
 i18n
+  .use<BackendModule>({
+    type: "backend",
+    init() {},
+    async read(language: string, namespace: string) {
+      const locale = normalizeLocale(language);
+      if (!locale || locale === "en" || locale !== language) return {};
+      const { default: resources } = await loadBundle[locale]();
+      return resources[namespace] ?? {};
+    },
+  })
   .use(initReactI18next)
   .init({
-    resources: {
-      en: enResources,
-      "zh-CN": zhCNResources,
-      "zh-TW": zhTWResources,
-      ja: jaResources,
-      ko: koResources,
-      es: esResources,
-      de: deResources,
-    },
-    ns: NAMESPACES,
+    resources: { en: english },
+    partialBundledLanguages: true,
+    // The module loader coalesces namespaces into one request per language.
+    // Let a second language start even while the first chunk is outstanding.
+    maxParallelReads: Infinity,
+    ns: Object.keys(english),
     defaultNS: "common",
     fallbackNS: "common",
-    lng: detectBrowserLocale(),
+    lng: DEFAULT_LOCALE,
     fallbackLng: DEFAULT_LOCALE,
-    interpolation: {
-      escapeValue: false,
-    },
+    interpolation: { escapeValue: false },
     returnNull: false,
   });
 
-export async function setLocale(locale: Locale): Promise<void> {
-  await i18n.changeLanguage(locale);
-}
-
 export function currentLocale(): Locale {
-  return (i18n.resolvedLanguage as Locale | undefined) ?? DEFAULT_LOCALE;
+  return normalizeLocale(i18n.resolvedLanguage) ?? DEFAULT_LOCALE;
 }
 
-/**
- * Fetch the user-saved locale from the server and apply it. Falls back to
- * the browser-detected locale already initialised at module load if the
- * server has no preference saved or the request fails.
- */
+let requestedLanguage = i18n.language;
+i18n.on("languageChanging", language => { requestedLanguage = language; });
+i18n.on("languageChanged", () => {
+  const locale = currentLocale();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("pneuma:locale-changed", { detail: { locale } }));
+  }
+});
+
+export async function setLocale(locale: Locale): Promise<void> {
+  // i18next retains every loaded bundle and commits only the latest language
+  // request, including requests made directly through the viewer host ABI.
+  await new Promise<void>((resolve, reject) => {
+    void i18n.changeLanguage(locale, (error) => error ? reject(error) : resolve());
+  });
+}
+
+const browserLocale = detectBrowserLocale();
+// A saved language can become ready before the browser's bundle. Mount with
+// the first resolved choice while route code loads in parallel.
+export const initialLocaleReady = browserLocale === DEFAULT_LOCALE ? Promise.resolve() : new Promise<void>(resolve => {
+  function ready() {
+    i18n.off("languageChanged", ready);
+    resolve();
+  }
+  i18n.on("languageChanged", ready);
+  void setLocale(browserLocale).catch(error => {
+    console.warn("[i18n] Could not load browser language", error);
+    ready();
+  });
+});
+
+let preferenceRevision = 0;
+let lastWrite = Promise.resolve();
+
+/** A saved preference supersedes even an in-flight browser language load. */
 export async function syncLocaleFromServer(apiBase: string = ""): Promise<void> {
+  const revision = preferenceRevision;
   try {
     const res = await fetch(`${apiBase}/api/user-locale`);
     if (!res.ok) return;
-    const data = (await res.json()) as { locale: string | null; systemLocale: string };
-    const userLocale = normalizeLocale(data.locale);
-    if (userLocale && userLocale !== currentLocale()) {
-      await setLocale(userLocale);
-      // Notify listeners (e.g. Launcher's registry refetch hook) — the
-      // initial registry fetch ran against the browser-detected locale, so
-      // mode tiles / showcase carousel would otherwise stay stale until
-      // a manual switch or reload.
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("pneuma:locale-changed", { detail: { locale: userLocale } }),
-        );
-      }
-    }
+    const data = await res.json();
+    const locale = normalizeLocale(data.locale);
+    if (locale && locale !== requestedLanguage && revision === preferenceRevision) await setLocale(locale);
   } catch {
-    /* network failure — keep browser-detected locale */
+    /* Keep the browser preference if the server is unavailable. */
   }
 }
 
 export async function persistLocale(locale: Locale, apiBase: string = ""): Promise<boolean> {
+  // Order saves at the server, but never hold the next save behind a chunk
+  // download. A failed save leaves the last successful preference in effect.
+  const write = lastWrite.then(() => fetch(`${apiBase}/api/user-locale`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ locale }),
+  }));
+  lastWrite = write.then(() => {}, () => {});
   try {
-    const res = await fetch(`${apiBase}/api/user-locale`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locale }),
-    });
-    if (!res.ok) return false;
+    if (!(await write).ok) return false;
+    preferenceRevision++;
     await setLocale(locale);
-    // Re-emit so non-i18n-subscribed components (e.g. registry-driven mode
-    // tiles, timeAgo strings called outside useTranslation) can refresh.
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("pneuma:locale-changed", { detail: { locale } }));
-    }
     return true;
   } catch {
     return false;

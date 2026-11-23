@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 const workspace = mkdtempSync(join(tmpdir(), "pneuma-kimi-lifecycle-"));
 
-runLifecycleHarness({
+await runLifecycleHarness({
   module: kimiCliModule,
   workspaceRoot: workspace,
 });

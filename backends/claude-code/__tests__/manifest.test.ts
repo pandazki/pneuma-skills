@@ -40,8 +40,8 @@ describe("claude-code BackendModule", () => {
     expect(result).toBeNull();
   });
 
-  it("checkRequirements returns ok or actionable reason", () => {
-    const r = claudeCodeModule.checkRequirements();
+  it("checkRequirements returns ok or actionable reason", async () => {
+    const r = await claudeCodeModule.checkRequirements();
     if (r.ok) expect(r.binaryPath).toBeTruthy();
     else expect(r.reason).toMatch(/claude/i);
   });

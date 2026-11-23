@@ -26,6 +26,7 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
   let browserRequests: unknown[][] = [];
   let openFailure: Error | undefined;
   let closed = false;
+  let backendReads: string[] = [];
   let checkedPaths: string[] = [];
   let launches: Array<{ workspace: string; backendType: string; initParams: Record<string, unknown> }> = [];
   const workspaceResponses = new Map<string, Promise<Response>>();
@@ -57,6 +58,15 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
       if (url.pathname === "/api/launch/prepare") {
         return prepareResponse ?? Response.json({ initParams: [] });
       }
+      if (url.pathname === "/api/backends") {
+        backendReads.push(url.search);
+        const options = [
+          { type: "claude-code", label: "Claude Code", implemented: true, available: true },
+          { type: "codex", label: "Codex", implemented: true, available: true },
+        ];
+        const type = url.searchParams.get("type");
+        return Response.json({ defaultBackendType: "claude-code", backends: options.filter(b => !type || b.type === type) });
+      }
       if (url.pathname === "/api/workspace-check") {
         const path = url.searchParams.get("path")!;
         checkedPaths.push(path);
@@ -74,7 +84,7 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     nativeRequests = []; browserRequests = []; openFailure = undefined; closed = false;
     prepareResponse = undefined;
     selectedDirectory = "";
-    checkedPaths = [];
+    checkedPaths = []; backendReads = [];
     launches = [];
     workspaceResponses.clear();
   });
@@ -98,11 +108,7 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     unmount = async () => { await act(async () => root.unmount()); };
     await act(async () => root.render(createElement(LaunchDialog, {
       specifier: "doc", displayName: "Document", homeDir: "/home/test", defaultWorkspace, showcase,
-      defaultBackendType: "claude-code", onClose: () => { closed = true; },
-      backendOptions: [
-        { type: "claude-code", label: "Claude Code", description: "Claude", implemented: true, available: true },
-        { type: "codex", label: "Codex", description: "Codex", implemented: true, available: true },
-      ],
+      onClose: () => { closed = true; },
     })));
   }
 
@@ -233,8 +239,8 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     const finish = deferWorkspace("/existing");
     await browseWorkspace("/existing");
     await finish({ hasSession: true, mode: "doc", backendType: "claude-code", config: {} });
-    expect(button("Codex").disabled).toBe(true);
-    expect(button("Claude Code").disabled).toBe(true);
+    expect(backendReads.at(-1)).toBe("?type=claude-code");
+    expect(host.textContent).not.toContain("Codex");
     expect(host.textContent).toContain("will resume Claude session");
     await click("Launch");
     expect(launches[0]?.backendType).toBe("claude-code");
@@ -288,6 +294,19 @@ if (process.env.PNEUMA_LAUNCH_DIALOG_UI_TEST !== "1") {
     expect(button("Launch").disabled).toBe(false);
     await click("Launch");
     expect(launches[0]?.backendType).toBe("codex");
+  });
+
+  test("a saved workspace checks only its locked backend, or none when viewing", async () => {
+    workspaceResponses.set("/saved", Promise.resolve(Response.json({
+      hasSession: true, mode: "doc", backendType: "codex", editing: false,
+    })));
+    await mountDialog("/saved");
+    await click("Launch");
+    expect(backendReads).toEqual([]);
+    expect(launches[0]).toMatchObject({ workspace: "/saved", backendType: "codex", viewing: true });
+    workspaceResponses.set("/editing", Promise.resolve(Response.json({ hasSession: true, mode: "doc", backendType: "codex" })));
+    await browseWorkspace("/editing");
+    expect(backendReads).toEqual(["?type=codex"]);
   });
 
   test("a failed workspace check is visible and cannot launch with an assumed backend", async () => {

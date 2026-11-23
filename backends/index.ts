@@ -105,16 +105,17 @@ export interface BackendAvailability {
 }
 
 /**
- * Detect which backends have their CLI binary available on the system.
- * Results are NOT cached — call sparingly (shell PATH probe is ~50ms each).
+ * Check one backend on demand. A Kimi check can run its ACP capability command.
  */
-export function detectBackendAvailability(): BackendAvailability[] {
-  return getAllBackendModules().map((m) => {
-    const r: BackendRequirementResult = m.checkRequirements();
-    return r.ok
-      ? { type: m.type, available: true, binaryPath: r.binaryPath }
-      : { type: m.type, available: false, reason: r.reason };
-  });
+export async function checkBackendAvailability(type: AgentBackendType): Promise<BackendAvailability> {
+  const result: BackendRequirementResult = await getBackendModule(type).checkRequirements();
+  return result.ok
+    ? { type, available: true, binaryPath: result.binaryPath }
+    : { type, available: false, reason: result.reason };
+}
+
+export function detectBackendAvailability(): Promise<BackendAvailability[]> {
+  return Promise.all(getAllBackendModules().map((module) => checkBackendAvailability(module.type)));
 }
 
 export function createBackend(type: AgentBackendType, port: number): AgentBackend {

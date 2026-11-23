@@ -637,7 +637,7 @@ export interface BackendModule {           // 每 backend 一份 manifest.ts
   readonly defaultModels?: ModelOption[];
   createBackend(port: number): AgentBackend;
   createBridgeBackend(deps, backend, sessionId): BridgeBackend | null;
-  checkRequirements(): { ok; reason?; binaryPath? };
+  checkRequirements(): BackendRequirementResult | Promise<BackendRequirementResult>;
   toolFileRef?(toolName, input): ToolFileRef | undefined;
 }
 ```

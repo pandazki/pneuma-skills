@@ -103,9 +103,9 @@ const DEFAULT_TIMEOUT_MS = 60_000;
  * binary isn't available (so CI doesn't fail just because, say, `kimi`
  * isn't installed).
  */
-export function runLifecycleHarness(opts: HarnessOptions): void {
+export async function runLifecycleHarness(opts: HarnessOptions): Promise<void> {
   const moduleType = opts.module.type;
-  const requirements = opts.module.checkRequirements();
+  const requirements = await opts.module.checkRequirements();
   const skipSet = new Set<ScenarioName>(opts.skip ?? []);
 
   describe(`backend lifecycle: ${moduleType}`, () => {

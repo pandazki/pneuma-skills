@@ -33,7 +33,7 @@ The default six scenarios run five samples each:
 | `slow-shell` | The fixture login shell waits two seconds per invocation |
 | `slow-cli-version` | The fake Claude `--version` probe waits two seconds |
 | `slow-registry` | Bun's external community-index request waits four seconds |
-| `slow-backends` | Bun's `/api/backends` response waits four seconds |
+| `slow-backends` | Opening the agent picker delays its availability response by four seconds |
 
 Each application process has a new in-memory server cache. The operating system
 disk cache is not flushed. The delayed backend response isolates the frontend
