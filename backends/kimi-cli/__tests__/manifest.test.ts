@@ -114,12 +114,12 @@ describe("kimi-cli BackendModule", () => {
     ).toThrow(/getOrCreateSession/i);
   });
 
-  it("checkRequirements probes the binary AND the acp subcommand", () => {
+  it("checkRequirements probes the binary AND the acp subcommand", async () => {
     // Binary presence alone is not enough: the `kimi` name was reused across
     // the kimi-cli → Kimi Code product swap. On a machine with Kimi Code the
     // probe passes; with the legacy CLI (no `acp` subcommand) or no binary
     // the reason must point at Kimi Code.
-    const r = kimiCliModule.checkRequirements();
+    const r = await kimiCliModule.checkRequirements();
     if (r.ok) expect(r.binaryPath).toBeTruthy();
     else expect(r.reason).toMatch(/kimi/i);
   });

@@ -14,7 +14,7 @@ import { codexModule } from "../../backends/codex/manifest.js";
 import { kimiCliModule } from "../../backends/kimi-cli/manifest.js";
 
 describe("BackendModule type", () => {
-  it("compiles with all required fields and capabilities extras", () => {
+  it("compiles with all required fields and capabilities extras", async () => {
     const fake: BackendModule = {
       type: "claude-code",
       label: "Claude Code",
@@ -37,8 +37,9 @@ describe("BackendModule type", () => {
       defaultModels: [{ id: "claude-opus-5-5", label: "Opus", icon: "O" }],
       createBackend: () => ({ /* type-only */ } as any),
       createBridgeBackend: () => null,
-      checkRequirements: () => ({ ok: true }),
+      checkRequirements: async () => ({ ok: true }),
     };
+    expect(await fake.checkRequirements()).toEqual({ ok: true });
     expect(fake.type).toBe("claude-code");
     expect(fake.capabilities.scheduling).toBe(true);
     expect(fake.defaultModels?.length).toBe(1);

@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 const workspace = mkdtempSync(join(tmpdir(), "pneuma-claude-lifecycle-"));
 
-runLifecycleHarness({
+await runLifecycleHarness({
   module: claudeCodeModule,
   workspaceRoot: workspace,
   // Claude Code is the reference backend — expect all 6 scenarios to pass.

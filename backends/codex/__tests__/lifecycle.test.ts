@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 const workspace = mkdtempSync(join(tmpdir(), "pneuma-codex-lifecycle-"));
 
-runLifecycleHarness({
+await runLifecycleHarness({
   module: codexModule,
   workspaceRoot: workspace,
 });

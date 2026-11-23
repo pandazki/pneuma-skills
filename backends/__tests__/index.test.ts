@@ -31,8 +31,8 @@ describe("kimi-cli backend registration", () => {
     });
   });
 
-  it("declares its binary as 'kimi'", () => {
-    const probes = detectBackendAvailability();
+  it("declares its binary as 'kimi'", async () => {
+    const probes = await detectBackendAvailability();
     const kimi = probes.find((p) => p.type === "kimi-cli");
     expect(kimi).toBeDefined();
     // We don't assert .available because PATH varies across CI

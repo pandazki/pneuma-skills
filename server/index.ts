@@ -1236,7 +1236,7 @@ export async function startServer(options: ServerOptions) {
 
     app.get("/api/backends", async (c) => {
       const descriptors = getBackendDescriptors();
-      const availability = detectBackendAvailability();
+      const availability = await detectBackendAvailability();
       const { getBackendPrefs } = await import("../core/backend-prefs.js");
       const prefs = getBackendPrefs();
       const backends = descriptors.map((desc) => {

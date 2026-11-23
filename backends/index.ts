@@ -108,13 +108,13 @@ export interface BackendAvailability {
  * Detect which backends have their CLI binary available on the system.
  * Results are NOT cached — call sparingly (shell PATH probe is ~50ms each).
  */
-export function detectBackendAvailability(): BackendAvailability[] {
-  return getAllBackendModules().map((m) => {
-    const r: BackendRequirementResult = m.checkRequirements();
+export function detectBackendAvailability(): Promise<BackendAvailability[]> {
+  return Promise.all(getAllBackendModules().map(async (m) => {
+    const r: BackendRequirementResult = await m.checkRequirements();
     return r.ok
       ? { type: m.type, available: true, binaryPath: r.binaryPath }
       : { type: m.type, available: false, reason: r.reason };
-  });
+  }));
 }
 
 export function createBackend(type: AgentBackendType, port: number): AgentBackend {

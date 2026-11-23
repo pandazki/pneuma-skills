@@ -247,10 +247,10 @@ export interface BackendModule {
   // ── Self-describing helpers ───────────────────────────────────────────
   /**
    * Probe the system to verify the backend is runnable. Should be cheap
-   * (PATH lookup + maybe `--version`); safe to call at startup. Result
+   * (PATH lookup); return a promise when checking an external process. Result
    * drives launcher availability badges + CLI startup checks.
    */
-  checkRequirements(): BackendRequirementResult;
+  checkRequirements(): BackendRequirementResult | Promise<BackendRequirementResult>;
 
   /**
    * Pure helper: given a tool_use block's name + input, return a normalized

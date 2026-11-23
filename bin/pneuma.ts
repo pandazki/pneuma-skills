@@ -523,13 +523,13 @@ async function checkForUpdate(currentVersion: string) {
   }
 }
 
-function checkBackendRequirements(backendType: AgentBackendType) {
+async function checkBackendRequirements(backendType: AgentBackendType) {
   // Each backend's manifest carries its own binary name + install hint, so
   // the launcher just dispatches through the registry — no per-backend
   // branches survive here. Adding a new backend means writing a manifest;
   // this function never has to change.
   const module = getBackendModule(backendType);
-  const result = module.checkRequirements();
+  const result = await module.checkRequirements();
   if (!result.ok) {
     p.cancel(
       t("pneuma.backend_unavailable", {
@@ -771,7 +771,7 @@ async function handleEvolveCommand(args: string[]) {
     }
   }
 
-  checkBackendRequirements(backendType);
+  await checkBackendRequirements(backendType);
 
   // Evolution mode only supports Claude Code backend
   const evolveManifestCheck = await loadModeManifest("evolve");
@@ -2120,7 +2120,7 @@ async function main() {
   }
 
   // Verify the selected backend is available before proceeding
-  checkBackendRequirements(backendType);
+  await checkBackendRequirements(backendType);
 
   // Check if the mode supports the selected backend
   if (manifest.supportedBackends && manifest.supportedBackends.length > 0) {
